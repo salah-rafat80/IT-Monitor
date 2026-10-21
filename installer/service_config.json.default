@@ -1,0 +1,10 @@
+{
+  "port": 8443,
+  "useTls": true,
+  "certPath": "C:\\ProgramData\\ITNetworkMonitor\\certs\\server.crt",
+  "keyPath": "C:\\ProgramData\\ITNetworkMonitor\\certs\\server.key",
+  "keyPassword": null,
+  "sessionTimeoutHours": 24,
+  "developmentMode": false,
+  "notes": "Production configuration: HTTPS & WSS on port 8443 with TLS certificates in ProgramData\\ITNetworkMonitor\\certs."
+}

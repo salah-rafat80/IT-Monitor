@@ -2,6 +2,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:drift/native.dart';
 
 import 'package:it_network_monitor/core/database/app_database.dart';
+import 'package:it_network_monitor/core/errors/failures.dart';
+import 'package:it_network_monitor/core/utils/result.dart';
 import 'package:it_network_monitor/features/auth/data/repositories/auth_repository_impl.dart';
 import 'package:it_network_monitor/features/devices/data/repositories/device_repository_impl.dart';
 import 'package:it_network_monitor/features/devices/domain/entities/device_entity.dart';
@@ -13,6 +15,7 @@ import 'package:it_network_monitor/features/monitoring/data/repositories/monitor
 import 'package:it_network_monitor/features/monitoring/domain/entities/check_result.dart';
 import 'package:it_network_monitor/features/monitoring/domain/entities/device_status_entity.dart';
 import 'package:it_network_monitor/features/monitoring/domain/entities/monitoring_config.dart';
+import 'package:it_network_monitor/features/monitoring/domain/repositories/monitoring_repository.dart';
 import 'package:it_network_monitor/features/monitoring/domain/services/monitoring_scheduler.dart';
 import 'package:it_network_monitor/features/monitoring/domain/services/ping_checker.dart';
 import 'package:it_network_monitor/features/users/data/repositories/audit_log_repository_impl.dart';
@@ -60,6 +63,40 @@ class FaultyThrowingNotificationService extends DesktopNotificationService {
     }
     await super.notifyIncidentCreated(incident);
   }
+}
+
+class FailingPersistenceMonitoringRepo implements MonitoringRepository {
+  @override
+  Future<Result<List<DeviceStatusEntity>>> getDeviceStatuses() async =>
+      Result.success(const []);
+
+  @override
+  Future<Result<DeviceStatusEntity>> getDeviceStatus(int deviceId) async =>
+      Result.success(DeviceStatusEntity.initial(deviceId));
+
+  @override
+  Future<Result<void>> saveCheckResult(CheckResult result) async =>
+      Result.failure(const DatabaseFailure('Simulated check result disk full'));
+
+  @override
+  Future<Result<void>> saveDeviceStatus(DeviceStatusEntity status) async =>
+      Result.failure(
+        const DatabaseFailure('Simulated device status write failure'),
+      );
+
+  @override
+  Future<Result<void>> setMaintenanceMode({
+    required int deviceId,
+    required bool isMaintenance,
+  }) async => Result.success(null);
+
+  @override
+  Stream<DeviceStatusEntity> watchDeviceStatus(int deviceId) =>
+      const Stream.empty();
+
+  @override
+  Stream<List<DeviceStatusEntity>> watchAllDeviceStatuses() =>
+      const Stream.empty();
 }
 
 void main() {
@@ -256,6 +293,36 @@ void main() {
 
         final reloadedDevices = (await deviceRepo.getDevices()).dataOrNull!;
         expect(reloadedDevices.length, equals(37));
+      },
+    );
+
+    test(
+      '7. Diagnostics and error counters: persistence and repository failures produce observable metrics',
+      () async {
+        final failingRepo = FailingPersistenceMonitoringRepo();
+        final testScheduler = MonitoringScheduler(
+          deviceRepo,
+          failingRepo,
+          testPingChecker,
+          incidentEngine,
+        );
+
+        expect(testScheduler.persistenceFailureCount, equals(0));
+
+        // Trigger a check for device 1
+        await testScheduler.triggerSingleCheck(1);
+
+        // Verify that persistence failures were observed, counted, and recorded in diagnostic logs
+        expect(testScheduler.persistenceFailureCount, greaterThan(0));
+        expect(testScheduler.diagnosticLogs, isNotEmpty);
+        expect(
+          testScheduler.diagnosticLogs.any(
+            (log) =>
+                log.contains('Failed to save') ||
+                log.contains('Failed to persist'),
+          ),
+          isTrue,
+        );
       },
     );
   });

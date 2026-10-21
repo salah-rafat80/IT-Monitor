@@ -16,6 +16,33 @@ class ReportRepositoryImpl implements ReportRepository {
 
   ReportRepositoryImpl(this._db);
 
+  /// Sanitizes text fields for RFC 4180 CSV compliance and neutralizes
+  /// spreadsheet formula injection (CSV/DDE injection) on leading characters (=, +, -, @, \t).
+  static String escapeCsvField(String? value) {
+    if (value == null) return '';
+    String sanitized = value;
+
+    // Neutralize formula injection if leading character could be interpreted as a formula
+    if (sanitized.isNotEmpty &&
+        (sanitized.startsWith('=') ||
+            sanitized.startsWith('+') ||
+            sanitized.startsWith('-') ||
+            sanitized.startsWith('@') ||
+            sanitized.startsWith('\t'))) {
+      sanitized = "'$sanitized";
+    }
+
+    // RFC 4180: if field contains quote, comma, carriage return, or newline,
+    // enclose in double quotes and escape internal double quotes by doubling them.
+    if (sanitized.contains('"') ||
+        sanitized.contains(',') ||
+        sanitized.contains('\n') ||
+        sanitized.contains('\r')) {
+      return '"${sanitized.replaceAll('"', '""')}"';
+    }
+    return sanitized;
+  }
+
   @override
   Future<Result<ReportSummaryEntity>> generateReport(
     ReportPeriod period,
@@ -45,9 +72,14 @@ class ReportRepositoryImpl implements ReportRepository {
         _db.infrastructureDevices,
       )..where((d) => d.isEnabled.equals(true))).get();
 
-      final checkResults = await (_db.select(
-        _db.checkResults,
-      )..where((c) => c.timestamp.isBiggerOrEqualValue(startDate))).get();
+      // Exclude future-dated check results and checks before startDate
+      final checkResults =
+          await (_db.select(_db.checkResults)..where(
+                (c) =>
+                    c.timestamp.isBiggerOrEqualValue(startDate) &
+                    c.timestamp.isSmallerOrEqualValue(now),
+              ))
+              .get();
 
       final incidents =
           await (_db.select(_db.incidents)..where(
@@ -67,42 +99,67 @@ class ReportRepositoryImpl implements ReportRepository {
           .map((c) => c.latencyMs!)
           .toList();
 
-      double avgLatency = latencies.isNotEmpty
-          ? latencies.reduce((a, b) => a + b) / latencies.length
-          : 0.0;
+      final double? avgLatency = latencies.isNotEmpty
+          ? double.parse(
+              (latencies.reduce((a, b) => a + b) / latencies.length)
+                  .toStringAsFixed(1),
+            )
+          : null;
 
       final deviceUptimes = <DeviceUptimeEntity>[];
 
       // 1. Process Monitored Inventory Devices using stable asset identity & temporal validity
       for (final dev in devices) {
+        // Expected beginning of the monitoring window:
+        // If device was created after startDate, monitoring could not have started earlier than dev.createdAt
+        final expectedStart = dev.createdAt.isAfter(startDate)
+            ? dev.createdAt
+            : startDate;
+
+        // Filter checks strictly within [expectedStart, now]
         final devChecks = checkResults.where((c) {
-          // If check explicitly carries assetId:
+          if (c.timestamp.isBefore(expectedStart) || c.timestamp.isAfter(now)) {
+            return false;
+          }
           if (c.assetId != null && c.assetId!.isNotEmpty) {
             return c.assetId == 'device:${dev.id}';
           }
-          // Legacy check without assetId:
-          // Must match dev.id, and must not precede dev creation
           if (c.deviceId == dev.id) {
-            if (c.timestamp.isBefore(dev.createdAt)) {
-              return false;
-            }
             return c.targetIp.trim().toLowerCase() ==
                 dev.ip.trim().toLowerCase();
           }
-          // Unattributed/ambiguous check (c.deviceId == 0 or targetIp only)
           return false;
         }).toList();
 
-        // Sort chronologically to detect prolonged monitoring gaps
+        // Sort chronologically to detect missing observation intervals
         devChecks.sort((a, b) => a.timestamp.compareTo(b.timestamp));
 
         bool hasProlongedGap = false;
-        if (devChecks.length >= 2) {
-          for (int i = 1; i < devChecks.length; i++) {
-            if (devChecks[i].timestamp.difference(devChecks[i - 1].timestamp) >
+        if (devChecks.isEmpty) {
+          hasProlongedGap = true;
+        } else {
+          // Check initial gap: between expectedStart and first valid observation
+          if (devChecks.first.timestamp.difference(expectedStart) >
+              const Duration(hours: 2)) {
+            hasProlongedGap = true;
+          }
+          // Check consecutive gaps: between adjacent observations
+          if (!hasProlongedGap) {
+            for (int i = 1; i < devChecks.length; i++) {
+              if (devChecks[i].timestamp.difference(
+                    devChecks[i - 1].timestamp,
+                  ) >
+                  const Duration(hours: 2)) {
+                hasProlongedGap = true;
+                break;
+              }
+            }
+          }
+          // Check final gap: between last valid observation and report end time (now)
+          if (!hasProlongedGap) {
+            if (now.difference(devChecks.last.timestamp) >
                 const Duration(hours: 2)) {
               hasProlongedGap = true;
-              break;
             }
           }
         }
@@ -114,7 +171,7 @@ class ReportRepositoryImpl implements ReportRepository {
         final bool hasSufficient = devTotal > 0 && !hasProlongedGap;
 
         // Honest reachability semantics:
-        // Lack of checks or prolonged unobserved intervals (> 2h) prevents continuous availability claims.
+        // Lack of checks or unobserved intervals (> 2h) prevents continuous availability claims.
         final double? devUptime = hasSufficient
             ? double.parse(((devSuccess / devTotal) * 100.0).toStringAsFixed(2))
             : null;
@@ -124,9 +181,12 @@ class ReportRepositoryImpl implements ReportRepository {
             .map((c) => c.latencyMs!)
             .toList();
 
-        double devAvgLatency = devLatencies.isNotEmpty
-            ? devLatencies.reduce((a, b) => a + b) / devLatencies.length
-            : 0.0;
+        final double? devAvgLatency = devLatencies.isNotEmpty
+            ? double.parse(
+                (devLatencies.reduce((a, b) => a + b) / devLatencies.length)
+                    .toStringAsFixed(1),
+              )
+            : null;
 
         deviceUptimes.add(
           DeviceUptimeEntity(
@@ -141,7 +201,7 @@ class ReportRepositoryImpl implements ReportRepository {
             totalChecks: devTotal,
             successfulChecks: devSuccess,
             failedChecks: devFailed,
-            avgLatencyMs: double.parse(devAvgLatency.toStringAsFixed(1)),
+            avgLatencyMs: devAvgLatency,
             hasSufficientHistory: hasSufficient,
           ),
         );
@@ -149,17 +209,20 @@ class ReportRepositoryImpl implements ReportRepository {
 
       // 2. Process Critical Infrastructure Assets (Gateways & APs)
       for (final infra in infraDevices) {
+        final expectedStart = infra.createdAt.isAfter(startDate)
+            ? infra.createdAt
+            : startDate;
+
         final devChecks = checkResults.where((c) {
+          if (c.timestamp.isBefore(expectedStart) || c.timestamp.isAfter(now)) {
+            return false;
+          }
           if (c.assetId != null && c.assetId!.isNotEmpty) {
             return c.assetId == 'infra:${infra.id}';
           }
-          // Legacy check:
           final isLegacyMatch =
               c.deviceId == infra.id || c.deviceId == 10000 + infra.id;
           if (isLegacyMatch) {
-            if (c.timestamp.isBefore(infra.createdAt)) {
-              return false;
-            }
             return c.targetIp.trim().toLowerCase() ==
                 infra.ip.trim().toLowerCase();
           }
@@ -170,12 +233,31 @@ class ReportRepositoryImpl implements ReportRepository {
         devChecks.sort((a, b) => a.timestamp.compareTo(b.timestamp));
 
         bool hasProlongedGap = false;
-        if (devChecks.length >= 2) {
-          for (int i = 1; i < devChecks.length; i++) {
-            if (devChecks[i].timestamp.difference(devChecks[i - 1].timestamp) >
+        if (devChecks.isEmpty) {
+          hasProlongedGap = true;
+        } else {
+          // Check initial gap
+          if (devChecks.first.timestamp.difference(expectedStart) >
+              const Duration(hours: 2)) {
+            hasProlongedGap = true;
+          }
+          // Check consecutive gaps
+          if (!hasProlongedGap) {
+            for (int i = 1; i < devChecks.length; i++) {
+              if (devChecks[i].timestamp.difference(
+                    devChecks[i - 1].timestamp,
+                  ) >
+                  const Duration(hours: 2)) {
+                hasProlongedGap = true;
+                break;
+              }
+            }
+          }
+          // Check final gap
+          if (!hasProlongedGap) {
+            if (now.difference(devChecks.last.timestamp) >
                 const Duration(hours: 2)) {
               hasProlongedGap = true;
-              break;
             }
           }
         }
@@ -195,9 +277,12 @@ class ReportRepositoryImpl implements ReportRepository {
             .map((c) => c.latencyMs!)
             .toList();
 
-        double devAvgLatency = devLatencies.isNotEmpty
-            ? devLatencies.reduce((a, b) => a + b) / devLatencies.length
-            : 0.0;
+        final double? devAvgLatency = devLatencies.isNotEmpty
+            ? double.parse(
+                (devLatencies.reduce((a, b) => a + b) / devLatencies.length)
+                    .toStringAsFixed(1),
+              )
+            : null;
 
         deviceUptimes.add(
           DeviceUptimeEntity(
@@ -212,7 +297,7 @@ class ReportRepositoryImpl implements ReportRepository {
             totalChecks: devTotal,
             successfulChecks: devSuccess,
             failedChecks: devFailed,
-            avgLatencyMs: double.parse(devAvgLatency.toStringAsFixed(1)),
+            avgLatencyMs: devAvgLatency,
             hasSufficientHistory: hasSufficient,
           ),
         );
@@ -256,7 +341,7 @@ class ReportRepositoryImpl implements ReportRepository {
         totalCheckCount: totalCheckCount,
         successfulCheckCount: successfulCheckCount,
         failedCheckCount: failedCheckCount,
-        avgLatencyMs: double.parse(avgLatency.toStringAsFixed(1)),
+        avgLatencyMs: avgLatency,
         totalIncidents: incidents.length,
         deviceUptimes: deviceUptimes,
       );
@@ -275,7 +360,7 @@ class ReportRepositoryImpl implements ReportRepository {
     try {
       final buffer = StringBuffer();
       buffer.writeln('IT NETWORK MONITOR - AVAILABILITY REPORT');
-      buffer.writeln('Period,${report.period.name}');
+      buffer.writeln('Period,${escapeCsvField(report.period.name)}');
       buffer.writeln('Start Date,${report.startDate.toIso8601String()}');
       buffer.writeln('End Date,${report.endDate.toIso8601String()}');
       buffer.writeln('Total Devices,${report.totalDevices}');
@@ -285,7 +370,9 @@ class ReportRepositoryImpl implements ReportRepository {
       buffer.writeln('Total Checks,${report.totalCheckCount}');
       buffer.writeln('Successful Checks,${report.successfulCheckCount}');
       buffer.writeln('Failed Checks,${report.failedCheckCount}');
-      buffer.writeln('Average Latency,${report.avgLatencyMs} ms');
+      buffer.writeln(
+        'Average Latency,${report.avgLatencyMs != null ? '${report.avgLatencyMs} ms' : 'N/A'}',
+      );
       buffer.writeln('Total Incidents,${report.totalIncidents}');
       buffer.writeln();
       buffer.writeln(
@@ -296,13 +383,16 @@ class ReportRepositoryImpl implements ReportRepository {
         final uptimeStr = d.uptimePercent != null
             ? '${d.uptimePercent}%'
             : 'N/A';
+        final latencyStr = d.avgLatencyMs != null
+            ? d.avgLatencyMs.toString()
+            : 'N/A';
         final histStatus = d.hasSufficientHistory && d.uptimePercent != null
             ? 'Sufficient'
             : (d.totalChecks == 0
                   ? 'Insufficient / No Checks in Period'
                   : 'Insufficient / Prolonged Monitoring Gap (>2h)');
         buffer.writeln(
-          '${d.assetId},${d.assetType},"${d.deviceName}","${d.ownerName}","${d.department}",${d.ip},$uptimeStr,${d.totalChecks},${d.successfulChecks},${d.failedChecks},${d.avgLatencyMs},$histStatus',
+          '${escapeCsvField(d.assetId)},${escapeCsvField(d.assetType)},${escapeCsvField(d.deviceName)},${escapeCsvField(d.ownerName)},${escapeCsvField(d.department)},${escapeCsvField(d.ip)},$uptimeStr,${d.totalChecks},${d.successfulChecks},${d.failedChecks},$latencyStr,${escapeCsvField(histStatus)}',
         );
       }
 

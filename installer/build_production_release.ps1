@@ -3,6 +3,12 @@
 # Produces standalone, self-contained Windows deployment bundle & Inno Setup EXE
 # ============================================================================
 
+[CmdletBinding()]
+param(
+    [string]$InnoSetupPath = "",
+    [switch]$SkipInstaller = $false
+)
+
 $ErrorActionPreference = "Stop"
 
 Write-Host "====================================================" -ForegroundColor Cyan
@@ -13,25 +19,78 @@ Write-Host ""
 $ProjectDir = Resolve-Path "$PSScriptRoot\.."
 Set-Location $ProjectDir
 
+# Function to check command execution
+function Assert-CommandSuccess {
+    param(
+        [string]$StepName,
+        [int]$ExitCode
+    )
+    if ($ExitCode -ne 0) {
+        Write-Error "Build step '$StepName' failed with exit code $ExitCode. Terminating build."
+        exit $ExitCode
+    }
+}
+
 # 1. Compile Native Windows Service Host (using built-in Windows .NET CSC compiler)
 Write-Host "[1/6] Compiling Native Windows Service Control Manager Host..." -ForegroundColor Yellow
-$CscPath = "C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
-if (-not (Test-Path $CscPath)) {
-    $CscPath = "C:\Windows\Microsoft.NET\Framework\v4.0.30319\csc.exe"
+$CscPath = $null
+$CscCandidates = @(
+    "C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe",
+    "C:\Windows\Microsoft.NET\Framework\v4.0.30319\csc.exe"
+)
+foreach ($cand in $CscCandidates) {
+    if (Test-Path $cand) {
+        $CscPath = $cand
+        break
+    }
 }
+if (-not $CscPath) {
+    $cmd = Get-Command "csc.exe" -ErrorAction SilentlyContinue
+    if ($cmd) {
+        $CscPath = $cmd.Source
+    }
+}
+
 $ServiceHostCs = Join-Path $PSScriptRoot "service_host\ITMonitoringServiceHost.cs"
 $ServiceHostExe = Join-Path $PSScriptRoot "it_service_host.exe"
 
-if (Test-Path $CscPath) {
+if ($CscPath -and (Test-Path $ServiceHostCs)) {
+    # Remove stale executable to ensure we don't accept an old binary
+    if (Test-Path $ServiceHostExe) {
+        Remove-Item $ServiceHostExe -Force
+    }
+    Write-Host "      Using C# compiler: $CscPath" -ForegroundColor White
     & $CscPath /target:exe /platform:anycpu /optimize+ /out:$ServiceHostExe $ServiceHostCs
+    Assert-CommandSuccess "Service Host Compilation" $LASTEXITCODE
+
+    if (-not (Test-Path $ServiceHostExe) -or (Get-Item $ServiceHostExe).Length -eq 0) {
+        Write-Error "Service host executable was not produced or is 0 bytes: $ServiceHostExe"
+        exit 1
+    }
     Write-Host "      Compiled $ServiceHostExe successfully." -ForegroundColor Green
+} elseif (Test-Path $ServiceHostExe) {
+    Write-Host "      Notice: CSC compiler not found, using existing non-empty $ServiceHostExe" -ForegroundColor Yellow
 } else {
-    Write-Host "      Warning: CSC compiler not found, using existing $ServiceHostExe" -ForegroundColor Yellow
+    Write-Error "Neither CSC compiler nor pre-existing $ServiceHostExe found. Cannot build service host."
+    exit 1
 }
 
 # 2. Compile Flutter Desktop Release Executable
 Write-Host "[2/6] Compiling Flutter Desktop Release Executable..." -ForegroundColor Yellow
+$ReleaseExe = Join-Path $ProjectDir "build\windows\x64\runner\Release\it_network_monitor.exe"
+# Remove stale release binary if it exists
+if (Test-Path $ReleaseExe) {
+    Remove-Item $ReleaseExe -Force
+}
+
 flutter build windows --release
+Assert-CommandSuccess "Flutter Release Build" $LASTEXITCODE
+
+if (-not (Test-Path $ReleaseExe) -or (Get-Item $ReleaseExe).Length -eq 0) {
+    Write-Error "Flutter release executable was not produced or is 0 bytes: $ReleaseExe"
+    exit 1
+}
+Write-Host "      Flutter release binary verified: $ReleaseExe" -ForegroundColor Green
 
 # 3. Prepare Staging and Distribution Directories
 $StageDir = Join-Path $ProjectDir "dist\staging"
@@ -94,11 +153,21 @@ B. Always-On Monitoring Host (Dedicated Server):
 
 Set-Content -Path "$StageDir\README_DEPLOYMENT.txt" -Value $ReadmeContent
 
-# Sync unlocked files to DistDir
+# Synchronize staging to DistDir with explicit error checking
+Write-Host "      Synchronizing staged files to distribution folder..." -ForegroundColor White
 Get-ChildItem -Path $StageDir | ForEach-Object {
+    $stagedItem = $_
     try {
-        Copy-Item -Path $_.FullName -Destination $DistDir -Recurse -Force -ErrorAction SilentlyContinue
-    } catch {}
+        Copy-Item -Path $stagedItem.FullName -Destination $DistDir -Recurse -Force -ErrorAction Stop
+    } catch {
+        $targetFile = Join-Path $DistDir $stagedItem.Name
+        if (Test-Path $targetFile) {
+            Write-Host "      Notice: $($stagedItem.Name) is in-use by an active process. Retaining existing destination copy." -ForegroundColor Yellow
+        } else {
+            Write-Error "Failed to copy staged item '$($stagedItem.FullName)' to '$DistDir': $_"
+            exit 1
+        }
+    }
 }
 
 # 4. Create Standalone Release Archive
@@ -109,35 +178,68 @@ if (Test-Path $ZipPath) {
 }
 
 Compress-Archive -Path "$StageDir\*" -DestinationPath $ZipPath -CompressionLevel Optimal
+if (-not (Test-Path $ZipPath) -or (Get-Item $ZipPath).Length -eq 0) {
+    Write-Error "Release archive was not created or is 0 bytes: $ZipPath"
+    exit 1
+}
+$ZipSizeMB = [math]::Round((Get-Item $ZipPath).Length / 1MB, 2)
+Write-Host "      Archive created successfully: $ZipPath ($ZipSizeMB MB)" -ForegroundColor Green
 
 # 5. Compile Inno Setup Production Installer
 Write-Host "[5/6] Compiling Production Inno Setup Installer..." -ForegroundColor Yellow
-$IsccCandidates = @(
-    "C:\Users\Salah\AppData\Local\Programs\Inno Setup 6\ISCC.exe",
-    "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
-    "${env:ProgramFiles}\Inno Setup 6\ISCC.exe"
-)
-$IsccPath = $null
-foreach ($candidate in $IsccCandidates) {
-    if (Test-Path $candidate) {
-        $IsccPath = $candidate
-        break
-    }
+$InstallerExe = Join-Path $ProjectDir "dist\ITNetworkMonitor_Setup_v1.0.0.exe"
+
+# Always delete any stale installer executable before running compiler
+if (Test-Path $InstallerExe) {
+    Remove-Item $InstallerExe -Force
 }
 
-$InstallerExe = Join-Path $ProjectDir "dist\ITNetworkMonitor_Setup_v1.0.0.exe"
-if ($IsccPath) {
+if ($SkipInstaller) {
+    Write-Host "      Skipping Inno Setup compilation (-SkipInstaller specified)." -ForegroundColor Yellow
+} else {
+    $IsccPath = $null
+    if ($InnoSetupPath -and (Test-Path $InnoSetupPath)) {
+        $IsccPath = $InnoSetupPath
+    } elseif ($env:ISCC_PATH -and (Test-Path $env:ISCC_PATH)) {
+        $IsccPath = $env:ISCC_PATH
+    } else {
+        $cmd = Get-Command "iscc.exe" -ErrorAction SilentlyContinue
+        if ($cmd) {
+            $IsccPath = $cmd.Source
+        } else {
+            $IsccCandidates = @(
+                "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe",
+                "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+                "${env:ProgramFiles}\Inno Setup 6\ISCC.exe",
+                "C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
+                "C:\Program Files\Inno Setup 6\ISCC.exe"
+            )
+            foreach ($candidate in $IsccCandidates) {
+                if ($candidate -and (Test-Path $candidate)) {
+                    $IsccPath = $candidate
+                    break
+                }
+            }
+        }
+    }
+
+    if (-not $IsccPath) {
+        Write-Error "Inno Setup Compiler (ISCC.exe) not found. Set ISCC_PATH env var, install Inno Setup 6, or run with -SkipInstaller."
+        exit 1
+    }
+
     Write-Host "      Using Inno Setup Compiler: $IsccPath" -ForegroundColor White
     $IssScript = Join-Path $PSScriptRoot "InnoSetup_Installer_Script.iss"
     & $IsccPath $IssScript
-    if (Test-Path $InstallerExe) {
-        $msg = "      Installer compiled successfully: {0} ({1:N2} MB)" -f $InstallerExe, $InstallerSize
-        Write-Host $msg -ForegroundColor Green
-    } else {
-        Write-Host "      Warning: Inno Setup compiler ran but output executable not found at $InstallerExe" -ForegroundColor Yellow
+    Assert-CommandSuccess "Inno Setup Compilation" $LASTEXITCODE
+
+    if (-not (Test-Path $InstallerExe) -or (Get-Item $InstallerExe).Length -eq 0) {
+        Write-Error "Inno Setup compiler finished but output executable not found or is 0 bytes at $InstallerExe"
+        exit 1
     }
-} else {
-    Write-Host "      Error: Inno Setup Compiler (ISCC.exe) not found. Cannot compile installer." -ForegroundColor Red
+
+    $InstallerSizeMB = [math]::Round((Get-Item $InstallerExe).Length / 1MB, 2)
+    Write-Host ("      Installer compiled successfully: {0} ({1:N2} MB)" -f $InstallerExe, $InstallerSizeMB) -ForegroundColor Green
 }
 
 # 6. Output Verification Summary
@@ -145,9 +247,10 @@ Write-Host ""
 Write-Host "[6/6] PRODUCTION BUILD & PACKAGING COMPLETE!" -ForegroundColor Green
 Write-Host "----------------------------------------------------" -ForegroundColor Green
 Write-Host "Standalone Release Folder : $DistDir" -ForegroundColor White
-Write-Host "Production Release Archive: $ZipPath" -ForegroundColor White
+Write-Host "Production Release Archive: $ZipPath ($ZipSizeMB MB)" -ForegroundColor White
 if (Test-Path $InstallerExe) {
-    Write-Host "Verified Production Setup : $InstallerExe" -ForegroundColor White
+    $FinalSizeMB = [math]::Round((Get-Item $InstallerExe).Length / 1MB, 2)
+    Write-Host "Verified Production Setup : $InstallerExe ($FinalSizeMB MB)" -ForegroundColor White
 }
 Write-Host "----------------------------------------------------" -ForegroundColor Green
 Write-Host ""

@@ -1,3 +1,4 @@
+import '../../../../core/utils/ipv4_utils.dart';
 import '../entities/device_entity.dart';
 import '../entities/inventory_import_preview.dart';
 
@@ -30,20 +31,7 @@ class RawInventoryRow {
 class InventoryValidator {
   /// Canonicalizes an IPv4 string into standard dotted-decimal notation (e.g. " 192.168.01.001 " -> "192.168.1.1").
   /// Returns null if the string is empty, malformed, or not a valid IPv4 address.
-  static String? canonicalizeIpv4(String ip) {
-    final trimmed = ip.trim();
-    if (trimmed.isEmpty) return null;
-    final parts = trimmed.split('.');
-    if (parts.length != 4) return null;
-    final canonicalParts = <int>[];
-    for (final part in parts) {
-      if (part.isEmpty) return null;
-      final val = int.tryParse(part);
-      if (val == null || val < 0 || val > 255) return null;
-      canonicalParts.add(val);
-    }
-    return canonicalParts.join('.');
-  }
+  static String? canonicalizeIpv4(String ip) => Ipv4Utils.canonicalizeIpv4(ip);
 
   static bool isValidIpv4(String ip) {
     return canonicalizeIpv4(ip) != null;

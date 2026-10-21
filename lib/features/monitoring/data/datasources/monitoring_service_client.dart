@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:path/path.dart' as p;
+
 /// Client session state for authenticating with the background Monitoring Service.
 class ClientSessionInfo {
   final String token;
@@ -85,6 +87,65 @@ class MonitoringServiceClient {
 
   Stream<Map<String, dynamic>> get eventStream => _eventStreamController.stream;
 
+  /// Authenticate using local machine-bound trusted token created by the service in ProgramData.
+  /// Preserves direct launch without interactive login.
+  Future<ServiceApiResponse<ClientSessionInfo>>
+  authenticateWithTrustedLocalToken([String? customTokenPath]) async {
+    try {
+      final programData = Platform.environment['ProgramData'];
+      final tokenPath =
+          customTokenPath ??
+          Platform.environment['IT_MONITOR_TRUSTED_TOKEN_PATH'] ??
+          (programData != null
+              ? p.join(programData, 'ITNetworkMonitor', 'trusted_client.token')
+              : 'trusted_client.token');
+
+      final file = File(tokenPath);
+      if (!file.existsSync()) {
+        return const ServiceApiResponse.failure(
+          'Trusted local client token not found. Service may not be running locally.',
+          statusCode: 401,
+        );
+      }
+
+      final token = file.readAsStringSync().trim();
+      if (token.isEmpty) {
+        return const ServiceApiResponse.failure(
+          'Trusted local client token is empty.',
+          statusCode: 401,
+        );
+      }
+
+      _currentSession = ClientSessionInfo(
+        token: token,
+        username: 'Local Administrator (No Interactive Login)',
+        role: 'admin',
+        expiresAt: DateTime.now().add(const Duration(days: 365)),
+      );
+
+      return ServiceApiResponse.success(_currentSession!);
+    } catch (e) {
+      return ServiceApiResponse.failure(
+        'Failed to read trusted client token: $e',
+        statusCode: 401,
+      );
+    }
+  }
+
+  /// Authenticate using an explicitly provisioned token (e.g. for remote Client-Only deployments).
+  void authenticateWithProvisionedToken(
+    String token, {
+    String role = 'admin',
+    String username = 'Provisioned Administrator',
+  }) {
+    _currentSession = ClientSessionInfo(
+      token: token.trim(),
+      username: username,
+      role: role,
+      expiresAt: DateTime.now().add(const Duration(days: 365)),
+    );
+  }
+
   /// Authenticate with the service and obtain a 24-hour cryptographically secure session token.
   Future<ServiceApiResponse<ClientSessionInfo>> login({
     required String username,
@@ -160,7 +221,7 @@ class MonitoringServiceClient {
     final response = await _sendRequest(
       method: 'GET',
       endpoint: '/api/devices',
-      requireAuth: false,
+      requireAuth: true,
     );
     if (response.isSuccess) {
       final json = response.data as Map<String, dynamic>;

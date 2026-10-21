@@ -6,6 +6,7 @@ import 'dart:math';
 import 'package:path/path.dart' as p;
 
 import '../../../../core/database/app_database.dart';
+import 'package:drift/drift.dart' show Value;
 import '../../../../core/di/injection.dart';
 import '../../../../core/errors/failures.dart';
 import '../../../../core/utils/password_hash.dart';
@@ -239,6 +240,13 @@ class MonitoringServiceServer {
 
   final Map<String, ServiceSession> _activeSessions = {};
 
+  String? _trustedClientToken;
+  String? _trustedTokenFilePath;
+
+  String? get trustedClientToken => _trustedClientToken;
+  String? get trustedTokenFilePath => _trustedTokenFilePath;
+  int? get boundPort => _server?.port;
+
   StreamSubscription<List<DeviceStatusEntity>>? _statusSub;
   StreamSubscription<List<IncidentEntity>>? _incidentSub;
   StreamSubscription<DiscoveryProgress>? _discoveryProgressSub;
@@ -424,6 +432,56 @@ class MonitoringServiceServer {
 
     // 5. Handle Incoming Requests
     _server!.listen(_handleRequest);
+
+    // 6. Provision trusted local client token for local direct-launch
+    _provisionLocalTrustedToken();
+  }
+
+  void _provisionLocalTrustedToken() {
+    try {
+      final programData = Platform.environment['ProgramData'];
+      final baseDir =
+          customDataDir ??
+          (programData != null
+              ? p.join(programData, 'ITNetworkMonitor')
+              : Directory.current.path);
+      final dir = Directory(baseDir);
+      if (!dir.existsSync()) {
+        dir.createSync(recursive: true);
+      }
+      final token = _generateSecureToken();
+      final session = ServiceSession(
+        token: token,
+        userId: 1,
+        username: 'Local Administrator (No Interactive Login)',
+        role: 'admin',
+        createdAt: DateTime.now(),
+        expiresAt: DateTime.now().add(const Duration(days: 365)),
+      );
+      _activeSessions[token] = session;
+      _trustedClientToken = token;
+      _trustedTokenFilePath = p.join(baseDir, 'trusted_client.token');
+      File(_trustedTokenFilePath!).writeAsStringSync(token);
+      _log('Provisioned trusted local client token at: $_trustedTokenFilePath');
+    } catch (e) {
+      _log('Warning: Could not provision trusted local client token: $e');
+    }
+  }
+
+  void _cleanupLocalTrustedToken() {
+    if (_trustedClientToken != null) {
+      _activeSessions.remove(_trustedClientToken);
+      _trustedClientToken = null;
+    }
+    if (_trustedTokenFilePath != null) {
+      try {
+        final f = File(_trustedTokenFilePath!);
+        if (f.existsSync()) {
+          f.deleteSync();
+        }
+      } catch (_) {}
+      _trustedTokenFilePath = null;
+    }
   }
 
   // --- Session & Security Helpers ---
@@ -440,11 +498,6 @@ class MonitoringServiceServer {
     String? token;
     if (authHeader != null && authHeader.startsWith('Bearer ')) {
       token = authHeader.substring(7).trim();
-    }
-
-    // 2. Fallback to query parameter ?token= (used for WebSocket upgrades)
-    if (token == null || token.isEmpty) {
-      token = request.uri.queryParameters['token'];
     }
 
     if (token == null || token.isEmpty) {
@@ -472,15 +525,23 @@ class MonitoringServiceServer {
   // --- Request Routing ---
 
   Future<void> _handleRequest(HttpRequest request) async {
-    // Security & CORS headers
-    request.response.headers.add('Access-Control-Allow-Origin', '*');
+    // Security & CORS headers - restrict origin to local origins (no wildcard *)
+    final origin = request.headers.value('Origin');
+    if (origin != null &&
+        (origin.startsWith('http://localhost') ||
+            origin.startsWith('https://localhost') ||
+            origin.startsWith('http://127.0.0.1') ||
+            origin.startsWith('https://127.0.0.1'))) {
+      request.response.headers.add('Access-Control-Allow-Origin', origin);
+      request.response.headers.add('Access-Control-Allow-Credentials', 'true');
+    }
     request.response.headers.add(
       'Access-Control-Allow-Methods',
       'GET, POST, PUT, DELETE, OPTIONS',
     );
     request.response.headers.add(
       'Access-Control-Allow-Headers',
-      'Origin, X-Requested-With, Content-Type, Accept, Authorization, X-User-Role',
+      'Origin, X-Requested-With, Content-Type, Accept, Authorization',
     );
 
     if (useTls) {
@@ -575,7 +636,8 @@ class MonitoringServiceServer {
 
     // REST API Routes
     try {
-      if (path == '/api/status' && request.method == 'GET') {
+      if ((path == '/api/status' || path == '/api/health') &&
+          request.method == 'GET') {
         await _jsonResponse(request, {
           'status': 'online',
           'service': 'IT Network Monitoring Service',
@@ -586,7 +648,6 @@ class MonitoringServiceServer {
               getIt.isRegistered<MonitoringScheduler>() &&
               getIt<MonitoringScheduler>().isRunning,
           'connected_clients': _wsClients.length,
-          'active_sessions': _activeSessions.length,
           'timestamp': DateTime.now().toIso8601String(),
         });
       } else if (path == '/api/auth/login' && request.method == 'POST') {
@@ -602,6 +663,16 @@ class MonitoringServiceServer {
         if (user != null &&
             user.isEnabled &&
             PasswordHash.verifyPassword(password, user.passwordHash)) {
+          // Rehash legacy fixed-salt passwords with fresh cryptographically random salt
+          if (PasswordHash.needsRehash(user.passwordHash)) {
+            final upgradedHash = PasswordHash.hashPassword(password);
+            await (db.update(db.users)..where((u) => u.id.equals(user.id)))
+                .write(UsersCompanion(passwordHash: Value(upgradedHash)));
+            _log(
+              'Upgraded password hash to versioned Argon2id with random salt for user [${user.username}].',
+            );
+          }
+
           final token = _generateSecureToken();
           final session = ServiceSession(
             token: token,
@@ -658,6 +729,15 @@ class MonitoringServiceServer {
           'message': 'Session invalidated',
         });
       } else if (path == '/api/devices' && request.method == 'GET') {
+        final session = _authenticateRequest(request);
+        if (session == null) {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': 'Unauthorized: Valid session token required',
+          }, status: HttpStatus.unauthorized);
+          return;
+        }
+
         final deviceRepo = getIt<DeviceRepository>();
         final monitoringRepo = getIt<MonitoringRepository>();
 
@@ -743,6 +823,15 @@ class MonitoringServiceServer {
         }
       } else if (path == '/api/infrastructure/unifi/devices' &&
           request.method == 'GET') {
+        final session = _authenticateRequest(request);
+        if (session == null) {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': 'Unauthorized: Valid session token required',
+          }, status: HttpStatus.unauthorized);
+          return;
+        }
+
         final infraRepo = getIt<InfrastructureRepository>();
         final res = await infraRepo.getInfrastructureDevices();
         if (res.isSuccess) {
@@ -832,6 +921,15 @@ class MonitoringServiceServer {
           }, status: 400);
         }
       } else if (path == '/api/incidents' && request.method == 'GET') {
+        final session = _authenticateRequest(request);
+        if (session == null) {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': 'Unauthorized: Valid session token required',
+          }, status: HttpStatus.unauthorized);
+          return;
+        }
+
         final incidentRepo = getIt<IncidentRepository>();
         final activeRes = await incidentRepo.getActiveIncidents();
         final historyRes = await incidentRepo.getIncidentHistory();
@@ -846,6 +944,15 @@ class MonitoringServiceServer {
               : [],
         });
       } else if (path == '/api/topology' && request.method == 'GET') {
+        final session = _authenticateRequest(request);
+        if (session == null) {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': 'Unauthorized: Valid session token required',
+          }, status: HttpStatus.unauthorized);
+          return;
+        }
+
         final deviceRepo = getIt<DeviceRepository>();
         final monitoringRepo = getIt<MonitoringRepository>();
 
@@ -944,6 +1051,15 @@ class MonitoringServiceServer {
           }, status: 400);
         }
       } else if (path == '/api/settings' && request.method == 'GET') {
+        final session = _authenticateRequest(request);
+        if (session == null) {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': 'Unauthorized: Valid session token required',
+          }, status: HttpStatus.unauthorized);
+          return;
+        }
+
         final scheduler = getIt<MonitoringScheduler>();
         final cfg = scheduler.config;
         await _jsonResponse(request, {
@@ -998,6 +1114,15 @@ class MonitoringServiceServer {
           'message': 'Monitoring configuration updated',
         });
       } else if (path == '/api/reports/summary' && request.method == 'GET') {
+        final session = _authenticateRequest(request);
+        if (session == null) {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': 'Unauthorized: Valid session token required',
+          }, status: HttpStatus.unauthorized);
+          return;
+        }
+
         final periodStr =
             request.uri.queryParameters['period'] ?? 'last24Hours';
         final period = periodStr == 'last7Days'
@@ -1107,6 +1232,13 @@ class MonitoringServiceServer {
             'success': false,
             'error': 'Unauthorized: Valid session token required',
           }, status: HttpStatus.unauthorized);
+          return;
+        }
+        if (!_isAdmin(session)) {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': 'Forbidden: Admin role required to view service config',
+          }, status: HttpStatus.forbidden);
           return;
         }
         await _jsonResponse(request, {
@@ -1230,6 +1362,15 @@ class MonitoringServiceServer {
           exit(0);
         });
       } else if (path == '/api/discovery/config' && request.method == 'GET') {
+        final session = _authenticateRequest(request);
+        if (session == null) {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': 'Unauthorized: Valid session token required',
+          }, status: HttpStatus.unauthorized);
+          return;
+        }
+
         final discoveryRepo = getIt<DiscoveryRepository>();
         final configRes = await discoveryRepo.getConfig();
         if (configRes.isSuccess) {
@@ -1355,6 +1496,15 @@ class MonitoringServiceServer {
           'message': 'Scan cancelled',
         });
       } else if (path == '/api/discovery/status' && request.method == 'GET') {
+        final session = _authenticateRequest(request);
+        if (session == null) {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': 'Unauthorized: Valid session token required',
+          }, status: HttpStatus.unauthorized);
+          return;
+        }
+
         final coordinator = getIt<DiscoveryCoordinator>();
         final discoveryRepo = getIt<DiscoveryRepository>();
         final latestJob = await discoveryRepo.getLatestScanJob();
@@ -1366,6 +1516,15 @@ class MonitoringServiceServer {
           'latestScan': latestJob.dataOrNull?.toJson(),
         });
       } else if (path == '/api/discovery/devices' && request.method == 'GET') {
+        final session = _authenticateRequest(request);
+        if (session == null) {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': 'Unauthorized: Valid session token required',
+          }, status: HttpStatus.unauthorized);
+          return;
+        }
+
         final discoveryRepo = getIt<DiscoveryRepository>();
         final scanIdStr = request.uri.queryParameters['scanId'];
         final scanId = scanIdStr != null ? int.tryParse(scanIdStr) : null;
@@ -1722,6 +1881,7 @@ class MonitoringServiceServer {
 
   Future<void> stop() async {
     _log('Stopping Monitoring Service...');
+    _cleanupLocalTrustedToken();
     await _statusSub?.cancel();
     await _incidentSub?.cancel();
     await _discoveryProgressSub?.cancel();

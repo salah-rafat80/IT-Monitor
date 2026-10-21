@@ -38,7 +38,7 @@ void main() {
                 department: 'Finance',
                 isEnabled: const Value(true),
                 isMonitored: const Value(true),
-                createdAt: Value(now.subtract(const Duration(days: 2))),
+                createdAt: Value(now.subtract(const Duration(minutes: 45))),
               ),
             );
 
@@ -51,7 +51,7 @@ void main() {
                 role: const Value('Primary Gateway'),
                 ip: '192.168.1.1',
                 isEnabled: const Value(true),
-                createdAt: Value(now.subtract(const Duration(days: 2))),
+                createdAt: Value(now.subtract(const Duration(minutes: 45))),
               ),
             );
 
@@ -384,7 +384,7 @@ void main() {
                 department: 'Ops',
                 isEnabled: const Value(true),
                 isMonitored: const Value(true),
-                createdAt: Value(now.subtract(const Duration(days: 1))),
+                createdAt: Value(now.subtract(const Duration(minutes: 10))),
               ),
             );
         for (int i = 0; i < 5; i++) {
@@ -414,7 +414,7 @@ void main() {
                 department: 'Ops',
                 isEnabled: const Value(true),
                 isMonitored: const Value(true),
-                createdAt: Value(now.subtract(const Duration(days: 1))),
+                createdAt: Value(now.subtract(const Duration(minutes: 10))),
               ),
             );
         for (int i = 0; i < 5; i++) {
@@ -492,7 +492,7 @@ void main() {
         );
         expect(
           csvContent,
-          contains(',N/A,0,0,0,0.0,Insufficient / No Checks in Period'),
+          contains(',N/A,0,0,0,N/A,Insufficient / No Checks in Period'),
         );
 
         tempDir.deleteSync(recursive: true);
@@ -779,6 +779,259 @@ void main() {
         // Exactly 3 incidents were active during [startDate, now]: Incident A, B, and D!
         // Incident C was completely outside the window.
         expect(summary.totalIncidents, equals(3));
+      },
+    );
+
+    test(
+      '12. A single stale successful check yields null availability and false sufficient history',
+      () async {
+        final now = DateTime.now();
+
+        final devId = await db
+            .into(db.devices)
+            .insert(
+              DevicesCompanion.insert(
+                name: 'PC-STALE-CHECK',
+                type: const Value('pc'),
+                ip: '192.168.1.50',
+                ownerName: 'Stale User',
+                department: 'QA',
+                isEnabled: const Value(true),
+                isMonitored: const Value(true),
+                createdAt: Value(now.subtract(const Duration(days: 5))),
+              ),
+            );
+
+        // Only ONE single check 20 hours ago
+        await db
+            .into(db.checkResults)
+            .insert(
+              CheckResultsCompanion.insert(
+                assetId: Value('device:$devId'),
+                deviceId: devId,
+                targetIp: '192.168.1.50',
+                timestamp: Value(now.subtract(const Duration(hours: 20))),
+                isSuccess: true,
+                latencyMs: const Value(15),
+              ),
+            );
+
+        final res = await reportRepo.generateReport(ReportPeriod.last24Hours);
+        expect(res.isSuccess, isTrue);
+
+        final devUptime = res.dataOrNull!.deviceUptimes.firstWhere(
+          (d) => d.assetId == 'device:$devId',
+        );
+
+        // A single check 20 hours ago cannot justify continuous availability for 24 hours
+        expect(devUptime.uptimePercent, isNull);
+        expect(devUptime.hasSufficientHistory, isFalse);
+      },
+    );
+
+    test(
+      '13. Recent sample with a large initial observation gap yields null availability and false sufficient history',
+      () async {
+        final now = DateTime.now();
+
+        final devId = await db
+            .into(db.devices)
+            .insert(
+              DevicesCompanion.insert(
+                name: 'PC-INITIAL-GAP',
+                type: const Value('pc'),
+                ip: '192.168.1.51',
+                ownerName: 'Gap User',
+                department: 'QA',
+                isEnabled: const Value(true),
+                isMonitored: const Value(true),
+                createdAt: Value(now.subtract(const Duration(days: 3))),
+              ),
+            );
+
+        // Checks only in the last 15 minutes (leaving first 23+ hours unobserved)
+        for (int i = 0; i < 3; i++) {
+          await db
+              .into(db.checkResults)
+              .insert(
+                CheckResultsCompanion.insert(
+                  assetId: Value('device:$devId'),
+                  deviceId: devId,
+                  targetIp: '192.168.1.51',
+                  timestamp: Value(
+                    now.subtract(Duration(minutes: 5 * (i + 1))),
+                  ),
+                  isSuccess: true,
+                  latencyMs: const Value(12),
+                ),
+              );
+        }
+
+        final res = await reportRepo.generateReport(ReportPeriod.last24Hours);
+        expect(res.isSuccess, isTrue);
+
+        final devUptime = res.dataOrNull!.deviceUptimes.firstWhere(
+          (d) => d.assetId == 'device:$devId',
+        );
+
+        expect(devUptime.uptimePercent, isNull);
+        expect(devUptime.hasSufficientHistory, isFalse);
+      },
+    );
+
+    test(
+      '14. Future-dated check results are strictly excluded from the reporting window',
+      () async {
+        final now = DateTime.now();
+
+        final devId = await db
+            .into(db.devices)
+            .insert(
+              DevicesCompanion.insert(
+                name: 'PC-FUTURE-CHECK',
+                type: const Value('pc'),
+                ip: '192.168.1.52',
+                ownerName: 'Future User',
+                department: 'QA',
+                isEnabled: const Value(true),
+                isMonitored: const Value(true),
+                createdAt: Value(now.subtract(const Duration(minutes: 10))),
+              ),
+            );
+
+        // Valid check inside window
+        await db
+            .into(db.checkResults)
+            .insert(
+              CheckResultsCompanion.insert(
+                assetId: Value('device:$devId'),
+                deviceId: devId,
+                targetIp: '192.168.1.52',
+                timestamp: Value(now.subtract(const Duration(minutes: 5))),
+                isSuccess: true,
+                latencyMs: const Value(10),
+              ),
+            );
+
+        // Future-dated check (e.g. clock desynchronization or malicious data)
+        await db
+            .into(db.checkResults)
+            .insert(
+              CheckResultsCompanion.insert(
+                assetId: Value('device:$devId'),
+                deviceId: devId,
+                targetIp: '192.168.1.52',
+                timestamp: Value(now.add(const Duration(hours: 2))),
+                isSuccess: false,
+                errorMessage: const Value('Clock skewed'),
+              ),
+            );
+
+        final res = await reportRepo.generateReport(ReportPeriod.last24Hours);
+        expect(res.isSuccess, isTrue);
+
+        final devUptime = res.dataOrNull!.deviceUptimes.firstWhere(
+          (d) => d.assetId == 'device:$devId',
+        );
+
+        // Future-dated failure must NOT be counted
+        expect(devUptime.totalChecks, equals(1));
+        expect(devUptime.successfulChecks, equals(1));
+        expect(devUptime.failedChecks, equals(0));
+        expect(devUptime.uptimePercent, equals(100.0));
+      },
+    );
+
+    test(
+      '15. CSV export neutralizes spreadsheet formula injection in device names, owner names, and departments',
+      () async {
+        final now = DateTime.now();
+
+        await db
+            .into(db.devices)
+            .insert(
+              DevicesCompanion.insert(
+                name: '=cmd|\' /C calc\'!A0',
+                type: const Value('pc'),
+                ip: '192.168.1.60',
+                ownerName: '+@SUM(A1:A10)',
+                department: '-DANGEROUS_DEPT',
+                isEnabled: const Value(true),
+                isMonitored: const Value(true),
+                createdAt: Value(now),
+              ),
+            );
+
+        final tempDir = Directory.systemTemp.createTempSync(
+          'report_injection_test_',
+        );
+
+        final reportRes = await reportRepo.generateReport(
+          ReportPeriod.last24Hours,
+        );
+        expect(reportRes.isSuccess, isTrue);
+
+        final exportRes = await reportRepo.exportReportToCsv(
+          reportRes.dataOrNull!,
+          tempDir.path,
+        );
+        expect(exportRes.isSuccess, isTrue);
+
+        final csvContent = await File(exportRes.dataOrNull!).readAsString();
+
+        // Formula prefix characters must be prepended with a single quote '
+        expect(csvContent, contains("'=cmd|' /C calc'!A0"));
+        expect(csvContent, contains("'+@SUM(A1:A10)"));
+        expect(csvContent, contains("'-DANGEROUS_DEPT"));
+
+        tempDir.deleteSync(recursive: true);
+      },
+    );
+
+    test(
+      '16. CSV export properly escapes embedded quotes, commas, and line breaks per RFC 4180',
+      () async {
+        final now = DateTime.now();
+
+        await db
+            .into(db.devices)
+            .insert(
+              DevicesCompanion.insert(
+                name: 'Device with, comma and "quotes" and \nnewline',
+                type: const Value('pc'),
+                ip: '192.168.1.70',
+                ownerName: 'Normal User',
+                department: 'Legal',
+                isEnabled: const Value(true),
+                isMonitored: const Value(true),
+                createdAt: Value(now),
+              ),
+            );
+
+        final tempDir = Directory.systemTemp.createTempSync(
+          'report_rfc4180_test_',
+        );
+
+        final reportRes = await reportRepo.generateReport(
+          ReportPeriod.last24Hours,
+        );
+        expect(reportRes.isSuccess, isTrue);
+
+        final exportRes = await reportRepo.exportReportToCsv(
+          reportRes.dataOrNull!,
+          tempDir.path,
+        );
+        expect(exportRes.isSuccess, isTrue);
+
+        final csvContent = await File(exportRes.dataOrNull!).readAsString();
+
+        // RFC 4180 requires wrapping in quotes and doubling inner quotes: ""quotes""
+        expect(
+          csvContent,
+          contains('"Device with, comma and ""quotes"" and \nnewline"'),
+        );
+
+        tempDir.deleteSync(recursive: true);
       },
     );
   });

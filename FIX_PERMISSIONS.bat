@@ -11,11 +11,11 @@ if %errorLevel% neq 0 (
     exit /b
 )
 
-title Repairing IT Network Monitor Database Permissions
+title Repairing IT Network Monitor Permissions (Least Privilege)
 color 0A
 
 echo ============================================================================
-echo   Repairing IT Network Monitor Database ACLs & Permissions
+echo   Repairing IT Network Monitor Least-Privilege ACLs & Permissions
 echo ============================================================================
 echo.
 
@@ -26,17 +26,23 @@ echo [1/3] Stopping background Windows Service...
 sc.exe stop ITNetworkMonitorService >nul 2>&1
 timeout /t 2 /nobreak >nul
 
-echo [2/3] Applying Modify permissions to BUILTIN\Users...
-icacls "%DATA_DIR%" /grant:r "NT AUTHORITY\SYSTEM:(OI)(CI)(F)" "BUILTIN\Administrators:(OI)(CI)(F)" "BUILTIN\Users:(OI)(CI)(M)" /q
+echo [2/3] Applying least-privilege permissions...
+icacls "%DATA_DIR%" /grant:r "NT AUTHORITY\SYSTEM:(OI)(CI)(F)" "BUILTIN\Administrators:(OI)(CI)(F)" "BUILTIN\Users:(OI)(CI)(RX)" /q
+if exist "%DATA_DIR%\certs" (
+    icacls "%DATA_DIR%\certs" /inheritance:r /grant "NT AUTHORITY\SYSTEM:(OI)(CI)(F)" "BUILTIN\Administrators:(OI)(CI)(F)" /q
+)
+if exist "%DATA_DIR%\logs" (
+    icacls "%DATA_DIR%\logs" /inheritance:r /grant "NT AUTHORITY\SYSTEM:(OI)(CI)(F)" "BUILTIN\Administrators:(OI)(CI)(F)" /q
+)
 if exist "%DB_FILE%" (
-    icacls "%DATA_DIR%\it_network_monitor.sqlite*" /grant:r "NT AUTHORITY\SYSTEM:F" "BUILTIN\Administrators:F" "BUILTIN\Users:M" /q
+    icacls "%DATA_DIR%\it_network_monitor.sqlite*" /grant:r "NT AUTHORITY\SYSTEM:F" "BUILTIN\Administrators:F" "BUILTIN\Users:R" /q
 )
 
 echo [3/3] Restarting background Windows Service...
 sc.exe start ITNetworkMonitorService >nul 2>&1
 
 echo.
-echo [SUCCESS] Authoritative database permissions repaired successfully!
-echo You can now click 'Retry Monitoring Initialization' in the Dashboard.
+echo [SUCCESS] Authoritative directory permissions configured with least privilege!
+echo Ordinary users can access the monitoring service API without direct database modification rights.
 echo.
 pause

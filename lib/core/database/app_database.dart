@@ -6,7 +6,7 @@ import 'package:injectable/injectable.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
-import '../../features/devices/domain/services/inventory_validator.dart';
+import '../utils/ipv4_utils.dart';
 
 part 'app_database.g.dart';
 
@@ -289,8 +289,11 @@ class AppDatabase extends _$AppDatabase {
                 infrastructureDevices.location,
               );
             }
-          } catch (_) {
-            // Safe guard: ignore if column already exists
+          } catch (e, st) {
+            if (!_isDuplicateColumnError(e)) {
+              _logMigrationDiagnostic('from < 7: addColumn location', e, st);
+              rethrow;
+            }
           }
         }
         if (from < 8) {
@@ -316,8 +319,15 @@ class AppDatabase extends _$AppDatabase {
                 deviceStatuses.lastFailureReason,
               );
             }
-          } catch (_) {
-            // Safe guard: ignore if column already exists
+          } catch (e, st) {
+            if (!_isDuplicateColumnError(e)) {
+              _logMigrationDiagnostic(
+                'from < 8: addColumns device_statuses',
+                e,
+                st,
+              );
+              rethrow;
+            }
           }
         }
         if (from < 9) {
@@ -343,124 +353,147 @@ class AppDatabase extends _$AppDatabase {
             if (!colNames.contains('is_monitored')) {
               await m.addColumn(devices, devices.isMonitored);
             }
-          } catch (_) {
-            // Safe guard: ignore if column already exists
+          } catch (e, st) {
+            if (!_isDuplicateColumnError(e)) {
+              _logMigrationDiagnostic('from < 9: addColumns devices', e, st);
+              rethrow;
+            }
           }
         }
         if (from < 10) {
           try {
-            // 1. Process all inventory devices: normalize whitespace and canonicalize IPv4
-            final allDevices = await select(devices).get();
-            final infraDevicesList = await select(infrastructureDevices).get();
-            final infraIps = infraDevicesList
-                .map((d) => d.ip.trim())
-                .where((ip) => ip.isNotEmpty)
-                .toSet();
+            await transaction(() async {
+              // 1. Process all inventory devices: normalize whitespace and canonicalize IPv4
+              final allDevices = await select(devices).get();
+              final infraDevicesList = await select(
+                infrastructureDevices,
+              ).get();
+              final infraIps = infraDevicesList
+                  .map((d) => d.ip.trim())
+                  .where((ip) => ip.isNotEmpty)
+                  .toSet();
 
-            final seenCanonicalIps =
-                <String, int>{}; // canonicalIp -> firstDeviceId
+              final seenCanonicalIps =
+                  <String, int>{}; // canonicalIp -> firstDeviceId
 
-            for (final row in allDevices) {
-              final rawIp = row.ip.trim();
+              for (final row in allDevices) {
+                final rawIp = row.ip.trim();
 
-              if (rawIp.isEmpty) {
-                // Blank or empty IP: represent as unassigned, disable monitoring
-                await (update(
-                  devices,
-                )..where((t) => t.id.equals(row.id))).write(
-                  DevicesCompanion(
-                    ip: const Value(''),
-                    isMonitored: const Value(false),
-                    isEnabled: const Value(false),
-                    notes: Value(
-                      '${row.notes ?? ''}\n[MIGRATION_UNASSIGNED_IP]: Blank IP detected during schema v10 migration. Preserved asset record; monitoring disabled pending assignment.',
+                if (rawIp.isEmpty) {
+                  // Blank or empty IP: represent as unassigned, disable monitoring
+                  await (update(
+                    devices,
+                  )..where((t) => t.id.equals(row.id))).write(
+                    DevicesCompanion(
+                      ip: const Value(''),
+                      isMonitored: const Value(false),
+                      isEnabled: const Value(false),
+                      notes: Value(
+                        '${row.notes ?? ''}\n[MIGRATION_UNASSIGNED_IP]: Blank IP detected during schema v10 migration. Preserved asset record; monitoring disabled pending assignment.',
+                      ),
                     ),
-                  ),
-                );
-                continue;
-              }
+                  );
+                  continue;
+                }
 
-              final canonicalIp = InventoryValidator.canonicalizeIpv4(rawIp);
-              if (canonicalIp == null) {
-                // Malformed or invalid IPv4: do not fabricate fake string; clear to unassigned
-                await (update(
-                  devices,
-                )..where((t) => t.id.equals(row.id))).write(
-                  DevicesCompanion(
-                    ip: const Value(''),
-                    isMonitored: const Value(false),
-                    isEnabled: const Value(false),
-                    notes: Value(
-                      '${row.notes ?? ''}\n[MIGRATION_MALFORMED_IP]: Invalid IP "$rawIp" detected during schema v10 migration. Preserved asset record; monitoring disabled pending manual correction.',
+                final canonicalIp = Ipv4Utils.canonicalizeIpv4(rawIp);
+                if (canonicalIp == null) {
+                  // Malformed or invalid IPv4: do not fabricate fake string; clear to unassigned
+                  await (update(
+                    devices,
+                  )..where((t) => t.id.equals(row.id))).write(
+                    DevicesCompanion(
+                      ip: const Value(''),
+                      isMonitored: const Value(false),
+                      isEnabled: const Value(false),
+                      notes: Value(
+                        '${row.notes ?? ''}\n[MIGRATION_MALFORMED_IP]: Invalid IP "$rawIp" detected during schema v10 migration. Preserved asset record; monitoring disabled pending manual correction.',
+                      ),
                     ),
-                  ),
-                );
-                continue;
-              }
+                  );
+                  continue;
+                }
 
-              // Check cross-table conflict with authoritative infrastructure devices
-              if (infraIps.contains(canonicalIp)) {
-                final conflictingInfra = infraDevicesList.firstWhere(
-                  (d) => d.ip.trim() == canonicalIp,
-                );
-                await (update(
-                  devices,
-                )..where((t) => t.id.equals(row.id))).write(
-                  DevicesCompanion(
-                    ip: const Value(''),
-                    isMonitored: const Value(false),
-                    isEnabled: const Value(false),
-                    notes: Value(
-                      '${row.notes ?? ''}\n[MIGRATION_CROSS_TABLE_CONFLICT]: IP $canonicalIp conflicts with authoritative infrastructure asset "${conflictingInfra.name}" (ID #${conflictingInfra.id}). IP cleared to unassigned; monitoring disabled pending manual resolution.',
+                // Check cross-table conflict with authoritative infrastructure devices
+                if (infraIps.contains(canonicalIp)) {
+                  final conflictingInfra = infraDevicesList.firstWhere(
+                    (d) => d.ip.trim() == canonicalIp,
+                  );
+                  await (update(
+                    devices,
+                  )..where((t) => t.id.equals(row.id))).write(
+                    DevicesCompanion(
+                      ip: const Value(''),
+                      isMonitored: const Value(false),
+                      isEnabled: const Value(false),
+                      notes: Value(
+                        '${row.notes ?? ''}\n[MIGRATION_CROSS_TABLE_CONFLICT]: IP $canonicalIp conflicts with authoritative infrastructure asset "${conflictingInfra.name}" (ID #${conflictingInfra.id}). IP cleared to unassigned; monitoring disabled pending manual resolution.',
+                      ),
                     ),
-                  ),
-                );
-                continue;
-              }
+                  );
+                  continue;
+                }
 
-              // Check duplicate IPs within devices inventory
-              if (seenCanonicalIps.containsKey(canonicalIp)) {
-                final firstDevId = seenCanonicalIps[canonicalIp]!;
-                await (update(
-                  devices,
-                )..where((t) => t.id.equals(row.id))).write(
-                  DevicesCompanion(
-                    ip: const Value(''),
-                    isMonitored: const Value(false),
-                    isEnabled: const Value(false),
-                    notes: Value(
-                      '${row.notes ?? ''}\n[MIGRATION_CONFLICT]: Duplicate IP $canonicalIp detected during schema v10 migration (originally assigned to Device #$firstDevId). IP cleared to unassigned; monitoring disabled pending manual resolution.',
+                // Check duplicate IPs within devices inventory
+                if (seenCanonicalIps.containsKey(canonicalIp)) {
+                  final firstDevId = seenCanonicalIps[canonicalIp]!;
+                  await (update(
+                    devices,
+                  )..where((t) => t.id.equals(row.id))).write(
+                    DevicesCompanion(
+                      ip: const Value(''),
+                      isMonitored: const Value(false),
+                      isEnabled: const Value(false),
+                      notes: Value(
+                        '${row.notes ?? ''}\n[MIGRATION_CONFLICT]: Duplicate IP $canonicalIp detected during schema v10 migration (originally assigned to Device #$firstDevId). IP cleared to unassigned; monitoring disabled pending manual resolution.',
+                      ),
                     ),
-                  ),
-                );
-              } else {
-                seenCanonicalIps[canonicalIp] = row.id;
-                // Update to canonical IP if it had leading zeros or whitespace
-                if (row.ip != canonicalIp) {
-                  await (update(devices)..where((t) => t.id.equals(row.id)))
-                      .write(DevicesCompanion(ip: Value(canonicalIp)));
+                  );
+                } else {
+                  seenCanonicalIps[canonicalIp] = row.id;
+                  // Update to canonical IP if it had leading zeros or whitespace
+                  if (row.ip != canonicalIp) {
+                    await (update(devices)..where((t) => t.id.equals(row.id)))
+                        .write(DevicesCompanion(ip: Value(canonicalIp)));
+                  }
                 }
               }
-            }
 
-            // 2. Add asset_id column to check_results if not present
-            final checkCols = await customSelect(
-              "PRAGMA table_info('check_results')",
-            ).get();
-            final hasAssetId = checkCols.any(
-              (r) => r.read<String>('name') == 'asset_id',
-            );
-            if (!hasAssetId) {
-              await m.addColumn(checkResults, checkResults.assetId);
-            }
+              // 2. Add asset_id column to check_results if not present
+              final checkCols = await customSelect(
+                "PRAGMA table_info('check_results')",
+              ).get();
+              final hasAssetId = checkCols.any(
+                (r) => r.read<String>('name') == 'asset_id',
+              );
+              if (!hasAssetId) {
+                try {
+                  await m.addColumn(checkResults, checkResults.assetId);
+                } catch (e, st) {
+                  if (!_isDuplicateColumnError(e)) {
+                    _logMigrationDiagnostic(
+                      'from < 10: addColumn asset_id',
+                      e,
+                      st,
+                    );
+                    rethrow;
+                  }
+                }
+              }
 
-            // 3. Drop any old non-partial index and create partial unique index
-            await customStatement('DROP INDEX IF EXISTS idx_devices_ip;');
-            await customStatement(
-              'CREATE UNIQUE INDEX IF NOT EXISTS idx_devices_ip ON devices(ip) WHERE ip != \'\' AND ip IS NOT NULL;',
+              // 3. Drop any old non-partial index and create partial unique index
+              await customStatement('DROP INDEX IF EXISTS idx_devices_ip;');
+              await customStatement(
+                'CREATE UNIQUE INDEX IF NOT EXISTS idx_devices_ip ON devices(ip) WHERE ip != \'\' AND ip IS NOT NULL;',
+              );
+            });
+          } catch (e, st) {
+            _logMigrationDiagnostic(
+              'from < 10: atomic migration transaction',
+              e,
+              st,
             );
-          } catch (_) {
-            // Guard against failures on partially migrated instances
+            rethrow;
           }
         }
       },
@@ -471,6 +504,24 @@ class AppDatabase extends _$AppDatabase {
         );
       },
     );
+  }
+
+  static bool _isDuplicateColumnError(Object error) {
+    final msg = error.toString().toLowerCase();
+    return msg.contains('duplicate column name') ||
+        msg.contains('already exists');
+  }
+
+  static void _logMigrationDiagnostic(
+    String step,
+    Object error,
+    StackTrace stack,
+  ) {
+    // Structured diagnostic logging for unexpected migration failures (no credentials logged)
+    // ignore: avoid_print
+    print('*** [DATABASE MIGRATION FAILURE] Step: $step | Error: $error ***');
+    // ignore: avoid_print
+    print(stack);
   }
 }
 

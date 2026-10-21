@@ -132,8 +132,20 @@ class AuthRepositoryImpl implements AuthRepository {
       }
 
       final now = DateTime.now();
-      await (_db.update(_db.users)..where((t) => t.id.equals(userRow.id)))
-          .write(UsersCompanion(lastLoginAt: Value(now)));
+      if (PasswordHash.needsRehash(userRow.passwordHash)) {
+        final upgradedHash = PasswordHash.hashPassword(password);
+        await (_db.update(
+          _db.users,
+        )..where((t) => t.id.equals(userRow.id))).write(
+          UsersCompanion(
+            lastLoginAt: Value(now),
+            passwordHash: Value(upgradedHash),
+          ),
+        );
+      } else {
+        await (_db.update(_db.users)..where((t) => t.id.equals(userRow.id)))
+            .write(UsersCompanion(lastLoginAt: Value(now)));
+      }
 
       final user = UserEntity(
         id: userRow.id,

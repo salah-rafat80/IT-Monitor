@@ -342,7 +342,9 @@ class _ReportsView extends StatelessWidget {
                           _buildSummaryCard(
                             width: cardWidth,
                             title: 'AVG LATENCY',
-                            value: '${report.avgLatencyMs} ms',
+                            value: report.avgLatencyMs != null
+                                ? '${report.avgLatencyMs} ms'
+                                : 'N/A',
                             icon: Icons.speed_rounded,
                             color: AppColors.accent,
                           ),
@@ -602,7 +604,9 @@ class _ReportsView extends StatelessWidget {
                                 ),
                                 DataCell(
                                   Text(
-                                    '${dev.avgLatencyMs} ms',
+                                    dev.avgLatencyMs != null
+                                        ? '${dev.avgLatencyMs} ms'
+                                        : 'N/A',
                                     style: const TextStyle(
                                       color: AppColors.textPrimaryDark,
                                     ),

@@ -64,6 +64,20 @@ app.*.map.json
 .env.*
 *.pfx
 *.p12
+*.pem
+*.key
+*.crt
+*.token
+trusted_client.token
+service_config.json
+!service_config.json.default
+
+# Explicitly preserve test fixtures required by the automated test suite
+!test/fixtures/**
+!test/**/fixtures/**
+!test/**/*.crt
+!test/**/*.key
+!test/**/*.pem
 
 # Windows ephemeral
 windows/flutter/ephemeral/

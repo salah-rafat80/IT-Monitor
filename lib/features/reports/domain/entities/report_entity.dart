@@ -15,7 +15,7 @@ class DeviceUptimeEntity extends Equatable {
   final int totalChecks;
   final int successfulChecks;
   final int failedChecks;
-  final double avgLatencyMs;
+  final double? avgLatencyMs;
   final bool hasSufficientHistory;
 
   const DeviceUptimeEntity({
@@ -30,7 +30,7 @@ class DeviceUptimeEntity extends Equatable {
     required this.totalChecks,
     required this.successfulChecks,
     required this.failedChecks,
-    required this.avgLatencyMs,
+    this.avgLatencyMs,
     this.hasSufficientHistory = true,
   }) : assetId =
            assetId ??
@@ -65,7 +65,7 @@ class ReportSummaryEntity extends Equatable {
   final int totalCheckCount;
   final int successfulCheckCount;
   final int failedCheckCount;
-  final double avgLatencyMs;
+  final double? avgLatencyMs;
   final int totalIncidents;
   final List<DeviceUptimeEntity> deviceUptimes;
 
@@ -78,7 +78,7 @@ class ReportSummaryEntity extends Equatable {
     required this.totalCheckCount,
     required this.successfulCheckCount,
     required this.failedCheckCount,
-    required this.avgLatencyMs,
+    this.avgLatencyMs,
     required this.totalIncidents,
     required this.deviceUptimes,
   });

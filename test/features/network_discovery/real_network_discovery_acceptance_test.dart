@@ -97,6 +97,9 @@ void main() {
       await db.close();
     });
 
+    final bool runLiveTests =
+        Platform.environment['IT_MONITOR_RUN_LIVE_NETWORK_TESTS'] == '1';
+
     test(
       '1. Subnet 192.168.27.0/24: Live Reachability & Genuine Discovery Scan',
       () async {
@@ -104,6 +107,7 @@ void main() {
 
         // Step 1: Pre-scan reachability verification
         final defaultGw = '192.168.27.1';
+        final gwStopwatch = Stopwatch()..start();
         final gwPing = await Process.run('ping', [
           '-n',
           '2',
@@ -111,6 +115,7 @@ void main() {
           '1000',
           defaultGw,
         ]);
+        gwStopwatch.stop();
         final isGwReachable = gwPing.exitCode == 0;
         expect(
           isGwReachable,
@@ -170,7 +175,9 @@ void main() {
         // ignore: avoid_print
         print('>>> SUBNET 192.168.27.0/24 REAL DISCOVERY REPORT <<<');
         // ignore: avoid_print
-        print('Reachability Assessment : Gateway $defaultGw RESPONDING (1ms)');
+        print(
+          'Reachability Assessment : Gateway $defaultGw responded in ${gwStopwatch.elapsedMilliseconds} ms',
+        );
         // ignore: avoid_print
         print('Targets Enumerated     : ${finalProgress.targetsEnumerated}');
         // ignore: avoid_print
@@ -198,6 +205,9 @@ void main() {
         expect(finalProgress.targetsAttempted, equals(254));
         expect(discoveredList.isNotEmpty, isTrue);
       },
+      skip: runLiveTests
+          ? false
+          : 'Live network scan disabled by default. Set IT_MONITOR_RUN_LIVE_NETWORK_TESTS=1 to run against real subnet.',
       timeout: const Timeout(Duration(minutes: 4)),
     );
 
@@ -208,6 +218,7 @@ void main() {
 
         // Step 1: Pre-scan reachability verification to routed subnet
         final routedTarget = '192.168.22.1';
+        final gwStopwatch = Stopwatch()..start();
         final gwPing = await Process.run('ping', [
           '-n',
           '2',
@@ -215,6 +226,7 @@ void main() {
           '1000',
           routedTarget,
         ]);
+        gwStopwatch.stop();
         final isRoutedReachable = gwPing.exitCode == 0;
         expect(
           isRoutedReachable,
@@ -275,7 +287,7 @@ void main() {
         print('>>> SUBNET 192.168.22.0/24 REAL DISCOVERY REPORT <<<');
         // ignore: avoid_print
         print(
-          'Reachability Assessment : Routed Gateway $routedTarget RESPONDING (2ms)',
+          'Reachability Assessment : Routed Gateway $routedTarget responded in ${gwStopwatch.elapsedMilliseconds} ms',
         );
         // ignore: avoid_print
         print('Targets Enumerated     : ${finalProgress.targetsEnumerated}');
@@ -304,6 +316,9 @@ void main() {
         expect(finalProgress.targetsAttempted, equals(254));
         expect(discoveredList.isNotEmpty, isTrue);
       },
+      skip: runLiveTests
+          ? false
+          : 'Live network scan disabled by default. Set IT_MONITOR_RUN_LIVE_NETWORK_TESTS=1 to run against real subnet.',
       timeout: const Timeout(Duration(minutes: 4)),
     );
 

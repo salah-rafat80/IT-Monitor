@@ -61,10 +61,13 @@ Source: "apply_production_acls.bat"; DestDir: "{app}"; Flags: ignoreversion
 Source: "service_config.json.default"; DestDir: "{commonappdata}\ITNetworkMonitor"; DestName: "service_config.json"; Flags: onlyifdoesntexist uninsneveruninstall
 
 [Dirs]
-; Practical single-operator permissions: SYSTEM, Admins have Full Control; Users have Modify.
-Name: "{commonappdata}\ITNetworkMonitor"; Permissions: system-full admins-full users-modify
-Name: "{commonappdata}\ITNetworkMonitor\certs"; Permissions: system-full admins-full users-modify
-Name: "{commonappdata}\ITNetworkMonitor\logs"; Permissions: system-full admins-full users-modify
+; Least-privilege production permissions:
+; SYSTEM & Administrators have Full Control.
+; BUILTIN\Users have Read & Execute on the root ProgramData directory to read configuration and trusted client token.
+; certs (private TLS keys) and logs are strictly restricted to SYSTEM & Administrators only.
+Name: "{commonappdata}\ITNetworkMonitor"; Permissions: system-full admins-full users-readexec
+Name: "{commonappdata}\ITNetworkMonitor\certs"; Permissions: system-full admins-full
+Name: "{commonappdata}\ITNetworkMonitor\logs"; Permissions: system-full admins-full
 
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Components: client

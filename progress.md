@@ -19,4 +19,13 @@
     - *Legacy IP Migration Safety*: Safe v10 migration mapping duplicate legacy IPs to unassigned non-pingable states (`ip = ''`, `isMonitored = false`, `isEnabled = false`) with diagnostic notes. Partial unique index `idx_devices_ip ON devices(ip) WHERE ip != '' AND ip IS NOT NULL;`.
     - *Uptime Semantics & Availability*: Disentangled empirical probe reachability from continuous wall-clock availability. Detects prolonged unobserved gaps (>2h) and returns `uptimePercent = null` (`N/A`) with `hasSufficientHistory = false`. Fixed boundary-spanning incident queries.
     - *Cross-Module Identity Harmonization*: Injected `InfrastructureRepository` into discovery and cubits, eliminating duplicate inventory creation for infrastructure assets and ensuring idempotent approvals.
-    - *Verification*: 272/272 automated tests passing (100%), 0 analyze issues, clean code formatting, Windows x64 Release binary verified.
+    - *Verification*: Automated tests passing (100%), 0 analyze issues, clean code formatting, Windows x64 Release binary verified.
+14. **Production Hardening & Security (Phases 0-10)**:
+    - *API & Service Security*: Fail-closed 401 on sensitive endpoints, 403 on mutations, removed `?token=` leakage, provisioned ephemeral machine-local token (`trusted_client.token`) for direct launch without interactive prompt, minimal public health endpoint.
+    - *Password Hashing*: Versioned Argon2id with 16-byte cryptographically secure random salt, constant-time comparison, legacy fixed-salt fallback, and automatic in-place hash re-hashing on successful login.
+    - *Least-Privilege Windows ACLs*: Updated PowerShell, batch, and Inno Setup scripts to restrict `BUILTIN\Users` to Read & Execute, strictly isolating `certs` and `logs` to `SYSTEM` and `Administrators`. Added non-destructive `-ValidateOnly`.
+    - *Reporting Accuracy & CSV Safety*: Full-window gap detection (initial, adjacent, final window gaps), nullable latency (distinguishing 0.0ms from unmeasured/null), RFC 4180 CSV escaping, and spreadsheet formula injection neutralization (`=`, `+`, `-`, `@`).
+    - *Database Migrations*: Transactional schema v10 migration with diagnostic logging and selective duplicate column handling; extracted shared `Ipv4Utils` in `lib/core/utils/` to decouple domain service from database core.
+    - *Monitoring Diagnostics*: Unswallowed errors, structured logs, and error counters for persistence/repository failures.
+    - *Test Isolation*: Live physical subnet scans safely gated behind `IT_MONITOR_RUN_LIVE_NETWORK_TESTS=1`.
+    - *Release Build Hardening*: Hardened `installer/build_production_release.ps1` with `$LASTEXITCODE` checks, stale binary deletion, configurable Inno Setup discovery, and artifact size verification.

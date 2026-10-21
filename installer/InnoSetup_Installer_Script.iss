@@ -63,9 +63,10 @@ Source: "service_config.json.default"; DestDir: "{commonappdata}\ITNetworkMonito
 [Dirs]
 ; Least-privilege production permissions:
 ; SYSTEM & Administrators have Full Control.
-; BUILTIN\Users have Read & Execute on the root ProgramData directory to read configuration and trusted client token.
+; BUILTIN\Users has NO inherited permissions on ProgramData.
+; Approved operators are granted access via the dedicated ITNetworkMonitorAdministrators local group.
 ; certs (private TLS keys) and logs are strictly restricted to SYSTEM & Administrators only.
-Name: "{commonappdata}\ITNetworkMonitor"; Permissions: system-full admins-full users-readexec
+Name: "{commonappdata}\ITNetworkMonitor"; Permissions: system-full admins-full
 Name: "{commonappdata}\ITNetworkMonitor\certs"; Permissions: system-full admins-full
 Name: "{commonappdata}\ITNetworkMonitor\logs"; Permissions: system-full admins-full
 

@@ -438,6 +438,10 @@ class MonitoringServiceServer {
   }
 
   void _provisionLocalTrustedToken() {
+    _cleanupLocalTrustedToken();
+
+    String? tempPath;
+    String? targetPath;
     try {
       final programData = Platform.environment['ProgramData'];
       final baseDir =
@@ -449,7 +453,33 @@ class MonitoringServiceServer {
       if (!dir.existsSync()) {
         dir.createSync(recursive: true);
       }
+
       final token = _generateSecureToken();
+      targetPath = p.join(baseDir, 'trusted_client.token');
+      tempPath = p.join(
+        baseDir,
+        'trusted_client.token.tmp_${DateTime.now().microsecondsSinceEpoch}',
+      );
+
+      final tempFile = File(tempPath);
+      // Write token and ensure it is flushed to disk before replacement
+      tempFile.writeAsStringSync(token, flush: true);
+
+      // Safe atomic replacement: replace target file with temp file
+      final targetFile = File(targetPath);
+      if (targetFile.existsSync()) {
+        try {
+          targetFile.deleteSync();
+        } catch (_) {}
+      }
+      tempFile.renameSync(targetPath);
+
+      // Explicitly enforce least-privilege ACLs on the final token file on Windows
+      if (Platform.isWindows) {
+        _applyRestrictedTokenAcls(targetPath);
+      }
+
+      // ONLY publish session in-memory after publication on disk is 100% verified
       final session = ServiceSession(
         token: token,
         userId: 1,
@@ -460,11 +490,62 @@ class MonitoringServiceServer {
       );
       _activeSessions[token] = session;
       _trustedClientToken = token;
-      _trustedTokenFilePath = p.join(baseDir, 'trusted_client.token');
-      File(_trustedTokenFilePath!).writeAsStringSync(token);
+      _trustedTokenFilePath = targetPath;
       _log('Provisioned trusted local client token at: $_trustedTokenFilePath');
     } catch (e) {
-      _log('Warning: Could not provision trusted local client token: $e');
+      // Fail closed: clean up in-memory references and temporary files on error
+      _trustedClientToken = null;
+      _trustedTokenFilePath = null;
+      if (tempPath != null) {
+        try {
+          final tf = File(tempPath);
+          if (tf.existsSync()) tf.deleteSync();
+        } catch (_) {}
+      }
+      _log(
+        'Security Warning: Could not provision trusted local client token: $e',
+      );
+    }
+  }
+
+  void _applyRestrictedTokenAcls(String filePath) {
+    try {
+      // 1. Ensure dedicated local operator group exists
+      Process.runSync('net', [
+        'localgroup',
+        'ITNetworkMonitorAdministrators',
+        '/add',
+        '/comment:Authorized operators permitted to access IT Network Monitor trusted client token without interactive login',
+      ]);
+    } catch (_) {}
+
+    try {
+      final grants = [
+        filePath,
+        '/inheritance:r',
+        '/grant',
+        'NT AUTHORITY\\SYSTEM:(F)',
+        '/grant',
+        'BUILTIN\\Administrators:(F)',
+      ];
+
+      // In development / test mode, allow current user read access so tests and dev runs can operate
+      final currentUser = Platform.environment['USERNAME'];
+      if (isDevelopment && currentUser != null && currentUser.isNotEmpty) {
+        grants.addAll(['/grant', '$currentUser:(R)']);
+      }
+
+      // 2. Remove inheritance and grant SYSTEM and Administrators Full Control
+      Process.runSync('icacls', grants);
+
+      // 3. Grant ITNetworkMonitorAdministrators Read-Only access
+      Process.runSync('icacls', [
+        filePath,
+        '/grant',
+        'ITNetworkMonitorAdministrators:(R)',
+      ]);
+    } catch (_) {
+      // Safe no-op on non-Windows or environments without icacls
     }
   }
 

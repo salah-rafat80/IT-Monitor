@@ -1,6 +1,6 @@
 @echo off
 :: ============================================================================
-:: IT Network Monitor - Live Permission & SQLite Repair Tool
+:: IT Network Monitor - Live Permission & ACL Hardening Tool
 :: Automatically elevates to Administrator and repairs ProgramData ACLs
 :: ============================================================================
 
@@ -11,23 +11,39 @@ if %errorLevel% neq 0 (
     exit /b
 )
 
-title Repairing IT Network Monitor Permissions (Least Privilege)
+title Hardening IT Network Monitor Least-Privilege Permissions
 color 0A
 
 echo ============================================================================
-echo   Repairing IT Network Monitor Least-Privilege ACLs & Permissions
+echo   Hardening IT Network Monitor Least-Privilege ACLs
 echo ============================================================================
 echo.
 
 set "DATA_DIR=%ProgramData%\ITNetworkMonitor"
 set "DB_FILE=%DATA_DIR%\it_network_monitor.sqlite"
+set "GROUP_NAME=ITNetworkMonitorAdministrators"
 
-echo [1/3] Stopping background Windows Service...
+echo [1/4] Ensuring dedicated local group "%GROUP_NAME%" exists...
+net localgroup "%GROUP_NAME%" >nul 2>&1
+if %errorLevel% neq 0 (
+    net localgroup "%GROUP_NAME%" /add /comment:"Authorized operators permitted to access IT Network Monitor trusted client token without interactive login" >nul 2>&1
+    echo   Created local Windows group: %GROUP_NAME%
+) else (
+    echo   Local Windows group already exists: %GROUP_NAME%
+)
+
+echo.
+echo [2/4] Stopping background Windows Service...
 sc.exe stop ITNetworkMonitorService >nul 2>&1
 timeout /t 2 /nobreak >nul
 
-echo [2/3] Applying least-privilege permissions...
-icacls "%DATA_DIR%" /grant:r "NT AUTHORITY\SYSTEM:(OI)(CI)(F)" "BUILTIN\Administrators:(OI)(CI)(F)" "BUILTIN\Users:(OI)(CI)(RX)" /q
+echo.
+echo [3/4] Applying least-privilege permissions...
+if not exist "%DATA_DIR%" mkdir "%DATA_DIR%"
+
+:: Remove broad inherited permissions and configure strict grants
+icacls "%DATA_DIR%" /inheritance:r /grant "NT AUTHORITY\SYSTEM:(OI)(CI)(F)" "BUILTIN\Administrators:(OI)(CI)(F)" "%GROUP_NAME%:(RX)" /q
+
 if exist "%DATA_DIR%\certs" (
     icacls "%DATA_DIR%\certs" /inheritance:r /grant "NT AUTHORITY\SYSTEM:(OI)(CI)(F)" "BUILTIN\Administrators:(OI)(CI)(F)" /q
 )
@@ -35,14 +51,28 @@ if exist "%DATA_DIR%\logs" (
     icacls "%DATA_DIR%\logs" /inheritance:r /grant "NT AUTHORITY\SYSTEM:(OI)(CI)(F)" "BUILTIN\Administrators:(OI)(CI)(F)" /q
 )
 if exist "%DB_FILE%" (
-    icacls "%DATA_DIR%\it_network_monitor.sqlite*" /grant:r "NT AUTHORITY\SYSTEM:F" "BUILTIN\Administrators:F" "BUILTIN\Users:R" /q
+    icacls "%DATA_DIR%\it_network_monitor.sqlite*" /inheritance:r /grant "NT AUTHORITY\SYSTEM:F" "BUILTIN\Administrators:F" /q
+)
+if exist "%DATA_DIR%\service_config.json" (
+    icacls "%DATA_DIR%\service_config.json" /inheritance:r /grant "NT AUTHORITY\SYSTEM:F" "BUILTIN\Administrators:F" /q
+)
+if exist "%DATA_DIR%\trusted_client.token" (
+    icacls "%DATA_DIR%\trusted_client.token" /inheritance:r /grant "NT AUTHORITY\SYSTEM:F" "BUILTIN\Administrators:F" "%GROUP_NAME%:R" /q
 )
 
-echo [3/3] Restarting background Windows Service...
+echo.
+echo [4/4] Restarting background Windows Service...
 sc.exe start ITNetworkMonitorService >nul 2>&1
 
 echo.
-echo [SUCCESS] Authoritative directory permissions configured with least privilege!
-echo Ordinary users can access the monitoring service API without direct database modification rights.
+echo ============================================================================
+echo [SUCCESS] Authoritative directory permissions secured with least privilege!
+echo.
+echo To grant an operator direct-launch access without an interactive login,
+echo run the following command in an elevated prompt:
+echo.
+echo   net localgroup %GROUP_NAME% ^<username^> /add
+echo.
+echo ============================================================================
 echo.
 pause

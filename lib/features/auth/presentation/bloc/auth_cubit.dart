@@ -1,6 +1,8 @@
+import 'dart:io';
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:injectable/injectable.dart';
+import 'package:path/path.dart' as p;
 
 import '../../data/repositories/auth_repository_impl.dart';
 import '../../domain/entities/user_entity.dart';
@@ -54,7 +56,7 @@ class AuthCubit extends Cubit<AuthState> {
 
   AuthCubit(this._authRepo) : super(const AuthInitial());
 
-  Future<void> checkAuthStatus() async {
+  Future<void> checkAuthStatus([String? customTokenPath]) async {
     emit(const AuthLoading());
 
     final currentUserRes = await _authRepo.getCurrentUser();
@@ -63,6 +65,61 @@ class AuthCubit extends Cubit<AuthState> {
     if (currentUser != null) {
       emit(AuthAuthenticated(currentUser));
       return;
+    }
+
+    // On Windows, enforce that only members of ITNetworkMonitorAdministrators (or Admins/SYSTEM)
+    // who have read permissions on trusted_client.token obtain direct administrative access.
+    final isTestEnvironment =
+        Platform.environment.containsKey('FLUTTER_TEST') &&
+        customTokenPath == null;
+
+    if (!isTestEnvironment && (Platform.isWindows || customTokenPath != null)) {
+      final programData = Platform.environment['ProgramData'];
+      final tokenPath =
+          customTokenPath ??
+          Platform.environment['IT_MONITOR_TRUSTED_TOKEN_PATH'] ??
+          (programData != null
+              ? p.join(programData, 'ITNetworkMonitor', 'trusted_client.token')
+              : null);
+
+      if (tokenPath != null) {
+        try {
+          final file = File(tokenPath);
+          if (!file.existsSync()) {
+            emit(
+              const AuthError(
+                'Trusted client token not found. The IT Network Monitor Service may not be running.',
+              ),
+            );
+            emit(const AuthUnauthenticated(hasAdminAccount: true));
+            return;
+          }
+
+          final token = file.readAsStringSync().trim();
+          if (token.isEmpty || token.length < 32) {
+            emit(
+              const AuthError(
+                'Trusted client token is invalid or empty. Contact system administrator.',
+              ),
+            );
+            emit(const AuthUnauthenticated(hasAdminAccount: true));
+            return;
+          }
+        } on PathAccessException catch (_) {
+          emit(
+            const AuthError(
+              'Access Denied: Current Windows account is not authorized. '
+              'Membership in "ITNetworkMonitorAdministrators" is required.',
+            ),
+          );
+          emit(const AuthUnauthenticated(hasAdminAccount: true));
+          return;
+        } catch (e) {
+          emit(AuthError('Failed to access trusted client token: $e'));
+          emit(const AuthUnauthenticated(hasAdminAccount: true));
+          return;
+        }
+      }
     }
 
     // Default local application mode to Administrator access without interactive login

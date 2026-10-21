@@ -549,9 +549,20 @@ LazyDatabase _openConnection() {
 
       final prodFile = File(p.join(prodDir.path, 'it_network_monitor.sqlite'));
 
-      if (prodFile.existsSync()) {
-        // Authoritative production database already exists in ProgramData.
-        // Always bind to ProgramData to prevent client and service from using different databases.
+      bool canAccessProd = false;
+      try {
+        if (prodFile.existsSync()) {
+          final raf = prodFile.openSync(mode: FileMode.read);
+          raf.closeSync();
+          canAccessProd = true;
+        }
+      } catch (_) {
+        canAccessProd = false;
+      }
+
+      if (canAccessProd) {
+        // Authoritative production database already exists in ProgramData and is accessible.
+        // Always bind to ProgramData when accessible to prevent client and service from using different databases.
         targetDir = prodDir;
       } else {
         bool canWriteProd = false;

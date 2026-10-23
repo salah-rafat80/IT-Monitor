@@ -4,8 +4,10 @@ import 'package:drift/drift.dart';
 import 'package:injectable/injectable.dart';
 
 import '../../../../core/database/app_database.dart';
+import '../../../../core/di/injection.dart';
 import '../../../../core/errors/failures.dart';
 import '../../../../core/utils/result.dart';
+import '../datasources/monitoring_service_client.dart';
 import '../../domain/entities/check_result.dart';
 import '../../domain/entities/device_status_entity.dart';
 import '../../domain/repositories/monitoring_repository.dart';
@@ -15,11 +17,58 @@ class MonitoringRepositoryImpl implements MonitoringRepository {
   final AppDatabase _db;
   final StreamController<List<DeviceStatusEntity>> _allStatusesController =
       StreamController<List<DeviceStatusEntity>>.broadcast();
+  final MonitoringServiceClient? _serviceClient;
+  StreamSubscription? _serviceEventSub;
 
-  MonitoringRepositoryImpl(this._db);
+  MonitoringRepositoryImpl(this._db, [this._serviceClient]) {
+    _initServiceEventSubscription();
+  }
+
+  MonitoringServiceClient? get _effectiveClient =>
+      _serviceClient ??
+      (getIt.isRegistered<MonitoringServiceClient>()
+          ? getIt<MonitoringServiceClient>()
+          : null);
+
+  void _initServiceEventSubscription() {
+    final client = _effectiveClient;
+    if (client != null) {
+      _serviceEventSub?.cancel();
+      _serviceEventSub = client.eventStream.listen((event) {
+        if (event['event'] == 'device_statuses_updated' &&
+            event['data'] is List) {
+          final list = (event['data'] as List)
+              .map(
+                (e) => DeviceStatusEntity.fromJson(e as Map<String, dynamic>),
+              )
+              .toList();
+          _allStatusesController.add(list);
+        }
+      });
+    }
+  }
 
   @override
   Future<Result<List<DeviceStatusEntity>>> getDeviceStatuses() async {
+    final client = _effectiveClient;
+    if (client != null && client.isAuthenticated) {
+      final res = await client.getDevices();
+      if (res.isSuccess && res.data != null) {
+        final list = res.data!.map((item) {
+          final stMap = item['status'] as Map<String, dynamic>;
+          return DeviceStatusEntity.fromJson(stMap);
+        }).toList();
+        return Result.success(list);
+      } else {
+        return Result.failure(
+          NetworkFailure(
+            'Authoritative monitoring service is unreachable (${res.errorMessage}). '
+            'Ensure IT Network Monitor Service is running.',
+          ),
+        );
+      }
+    }
+
     try {
       final rows = await _db.select(_db.deviceStatuses).get();
       final entities = rows.map((r) => _mapToEntity(r)).toList();

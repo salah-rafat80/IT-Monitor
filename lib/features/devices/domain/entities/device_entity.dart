@@ -261,6 +261,38 @@ class DeviceEntity extends Equatable {
     };
   }
 
+  factory DeviceEntity.fromJson(Map<String, dynamic> json) {
+    return DeviceEntity(
+      id: json['id'] is int
+          ? json['id'] as int
+          : int.tryParse(json['id']?.toString() ?? '0') ?? 0,
+      name: json['name']?.toString() ?? '',
+      type: DeviceType.fromString(json['type']?.toString() ?? 'pc'),
+      ip: json['ip']?.toString() ?? '',
+      ownerName: json['ownerName']?.toString() ?? '',
+      department: json['department']?.toString() ?? '',
+      officeLocation: json['officeLocation']?.toString(),
+      parentSwitchId: json['parentSwitchId'] is int
+          ? json['parentSwitchId'] as int
+          : null,
+      parentSwitchName: json['parentSwitchName']?.toString(),
+      vendor: json['vendor']?.toString(),
+      model: json['model']?.toString(),
+      mac: json['mac']?.toString(),
+      hostname: json['hostname']?.toString(),
+      operatingSystem: json['operatingSystem']?.toString(),
+      notes: json['notes']?.toString(),
+      isMonitored: json['isMonitored'] != false,
+      isEnabled: json['isEnabled'] != false,
+      createdAt: json['createdAt'] != null
+          ? DateTime.tryParse(json['createdAt'].toString()) ?? DateTime.now()
+          : DateTime.now(),
+      updatedAt: json['updatedAt'] != null
+          ? DateTime.tryParse(json['updatedAt'].toString())
+          : null,
+    );
+  }
+
   @override
   List<Object?> get props => [
     id,

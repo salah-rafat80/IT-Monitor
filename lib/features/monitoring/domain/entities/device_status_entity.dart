@@ -135,6 +135,39 @@ class DeviceStatusEntity extends Equatable {
     };
   }
 
+  factory DeviceStatusEntity.fromJson(Map<String, dynamic> json) {
+    return DeviceStatusEntity(
+      deviceId: json['deviceId'] is int
+          ? json['deviceId'] as int
+          : int.tryParse(json['deviceId']?.toString() ?? '0') ?? 0,
+      status: DeviceStatusEnum.fromString(
+        json['status']?.toString() ?? 'unknown',
+      ),
+      lastSeen: json['lastSeen'] != null
+          ? DateTime.tryParse(json['lastSeen'].toString())
+          : null,
+      lastCheckAt: json['lastCheckAt'] != null
+          ? DateTime.tryParse(json['lastCheckAt'].toString())
+          : null,
+      lastLatencyMs: json['lastLatencyMs'] as int?,
+      lastSuccessfulLatencyMs: json['lastSuccessfulLatencyMs'] as int?,
+      lastFailureReason: json['lastFailureReason']?.toString(),
+      consecutiveFailures: json['consecutiveFailures'] is int
+          ? json['consecutiveFailures'] as int
+          : int.tryParse(json['consecutiveFailures']?.toString() ?? '0') ?? 0,
+      consecutiveSuccesses: json['consecutiveSuccesses'] is int
+          ? json['consecutiveSuccesses'] as int
+          : int.tryParse(json['consecutiveSuccesses']?.toString() ?? '0') ?? 0,
+      statusChangedAt: json['statusChangedAt'] != null
+          ? DateTime.tryParse(json['statusChangedAt'].toString()) ??
+                DateTime.now()
+          : DateTime.now(),
+      isMaintenance: json['isMaintenance'] == true,
+      hasInternet: json['hasInternet'] != false,
+      isSubMillisecond: json['isSubMillisecond'] == true,
+    );
+  }
+
   @override
   List<Object?> get props => [
     deviceId,

@@ -43,21 +43,30 @@ if not exist "%DATA_DIR%" mkdir "%DATA_DIR%"
 
 :: Remove broad inherited permissions and configure strict grants
 icacls "%DATA_DIR%" /inheritance:r /grant "NT AUTHORITY\SYSTEM:(OI)(CI)(F)" "BUILTIN\Administrators:(OI)(CI)(F)" "%GROUP_NAME%:(RX)" /q
+icacls "%DATA_DIR%" /remove:g "BUILTIN\Users" "Everyone" "NT AUTHORITY\Authenticated Users" /q >nul 2>&1
+if %errorLevel% neq 0 (
+    echo [WARNING] Failed to clean some old ACEs on %DATA_DIR%
+)
 
 if exist "%DATA_DIR%\certs" (
     icacls "%DATA_DIR%\certs" /inheritance:r /grant "NT AUTHORITY\SYSTEM:(OI)(CI)(F)" "BUILTIN\Administrators:(OI)(CI)(F)" /q
+    icacls "%DATA_DIR%\certs" /remove:g "BUILTIN\Users" "Everyone" "NT AUTHORITY\Authenticated Users" /q >nul 2>&1
 )
 if exist "%DATA_DIR%\logs" (
     icacls "%DATA_DIR%\logs" /inheritance:r /grant "NT AUTHORITY\SYSTEM:(OI)(CI)(F)" "BUILTIN\Administrators:(OI)(CI)(F)" /q
+    icacls "%DATA_DIR%\logs" /remove:g "BUILTIN\Users" "Everyone" "NT AUTHORITY\Authenticated Users" /q >nul 2>&1
 )
 if exist "%DB_FILE%" (
     icacls "%DATA_DIR%\it_network_monitor.sqlite*" /inheritance:r /grant "NT AUTHORITY\SYSTEM:F" "BUILTIN\Administrators:F" /q
+    icacls "%DATA_DIR%\it_network_monitor.sqlite*" /remove:g "BUILTIN\Users" "Everyone" "NT AUTHORITY\Authenticated Users" /q >nul 2>&1
 )
 if exist "%DATA_DIR%\service_config.json" (
     icacls "%DATA_DIR%\service_config.json" /inheritance:r /grant "NT AUTHORITY\SYSTEM:F" "BUILTIN\Administrators:F" /q
+    icacls "%DATA_DIR%\service_config.json" /remove:g "BUILTIN\Users" "Everyone" "NT AUTHORITY\Authenticated Users" /q >nul 2>&1
 )
 if exist "%DATA_DIR%\trusted_client.token" (
     icacls "%DATA_DIR%\trusted_client.token" /inheritance:r /grant "NT AUTHORITY\SYSTEM:F" "BUILTIN\Administrators:F" "%GROUP_NAME%:R" /q
+    icacls "%DATA_DIR%\trusted_client.token" /remove:g "BUILTIN\Users" "Everyone" "NT AUTHORITY\Authenticated Users" /q >nul 2>&1
 )
 
 echo.

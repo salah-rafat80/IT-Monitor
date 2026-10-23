@@ -454,6 +454,25 @@ class MonitoringServiceServer {
         dir.createSync(recursive: true);
       }
 
+      // On Windows production, verify that the dedicated operator group exists.
+      // Group creation requires elevation and belongs in the installer/setup phase.
+      // The background service must fail closed if the required security group is absent.
+      if (Platform.isWindows && !isDevelopment) {
+        final groupCheck = Process.runSync('net', [
+          'localgroup',
+          'ITNetworkMonitorAdministrators',
+        ]);
+        if (groupCheck.exitCode != 0) {
+          final err =
+              'Security Violation: Required local Windows security group '
+              '"ITNetworkMonitorAdministrators" does not exist. '
+              'The service cannot provision trusted client tokens without explicit operator boundary. '
+              'Run apply_production_acls.ps1 or the elevated installer to create the group.';
+          _log('FATAL: $err');
+          throw StateError(err);
+        }
+      }
+
       final token = _generateSecureToken();
       targetPath = p.join(baseDir, 'trusted_client.token');
       tempPath = p.join(
@@ -462,24 +481,37 @@ class MonitoringServiceServer {
       );
 
       final tempFile = File(tempPath);
-      // Write token and ensure it is flushed to disk before replacement
+      // 1. Create empty temporary file in protected service directory
+      tempFile.createSync(exclusive: true);
+
+      // 2. Before writing any secret contents, apply restrictive DACL to the empty file on Windows
+      if (Platform.isWindows) {
+        _applyRestrictedTokenAcls(tempPath);
+        // 3. Verify the resulting ACL using Windows security tools before writing secret
+        _verifyTokenAcls(tempPath);
+      }
+
+      // 4. Only write and flush the token after the temporary file's ACL has been verified
       tempFile.writeAsStringSync(token, flush: true);
 
-      // Safe atomic replacement: replace target file with temp file
+      // 5. Windows filesystem replacement semantics:
+      // On Win32, moving/renaming across an existing destination file requires unlinking the destination first.
+      // Interruption behavior: If an unexpected crash occurs between target deletion and rename completion,
+      // the token file is absent upon recovery, which fails closed (unauthenticated) rather than leaving
+      // a corrupted or leaked token.
       final targetFile = File(targetPath);
       if (targetFile.existsSync()) {
-        try {
-          targetFile.deleteSync();
-        } catch (_) {}
+        targetFile.deleteSync();
       }
       tempFile.renameSync(targetPath);
 
-      // Explicitly enforce least-privilege ACLs on the final token file on Windows
-      if (Platform.isWindows) {
-        _applyRestrictedTokenAcls(targetPath);
+      if (!File(targetPath).existsSync()) {
+        throw StateError(
+          'Failed to verify presence of target token file after rename: $targetPath',
+        );
       }
 
-      // ONLY publish session in-memory after publication on disk is 100% verified
+      // 6. ONLY publish session in-memory after publication on disk is 100% verified and hardened
       final session = ServiceSession(
         token: token,
         userId: 1,
@@ -494,8 +526,7 @@ class MonitoringServiceServer {
       _log('Provisioned trusted local client token at: $_trustedTokenFilePath');
     } catch (e) {
       // Fail closed: clean up in-memory references and temporary files on error
-      _trustedClientToken = null;
-      _trustedTokenFilePath = null;
+      _cleanupLocalTrustedToken();
       if (tempPath != null) {
         try {
           final tf = File(tempPath);
@@ -503,49 +534,106 @@ class MonitoringServiceServer {
         } catch (_) {}
       }
       _log(
-        'Security Warning: Could not provision trusted local client token: $e',
+        'Security Error: Could not safely provision trusted local client token (failing closed): $e',
       );
     }
   }
 
   void _applyRestrictedTokenAcls(String filePath) {
+    bool hasOperatorGroup = false;
     try {
-      // 1. Ensure dedicated local operator group exists
-      Process.runSync('net', [
+      final res = Process.runSync('net', [
         'localgroup',
         'ITNetworkMonitorAdministrators',
-        '/add',
-        '/comment:Authorized operators permitted to access IT Network Monitor trusted client token without interactive login',
       ]);
+      hasOperatorGroup = (res.exitCode == 0);
     } catch (_) {}
 
-    try {
-      final grants = [
-        filePath,
-        '/inheritance:r',
-        '/grant',
-        'NT AUTHORITY\\SYSTEM:(F)',
-        '/grant',
-        'BUILTIN\\Administrators:(F)',
-      ];
+    if (!hasOperatorGroup && !isDevelopment) {
+      throw StateError(
+        'Required Windows security group "ITNetworkMonitorAdministrators" does not exist. '
+        'In production, operator group must exist before provisioning trusted client tokens.',
+      );
+    }
 
-      // In development / test mode, allow current user read access so tests and dev runs can operate
+    final grants = [
+      filePath,
+      '/inheritance:r',
+      '/grant',
+      'NT AUTHORITY\\SYSTEM:(F)',
+      '/grant',
+      'BUILTIN\\Administrators:(F)',
+    ];
+
+    if (hasOperatorGroup) {
+      grants.addAll(['/grant', 'ITNetworkMonitorAdministrators:(R)']);
+    }
+    if (isDevelopment) {
       final currentUser = Platform.environment['USERNAME'];
-      if (isDevelopment && currentUser != null && currentUser.isNotEmpty) {
-        grants.addAll(['/grant', '$currentUser:(R)']);
+      if (currentUser != null && currentUser.isNotEmpty) {
+        grants.addAll(['/grant', '$currentUser:(F)']);
       }
+    }
 
-      // 2. Remove inheritance and grant SYSTEM and Administrators Full Control
-      Process.runSync('icacls', grants);
+    grants.addAll(['/c', '/q']);
 
-      // 3. Grant ITNetworkMonitorAdministrators Read-Only access
-      Process.runSync('icacls', [
-        filePath,
-        '/grant',
-        'ITNetworkMonitorAdministrators:(R)',
-      ]);
-    } catch (_) {
-      // Safe no-op on non-Windows or environments without icacls
+    final grantResult = Process.runSync('icacls', grants);
+    if (grantResult.exitCode != 0) {
+      throw StateError(
+        'Failed to apply restrictive ACLs to token: ${grantResult.stderr} ${grantResult.stdout}',
+      );
+    }
+
+    // Explicitly purge any potential explicit grants for unapproved principals
+    final removeResult = Process.runSync('icacls', [
+      filePath,
+      '/remove:g',
+      'BUILTIN\\Users',
+      'Everyone',
+      'NT AUTHORITY\\Authenticated Users',
+      '/c',
+      '/q',
+    ]);
+    if (removeResult.exitCode != 0) {
+      final out = '${removeResult.stderr} ${removeResult.stdout}';
+      if (!out.contains('No mappings') && !out.contains('0 files')) {
+        throw StateError(
+          'Failed to remove unapproved principals from token: $out',
+        );
+      }
+    }
+  }
+
+  void _verifyTokenAcls(String filePath) {
+    final result = Process.runSync('icacls', [filePath]);
+    if (result.exitCode != 0) {
+      throw StateError(
+        'Failed to inspect token file ACL for verification: ${result.stderr}',
+      );
+    }
+    final output = result.stdout.toString();
+    final lower = output.toLowerCase();
+
+    // Verify absence of unapproved principals
+    if (lower.contains(r'builtin\users') ||
+        lower.contains('everyone') ||
+        lower.contains(r'authenticated users')) {
+      throw StateError(
+        'Security violation: Prohibited principal found on token ACL verification:\n$output',
+      );
+    }
+
+    // Verify presence of required allowlisted principals
+    if (!lower.contains('system') || !lower.contains('administrator')) {
+      throw StateError(
+        'Security violation: Required allowlisted principal missing from token ACL verification:\n$output',
+      );
+    }
+
+    if (!isDevelopment && !lower.contains('itnetworkmonitoradministrators')) {
+      throw StateError(
+        'Security violation: Operator group "ITNetworkMonitorAdministrators" missing from token ACL verification:\n$output',
+      );
     }
   }
 

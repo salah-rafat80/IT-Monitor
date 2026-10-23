@@ -10,7 +10,12 @@ Write-Output "Enforcing least-privilege ACLs on SQLite database files in $DataDi
 foreach ($f in $DbFiles) {
     try {
         & icacls $f.FullName /inheritance:r /grant "NT AUTHORITY\SYSTEM:F" "BUILTIN\Administrators:F" /q
-        Write-Output "Secured $($f.Name): restricted to SYSTEM and Administrators."
+        & icacls $f.FullName /remove:g "BUILTIN\Users" "Everyone" "NT AUTHORITY\Authenticated Users" /q 2>&1 | Out-Null
+        if ($LASTEXITCODE -eq 0) {
+            Write-Output "Secured $($f.Name): restricted to SYSTEM and Administrators (unapproved ACEs purged)."
+        } else {
+            Write-Warning "icacls exited with code $LASTEXITCODE on $($f.FullName)"
+        }
     } catch {
         Write-Warning "Failed to set ACLs on $($f.FullName): $_"
     }

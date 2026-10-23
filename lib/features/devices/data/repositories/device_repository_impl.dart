@@ -3,10 +3,12 @@ import 'package:drift/native.dart' show SqliteException;
 import 'package:injectable/injectable.dart';
 
 import '../../../../core/database/app_database.dart';
+import '../../../../core/di/injection.dart';
 import '../../../../core/errors/failures.dart';
 import '../../../../core/utils/result.dart';
 import '../../../auth/domain/entities/user_entity.dart';
 import '../../../auth/domain/repositories/auth_repository.dart';
+import '../../../monitoring/data/datasources/monitoring_service_client.dart';
 import '../../../users/domain/repositories/audit_log_repository.dart';
 import '../../data/datasources/approved_inventory_seed.dart';
 import '../../data/datasources/excel_inventory_parser.dart';
@@ -20,8 +22,20 @@ class DeviceRepositoryImpl implements DeviceRepository {
   final AppDatabase _db;
   final AuditLogRepository _auditLogRepo;
   final AuthRepository _authRepo;
+  final MonitoringServiceClient? _serviceClient;
 
-  DeviceRepositoryImpl(this._db, this._auditLogRepo, this._authRepo);
+  DeviceRepositoryImpl(
+    this._db,
+    this._auditLogRepo,
+    this._authRepo, [
+    this._serviceClient,
+  ]);
+
+  MonitoringServiceClient? get _effectiveClient =>
+      _serviceClient ??
+      (getIt.isRegistered<MonitoringServiceClient>()
+          ? getIt<MonitoringServiceClient>()
+          : null);
 
   Future<String> _getActiveUsername() async {
     final res = await _authRepo.getCurrentUser();
@@ -31,6 +45,25 @@ class DeviceRepositoryImpl implements DeviceRepository {
 
   @override
   Future<Result<List<DeviceEntity>>> getDevices() async {
+    final client = _effectiveClient;
+    if (client != null && client.isAuthenticated) {
+      final res = await client.getDevices();
+      if (res.isSuccess && res.data != null) {
+        final list = res.data!.map((item) {
+          final devMap = item['device'] as Map<String, dynamic>;
+          return DeviceEntity.fromJson(devMap);
+        }).toList();
+        return Result.success(list);
+      } else {
+        return Result.failure(
+          NetworkFailure(
+            'Authoritative monitoring service is unreachable (${res.errorMessage}). '
+            'Ensure IT Network Monitor Service is running.',
+          ),
+        );
+      }
+    }
+
     try {
       final rows = await _db.select(_db.devices).get();
       final entities = rows
@@ -280,6 +313,24 @@ class DeviceRepositoryImpl implements DeviceRepository {
     required String ownerName,
     String? adminUsername,
   }) async {
+    final client = _effectiveClient;
+    if (client != null && client.isAuthenticated) {
+      final res = await client.assignDeviceOwner(
+        deviceId: deviceId,
+        ownerName: ownerName,
+      );
+      if (res.isSuccess && res.data != null) {
+        final devMap = res.data!['device'] as Map<String, dynamic>;
+        return Result.success(DeviceEntity.fromJson(devMap));
+      } else {
+        return Result.failure(
+          NetworkFailure(
+            'Failed to assign owner via service API: ${res.errorMessage}',
+          ),
+        );
+      }
+    }
+
     try {
       // 1. Permission check: Admin only
       final currentUserRes = await _authRepo.getCurrentUser();

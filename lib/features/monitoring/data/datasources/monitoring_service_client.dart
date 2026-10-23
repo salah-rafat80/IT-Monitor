@@ -256,6 +256,220 @@ class MonitoringServiceClient {
     );
   }
 
+  /// Fetch active incidents and incident history from the service.
+  Future<ServiceApiResponse<Map<String, dynamic>>> getIncidents() async {
+    final response = await _sendRequest(
+      method: 'GET',
+      endpoint: '/api/incidents',
+      requireAuth: true,
+    );
+    if (response.isSuccess && response.data is Map) {
+      return ServiceApiResponse.success(response.data as Map<String, dynamic>);
+    }
+    return ServiceApiResponse.failure(
+      response.errorMessage,
+      statusCode: response.statusCode,
+    );
+  }
+
+  /// Acknowledge an incident on the authoritative service.
+  Future<ServiceApiResponse<void>> acknowledgeIncident(int incidentId) async {
+    final response = await _sendRequest(
+      method: 'POST',
+      endpoint: '/api/incidents/acknowledge',
+      body: {'incidentId': incidentId},
+      requireAuth: true,
+    );
+    if (response.isSuccess) {
+      return const ServiceApiResponse.success(null);
+    }
+    return ServiceApiResponse.failure(
+      response.errorMessage,
+      statusCode: response.statusCode,
+    );
+  }
+
+  /// Add notes to an active or historical incident on the authoritative service.
+  Future<ServiceApiResponse<void>> addIncidentNote(
+    int incidentId,
+    String notes,
+  ) async {
+    final response = await _sendRequest(
+      method: 'POST',
+      endpoint: '/api/incidents/notes',
+      body: {'incidentId': incidentId, 'notes': notes},
+      requireAuth: true,
+    );
+    if (response.isSuccess) {
+      return const ServiceApiResponse.success(null);
+    }
+    return ServiceApiResponse.failure(
+      response.errorMessage,
+      statusCode: response.statusCode,
+    );
+  }
+
+  /// Fetch infrastructure devices (UniFi gateways, switches, APs) from the service.
+  Future<ServiceApiResponse<List<Map<String, dynamic>>>>
+  getInfrastructureDevices() async {
+    final response = await _sendRequest(
+      method: 'GET',
+      endpoint: '/api/infrastructure/unifi/devices',
+      requireAuth: true,
+    );
+    if (response.isSuccess && response.data is Map) {
+      final json = response.data as Map<String, dynamic>;
+      final list =
+          (json['devices'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ??
+          [];
+      return ServiceApiResponse.success(list);
+    }
+    return ServiceApiResponse.failure(
+      response.errorMessage,
+      statusCode: response.statusCode,
+    );
+  }
+
+  /// Save or update an infrastructure device on the service.
+  Future<ServiceApiResponse<Map<String, dynamic>>> saveInfrastructureDevice(
+    Map<String, dynamic> body,
+  ) async {
+    final response = await _sendRequest(
+      method: 'POST',
+      endpoint: '/api/infrastructure/unifi/devices',
+      body: body,
+      requireAuth: true,
+    );
+    if (response.isSuccess && response.data is Map) {
+      return ServiceApiResponse.success(response.data as Map<String, dynamic>);
+    }
+    return ServiceApiResponse.failure(
+      response.errorMessage,
+      statusCode: response.statusCode,
+    );
+  }
+
+  /// Generate a reporting summary from authoritative historical checks.
+  Future<ServiceApiResponse<Map<String, dynamic>>> getReportSummary(
+    String period,
+  ) async {
+    final response = await _sendRequest(
+      method: 'GET',
+      endpoint: '/api/reports/summary?period=$period',
+      requireAuth: true,
+    );
+    if (response.isSuccess && response.data is Map) {
+      return ServiceApiResponse.success(response.data as Map<String, dynamic>);
+    }
+    return ServiceApiResponse.failure(
+      response.errorMessage,
+      statusCode: response.statusCode,
+    );
+  }
+
+  /// Fetch discovery scan status and latest job info.
+  Future<ServiceApiResponse<Map<String, dynamic>>> getDiscoveryStatus() async {
+    final response = await _sendRequest(
+      method: 'GET',
+      endpoint: '/api/discovery/status',
+      requireAuth: true,
+    );
+    if (response.isSuccess && response.data is Map) {
+      return ServiceApiResponse.success(response.data as Map<String, dynamic>);
+    }
+    return ServiceApiResponse.failure(
+      response.errorMessage,
+      statusCode: response.statusCode,
+    );
+  }
+
+  /// Fetch discovered devices from scan results.
+  Future<ServiceApiResponse<List<Map<String, dynamic>>>> getDiscoveryDevices([
+    int? scanId,
+  ]) async {
+    final endpoint = scanId != null
+        ? '/api/discovery/devices?scanId=$scanId'
+        : '/api/discovery/devices';
+    final response = await _sendRequest(
+      method: 'GET',
+      endpoint: endpoint,
+      requireAuth: true,
+    );
+    if (response.isSuccess && response.data is Map) {
+      final json = response.data as Map<String, dynamic>;
+      final list =
+          (json['devices'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ??
+          [];
+      return ServiceApiResponse.success(list);
+    }
+    return ServiceApiResponse.failure(
+      response.errorMessage,
+      statusCode: response.statusCode,
+    );
+  }
+
+  /// Start a network discovery scan job on the background service.
+  Future<ServiceApiResponse<Map<String, dynamic>>> startDiscoveryScan({
+    List<String>? ranges,
+    List<String>? strategies,
+    int? concurrency,
+    int? timeoutSeconds,
+  }) async {
+    final response = await _sendRequest(
+      method: 'POST',
+      endpoint: '/api/discovery/start',
+      body: {
+        if (ranges != null) 'ranges': ranges,
+        if (strategies != null) 'strategies': strategies,
+        if (concurrency != null) 'concurrency': concurrency,
+        if (timeoutSeconds != null) 'timeoutSeconds': timeoutSeconds,
+      },
+      requireAuth: true,
+    );
+    if (response.isSuccess && response.data is Map) {
+      return ServiceApiResponse.success(response.data as Map<String, dynamic>);
+    }
+    return ServiceApiResponse.failure(
+      response.errorMessage,
+      statusCode: response.statusCode,
+    );
+  }
+
+  /// Cancel an ongoing discovery scan job.
+  Future<ServiceApiResponse<void>> cancelDiscoveryScan() async {
+    final response = await _sendRequest(
+      method: 'POST',
+      endpoint: '/api/discovery/cancel',
+      requireAuth: true,
+    );
+    if (response.isSuccess) {
+      return const ServiceApiResponse.success(null);
+    }
+    return ServiceApiResponse.failure(
+      response.errorMessage,
+      statusCode: response.statusCode,
+    );
+  }
+
+  /// Approve a discovered device into authoritative inventory.
+  Future<ServiceApiResponse<Map<String, dynamic>>> approveDiscoveryDevice(
+    Map<String, dynamic> body,
+  ) async {
+    final response = await _sendRequest(
+      method: 'POST',
+      endpoint: '/api/discovery/approve',
+      body: body,
+      requireAuth: true,
+    );
+    if (response.isSuccess && response.data is Map) {
+      return ServiceApiResponse.success(response.data as Map<String, dynamic>);
+    }
+    return ServiceApiResponse.failure(
+      response.errorMessage,
+      statusCode: response.statusCode,
+    );
+  }
+
   /// Connect to the live WebSocket event stream (WSS if HTTPS).
   Future<void> connectWebSocket() async {
     if (_currentSession == null || _currentSession!.isExpired) {

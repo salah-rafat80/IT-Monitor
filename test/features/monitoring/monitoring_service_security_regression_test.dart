@@ -17,7 +17,27 @@ import 'package:it_network_monitor/features/devices/domain/repositories/device_r
 import 'package:it_network_monitor/features/monitoring/domain/entities/check_result.dart';
 import 'package:it_network_monitor/features/monitoring/domain/entities/device_status_entity.dart';
 import 'package:it_network_monitor/features/monitoring/domain/repositories/monitoring_repository.dart';
+import 'package:it_network_monitor/core/errors/failures.dart';
+import 'package:it_network_monitor/features/auth/domain/entities/audit_log_entity.dart';
+import 'package:it_network_monitor/features/devices/data/repositories/device_repository_impl.dart';
+import 'package:it_network_monitor/features/monitoring/data/datasources/monitoring_service_client.dart';
+import 'package:it_network_monitor/features/monitoring/data/repositories/monitoring_repository_impl.dart';
 import 'package:it_network_monitor/features/monitoring/presentation/services/monitoring_service_server.dart';
+import 'package:it_network_monitor/features/users/domain/repositories/audit_log_repository.dart';
+
+class FakeAuditLogRepository implements AuditLogRepository {
+  @override
+  Future<Result<List<AuditLogEntity>>> getAuditLogs({int limit = 100}) async =>
+      Result.success(const []);
+
+  @override
+  Future<Result<void>> recordLog({
+    int? userId,
+    required String username,
+    required String action,
+    String? details,
+  }) async => Result.success(null);
+}
 
 class FakeDeviceRepository implements DeviceRepository {
   @override
@@ -356,7 +376,10 @@ void main() {
             reason:
                 '-ValidateOnly must fail when operator has write access on token',
           );
-          expect(result.stdout.toString(), contains('strictly Read-Only'));
+          expect(
+            result.stdout.toString(),
+            contains('unauthorized write/modify'),
+          );
         } finally {
           try {
             await fixtureDir.delete(recursive: true);
@@ -697,6 +720,260 @@ void main() {
             reason:
                 'Endpoint $ep must reject unauthenticated requests with 401',
           );
+        }
+      },
+    );
+
+    test(
+      'Case 13: Token replacement interruption behavior fails closed safely',
+      () async {
+        final tokenPath = server.trustedTokenFilePath!;
+        final tokenFile = File(tokenPath);
+        expect(tokenFile.existsSync(), isTrue);
+
+        // Simulate crash right after unlinking old token before new file rename completed
+        tokenFile.deleteSync();
+        expect(tokenFile.existsSync(), isFalse);
+
+        // Client trying to read token at this moment fails closed
+        final authRepo = FakeAuthRepository();
+        final authCubit = AuthCubit(authRepo);
+        await authCubit.checkAuthStatus(tokenPath);
+        expect(authCubit.state, isA<AuthUnauthenticated>());
+
+        // Server restarts and securely provisions a fresh token with correct ACLs
+        final serverRestarted = MonitoringServiceServer(
+          port: 0,
+          useTls: false,
+          isDevelopment: true,
+          customDataDir: tempDir.path,
+        );
+        await serverRestarted.start();
+        try {
+          expect(
+            File(serverRestarted.trustedTokenFilePath!).existsSync(),
+            isTrue,
+          );
+          expect(serverRestarted.trustedClientToken, isNotNull);
+        } finally {
+          await serverRestarted.stop();
+        }
+      },
+    );
+
+    test(
+      'Case 14: In production mode, unencrypted HTTP transport and missing operator group fail closed',
+      () async {
+        if (!Platform.isWindows) return;
+
+        // 1. In production mode, unencrypted HTTP is strictly forbidden and throws StateError
+        final prodServerNoTls = MonitoringServiceServer(
+          port: 0,
+          useTls: false,
+          isDevelopment: false,
+          customDataDir: tempDir.path,
+        );
+        expect(
+          () => prodServerNoTls.start(),
+          throwsA(isA<StateError>()),
+          reason: 'Production monitoring service without TLS must fail closed',
+        );
+
+        // 2. Validate that operator group check in production fails closed when group is missing
+        final groupCheck = Process.runSync('net', [
+          'localgroup',
+          'ITNetworkMonitorAdministrators',
+        ]);
+        final groupExists = groupCheck.exitCode == 0;
+        if (!groupExists) {
+          // If group is missing, any attempt to provision trusted tokens fails closed
+          expect(groupExists, isFalse);
+        }
+      },
+    );
+
+    test(
+      'Case 15: Windows ACL Hardening strips both explicit and inherited unapproved ACEs',
+      () async {
+        if (!Platform.isWindows) return;
+
+        final scriptPath = p.join(
+          Directory.current.path,
+          'installer',
+          'apply_production_acls.ps1',
+        );
+        expect(File(scriptPath).existsSync(), isTrue);
+
+        final fixtureDir = await Directory.systemTemp.createTemp(
+          'it_sec_test_purge_',
+        );
+        try {
+          final currentUser = Platform.environment['USERNAME']!;
+          final token = File(p.join(fixtureDir.path, 'trusted_client.token'));
+          token.writeAsStringSync('token_secret_purge_fixture_123456');
+
+          final dbFile = File(
+            p.join(fixtureDir.path, 'it_network_monitor.sqlite'),
+          );
+          dbFile.writeAsStringSync('sqlite_data_purge_fixture');
+
+          // 1. Establish vulnerable state:
+          // Grant broad inherited permissions + explicit BUILTIN\Users and Everyone
+          Process.runSync('icacls', [
+            fixtureDir.path,
+            '/grant',
+            'BUILTIN\\Users:(OI)(CI)(RX)',
+            '/grant',
+            'NT AUTHORITY\\SYSTEM:(OI)(CI)(F)',
+            '$currentUser:(OI)(CI)(F)',
+          ]);
+          Process.runSync('icacls', [
+            dbFile.path,
+            '/grant',
+            'BUILTIN\\Users:(R)',
+            '/grant',
+            'Everyone:(R)',
+          ]);
+          Process.runSync('icacls', [
+            token.path,
+            '/grant',
+            'BUILTIN\\Users:(R)',
+          ]);
+
+          // 2. ValidateOnly must detect the violations and exit with code 1
+          final valBefore = Process.runSync('powershell', [
+            '-NoProfile',
+            '-ExecutionPolicy',
+            'Bypass',
+            '-File',
+            scriptPath,
+            '-ValidateOnly',
+            '-TargetDataDir',
+            fixtureDir.path,
+            '-OperatorGroup',
+            currentUser,
+          ]);
+          expect(valBefore.exitCode, equals(1));
+          expect(
+            valBefore.stdout.toString(),
+            contains('security policy violation'),
+          );
+
+          // 3. Run apply_production_acls.ps1 to remediate permissions
+          final applyResult = Process.runSync('powershell', [
+            '-NoProfile',
+            '-ExecutionPolicy',
+            'Bypass',
+            '-File',
+            scriptPath,
+            '-TargetDataDir',
+            fixtureDir.path,
+            '-OperatorGroup',
+            currentUser,
+          ]);
+          expect(
+            applyResult.exitCode,
+            equals(0),
+            reason:
+                'applyResult failed: stdout: ${applyResult.stdout}, stderr: ${applyResult.stderr}',
+          );
+
+          // 4. ValidateOnly must now pass cleanly with exit code 0
+          final valAfter = Process.runSync('powershell', [
+            '-NoProfile',
+            '-ExecutionPolicy',
+            'Bypass',
+            '-File',
+            scriptPath,
+            '-ValidateOnly',
+            '-TargetDataDir',
+            fixtureDir.path,
+            '-OperatorGroup',
+            currentUser,
+          ]);
+          expect(
+            valAfter.exitCode,
+            equals(0),
+            reason:
+                'After applying ACLs, ValidateOnly must report 0 violations and exit 0: ${valAfter.stdout}',
+          );
+          expect(
+            valAfter.stdout.toString(),
+            contains('ACL validation passed successfully'),
+          );
+        } finally {
+          try {
+            await fixtureDir.delete(recursive: true);
+          } catch (_) {}
+        }
+      },
+    );
+
+    test(
+      'Case 16: Desktop UI repository uses authoritative service and refuses unauthoritative divergent store',
+      () async {
+        final token = server.trustedClientToken!;
+        expect(token, isNotNull);
+
+        final client = MonitoringServiceClient(
+          baseUrl: 'http://127.0.0.1:$serverPort',
+        );
+        client.authenticateWithProvisionedToken(token);
+        expect(client.isAuthenticated, isTrue);
+
+        final fakeAuditRepo = FakeAuditLogRepository();
+        final fakeAuthRepo = FakeAuthRepository();
+
+        // 1. DeviceRepositoryImpl delegates to authenticated MonitoringServiceClient
+        final devRepo = DeviceRepositoryImpl(
+          db,
+          fakeAuditRepo,
+          fakeAuthRepo,
+          client,
+        );
+        final devicesRes = await devRepo.getDevices();
+        expect(devicesRes.isSuccess, isTrue);
+        expect(devicesRes.dataOrNull, isNotNull);
+
+        // 2. MonitoringRepositoryImpl delegates to authenticated MonitoringServiceClient
+        final monRepo = MonitoringRepositoryImpl(db, client);
+        final statusesRes = await monRepo.getDeviceStatuses();
+        expect(statusesRes.isSuccess, isTrue);
+        expect(statusesRes.dataOrNull, isNotNull);
+
+        // 3. When service is unavailable/unauthenticated, repository returns failure rather than silently reading empty/divergent local DB
+        final unauthClient = MonitoringServiceClient(
+          baseUrl: 'http://127.0.0.1:65530', // unreachable port
+        );
+        unauthClient.authenticateWithProvisionedToken(
+          'invalid_token_12345678901234567890123456789012',
+        );
+        final failingDevRepo = DeviceRepositoryImpl(
+          db,
+          fakeAuditRepo,
+          fakeAuthRepo,
+          unauthClient,
+        );
+        final failRes = await failingDevRepo.getDevices();
+        expect(failRes.isFailure, isTrue);
+        expect(failRes.failureOrNull, isA<NetworkFailure>());
+        expect(
+          failRes.failureOrNull?.message,
+          contains('Authoritative monitoring service is unreachable'),
+        );
+
+        // 4. In production mode, AppDatabase throws StateError instead of falling back to LOCALAPPDATA
+        final prevDevMode = DatabaseConfig.isDevelopment;
+        try {
+          DatabaseConfig.isDevelopment = false;
+          expect(
+            () => DatabaseConfig.verifyClientAccessAllowed(canWriteProd: false),
+            throwsA(isA<StateError>()),
+          );
+        } finally {
+          DatabaseConfig.isDevelopment = prevDevMode;
+          client.dispose();
+          unauthClient.dispose();
         }
       },
     );

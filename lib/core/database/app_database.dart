@@ -527,6 +527,19 @@ class AppDatabase extends _$AppDatabase {
 
 class DatabaseConfig {
   static String? customDataDir;
+  static bool isDevelopment = false;
+
+  static void verifyClientAccessAllowed({required bool canWriteProd}) {
+    if (!canWriteProd &&
+        !isDevelopment &&
+        Platform.environment['IT_MONITOR_DEV_MODE'] != 'true') {
+      throw StateError(
+        'Authoritative database in ProgramData is inaccessible to direct client access. '
+        'Direct database access is restricted to the LocalSystem service. '
+        'Desktop clients must connect via the authoritative Monitoring Service API.',
+      );
+    }
+  }
 }
 
 LazyDatabase _openConnection() {
@@ -541,7 +554,7 @@ LazyDatabase _openConnection() {
     } else if (Platform.isWindows) {
       // Try ProgramData first (production installed service).
       // If the file already exists there and is writable, use it.
-      // Otherwise fall back to AppData\Local (dev / debug / non-elevated user).
+      // Otherwise fall back to AppData\Local ONLY in explicit development / test mode.
       final programData = Platform.environment['ProgramData'];
       final prodDir = programData != null && programData.trim().isNotEmpty
           ? Directory(p.join(programData.trim(), 'ITNetworkMonitor'))
@@ -586,6 +599,9 @@ LazyDatabase _openConnection() {
         if (canWriteProd) {
           targetDir = prodDir;
         } else {
+          // In production, prevent silent creation of a divergent per-user database!
+          DatabaseConfig.verifyClientAccessAllowed(canWriteProd: canWriteProd);
+
           // Fall back to per-user AppData\Local for standalone dev / debug if ProgramData is unavailable.
           final localAppData = Platform.environment['LOCALAPPDATA'];
           targetDir = localAppData != null && localAppData.trim().isNotEmpty

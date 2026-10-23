@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -7,6 +8,7 @@ import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
 import 'features/auth/presentation/bloc/auth_cubit.dart';
 import 'features/devices/presentation/bloc/devices_cubit.dart';
+import 'features/monitoring/data/datasources/monitoring_service_client.dart';
 import 'features/monitoring/presentation/bloc/monitoring_cubit.dart';
 import 'features/users/presentation/bloc/user_management_cubit.dart';
 import 'features/network_discovery/presentation/bloc/network_discovery_cubit.dart';
@@ -42,6 +44,24 @@ void main(List<String> args) async {
   };
 
   await configureDependencies();
+
+  // In Desktop Client mode, authenticate with the authoritative service using local trusted token
+  try {
+    final client = MonitoringServiceClient(
+      baseUrl:
+          Platform.environment['IT_MONITOR_SERVICE_URL'] ??
+          (Platform.environment['IT_MONITOR_USE_TLS'] == 'false'
+              ? 'http://127.0.0.1:8080'
+              : 'https://127.0.0.1:8443'),
+    );
+    final authRes = await client.authenticateWithTrustedLocalToken();
+    if (authRes.isSuccess && client.isAuthenticated) {
+      if (!getIt.isRegistered<MonitoringServiceClient>()) {
+        getIt.registerSingleton<MonitoringServiceClient>(client);
+      }
+      client.connectWebSocket().catchError((_) {});
+    }
+  } catch (_) {}
 
   runApp(const ITNetworkMonitorApp());
 }

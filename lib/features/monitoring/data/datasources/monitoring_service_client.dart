@@ -201,18 +201,22 @@ class MonitoringServiceClient {
     }
   }
 
-  /// Authenticate using an explicitly provisioned token (e.g. for remote Client-Only deployments).
-  void authenticateWithProvisionedToken(
-    String token, {
-    String role = 'admin',
-    String username = 'Provisioned Administrator',
-  }) {
-    _currentSession = ClientSessionInfo(
-      token: token.trim(),
-      username: username,
-      role: role,
-      expiresAt: DateTime.now().add(const Duration(days: 365)),
-    );
+  /// Authenticate using an explicitly provisioned token (e.g. from environment or secure storage),
+  /// requiring server-confirmed verification via /api/auth/verify before establishing an authenticated session.
+  /// Obtains role, username, and expiration directly from the authoritative server response.
+  Future<ServiceApiResponse<ClientSessionInfo>>
+  authenticateWithProvisionedToken(String token) async {
+    final cleanToken = token.trim();
+    if (cleanToken.isEmpty) {
+      _currentSession = null;
+      _lastConnectionError =
+          'Cannot authenticate with an empty provisioned token.';
+      return const ServiceApiResponse.failure(
+        'Cannot authenticate with an empty provisioned token.',
+        statusCode: 400,
+      );
+    }
+    return await verifySession(cleanToken);
   }
 
   /// Authenticate with the service and obtain a 24-hour cryptographically secure session token.

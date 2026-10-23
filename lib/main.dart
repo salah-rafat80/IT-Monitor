@@ -71,12 +71,20 @@ void main(List<String> args) async {
 
   await configureDependencies();
 
-  // Attempt initial server authentication with local trusted token
+  // Attempt initial server authentication:
+  // - Local operator deployments: Read local trusted token from %ProgramData%\ITNetworkMonitor\trusted_client.token
+  // - Remote client deployments: Read provisioned token from environment variable IT_MONITOR_CLIENT_TOKEN
+  // Both flows require authoritative server verification via /api/auth/verify before establishing an authenticated session.
+  // Direct launch UX is preserved without an interactive password prompt.
   if (AppConfig.isProductionClient &&
       getIt.isRegistered<MonitoringServiceClient>()) {
     final client = getIt<MonitoringServiceClient>();
     try {
-      final authRes = await client.authenticateWithTrustedLocalToken();
+      final envToken = Platform.environment['IT_MONITOR_CLIENT_TOKEN'];
+      final authRes = (envToken != null && envToken.trim().isNotEmpty)
+          ? await client.authenticateWithProvisionedToken(envToken.trim())
+          : await client.authenticateWithTrustedLocalToken();
+
       if (authRes.isSuccess && client.isAuthenticated) {
         client.connectWebSocket().catchError((error) {
           debugPrint('[MonitoringServiceClient WebSocket error]: $error');

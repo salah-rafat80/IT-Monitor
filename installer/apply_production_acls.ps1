@@ -25,7 +25,10 @@
 param(
     [switch]$ValidateOnly,
     [string]$TargetDataDir = "$env:ProgramData\ITNetworkMonitor",
+    [string]$TargetTokenFile,
     [string]$OperatorGroup = "ITNetworkMonitorAdministrators",
+    [string]$ServiceUser,
+    [switch]$DevMode,
     [switch]$SkipElevationCheck
 )
 
@@ -188,6 +191,16 @@ try {
     # Group may not exist on machine yet
 }
 
+$serviceUserSid = $null
+if ($ServiceUser) {
+    try {
+        $svcAccount = New-Object System.Security.Principal.NTAccount($ServiceUser)
+        $serviceUserSid = $svcAccount.Translate([System.Security.Principal.SecurityIdentifier]).Value
+    } catch {
+        # ServiceUser may not resolve
+    }
+}
+
 # Helper to check a specific DACL against policy using SID-based security APIs
 function Audit-DaclPolicy {
     param(
@@ -251,22 +264,31 @@ function Audit-DaclPolicy {
             $hasOperator = $true
 
             if ($IsBaseDir) {
-                # Traversal only: must NOT have inheritance flags into child files
-                $hasInherit = ($rule.InheritanceFlags -band [System.Security.AccessControl.InheritanceFlags]::ContainerInherit) -or
-                              ($rule.InheritanceFlags -band [System.Security.AccessControl.InheritanceFlags]::ObjectInherit)
+                # Traversal only: must NOT have inheritance flags or propagation flags into child files
+                $hasInherit = ($rule.InheritanceFlags -ne [System.Security.AccessControl.InheritanceFlags]::None) -or
+                              ($rule.PropagationFlags -ne [System.Security.AccessControl.PropagationFlags]::None)
                 if ($hasInherit) {
-                    $localFindings += "[$PathDescription] Operator group '$OperatorGroup' has inheritable permissions on base directory. Traversal permissions must not inherit into child files."
+                    $localFindings += "[$PathDescription] Operator group '$OperatorGroup' has non-zero inheritance/propagation flags ($($rule.InheritanceFlags), $($rule.PropagationFlags)) on base directory. Traversal permissions must not inherit into child files."
                 }
                 if (([int]$rights -band $WRITE_MODIFY_MASK) -ne 0) {
                     $localFindings += "[$PathDescription] Operator group '$OperatorGroup' has unauthorized write/modify rights on base directory: $rights"
                 }
-                if (-not ($rights.HasFlag([System.Security.AccessControl.FileSystemRights]::ReadAndExecute) -or $rights.HasFlag([System.Security.AccessControl.FileSystemRights]::Read))) {
-                    $localFindings += "[$PathDescription] Operator group '$OperatorGroup' missing ReadAndExecute rights on base directory (found: $rights)."
+                # Policy strictly requires ReadAndExecute. Read-only ACE is non-compliant.
+                if (-not $rights.HasFlag([System.Security.AccessControl.FileSystemRights]::ReadAndExecute)) {
+                    $localFindings += "[$PathDescription] Operator group '$OperatorGroup' missing required ReadAndExecute rights on base directory (found: $rights). Read-only access is non-compliant."
                 }
             } elseif ($IsToken) {
-                # Read only: must NOT have write, modify, delete, or change rights
+                # Read only: must NOT have inheritance, write, modify, delete, change, or execute rights
+                $hasInherit = ($rule.InheritanceFlags -ne [System.Security.AccessControl.InheritanceFlags]::None) -or
+                              ($rule.PropagationFlags -ne [System.Security.AccessControl.PropagationFlags]::None)
+                if ($hasInherit) {
+                    $localFindings += "[$PathDescription] Operator group '$OperatorGroup' has non-zero inheritance/propagation flags ($($rule.InheritanceFlags), $($rule.PropagationFlags)) on trusted token."
+                }
                 if (([int]$rights -band $WRITE_MODIFY_MASK) -ne 0) {
                     $localFindings += "[$PathDescription] Operator group '$OperatorGroup' has unauthorized write/modify/delete rights on trusted token: $rights"
+                }
+                if ($rights.HasFlag([System.Security.AccessControl.FileSystemRights]::ExecuteFile)) {
+                    $localFindings += "[$PathDescription] Operator group '$OperatorGroup' has unauthorized execute rights on trusted token: $rights"
                 }
                 if (-not $rights.HasFlag([System.Security.AccessControl.FileSystemRights]::Read)) {
                     $localFindings += "[$PathDescription] Operator group '$OperatorGroup' missing Read rights on trusted token (found: $rights)."
@@ -275,6 +297,11 @@ function Audit-DaclPolicy {
                 # DB, config, certs, logs: operator group MUST have ZERO direct access
                 $localFindings += "[$PathDescription] Operator group '$OperatorGroup' has direct access on protected resource: $rights. Access must be mediated via service API only."
             }
+            continue
+        }
+
+        if ($DevMode -and $serviceUserSid -and $sid -eq $serviceUserSid) {
+            # In development mode, the non-elevated service runner process requires write access to provision the token
             continue
         }
 
@@ -299,9 +326,13 @@ function Audit-DaclPolicy {
 
     if ($IsToken) {
         if (-not $operatorGroupSid) {
-            $localFindings += "[$PathDescription] Required operator group '$OperatorGroup' could not be resolved to SID."
+            if (-not $DevMode) {
+                $localFindings += "[$PathDescription] Required operator group '$OperatorGroup' could not be resolved to SID."
+            }
         } elseif (-not $hasOperator) {
-            $localFindings += "[$PathDescription] Required operator group '$OperatorGroup' (SID: $operatorGroupSid) is absent from trusted token DACL."
+            if (-not $DevMode) {
+                $localFindings += "[$PathDescription] Required operator group '$OperatorGroup' (SID: $operatorGroupSid) is absent from trusted token DACL."
+            }
         }
     }
 
@@ -408,6 +439,32 @@ function Invoke-AclPolicyAudit {
     }
 
     return @{ InspectedCount = $inspectedCount; Findings = $auditFindings; FatalError = $false; ExitCode = 0 }
+}
+
+# ---------------------------------------------------------------------------
+# Mode 0: Standalone Target Token File Validation Mode (-TargetTokenFile)
+# ---------------------------------------------------------------------------
+if ($TargetTokenFile) {
+    $tokenStatus = Test-PathWithStatus $TargetTokenFile
+    if ($tokenStatus -ne "Exists") {
+        Write-Host "[FAIL] Target token file does not exist or is unreadable: $TargetTokenFile ($tokenStatus)" -ForegroundColor Red
+        exit 2
+    }
+    $tokenResult = Get-PathAclStrict $TargetTokenFile
+    if ($tokenResult.Status -ne "Success") {
+        Write-Host "[FAIL] Could not inspect token ACL: $($tokenResult.Error)" -ForegroundColor Red
+        exit 2
+    }
+    $tokenFindings = Audit-DaclPolicy -Acl $tokenResult.Acl -PathDescription "Token" -IsToken $true
+    if ($tokenFindings.Count -gt 0) {
+        Write-Host "[FAIL] Token ACL validation failed with $($tokenFindings.Count) violation(s):" -ForegroundColor Red
+        foreach ($f in $tokenFindings) {
+            Write-Host "  * $f" -ForegroundColor Red
+        }
+        exit 1
+    }
+    Write-Host "[PASS] Token ACL is fully compliant with least-privilege security policy." -ForegroundColor Green
+    exit 0
 }
 
 # ---------------------------------------------------------------------------

@@ -925,7 +925,8 @@ void main() {
         final client = MonitoringServiceClient(
           baseUrl: 'http://127.0.0.1:$serverPort',
         );
-        client.authenticateWithProvisionedToken(token);
+        final authRes = await client.authenticateWithProvisionedToken(token);
+        expect(authRes.isSuccess, isTrue);
         expect(client.isAuthenticated, isTrue);
 
         final fakeAuditRepo = FakeAuditLogRepository();
@@ -952,9 +953,11 @@ void main() {
         final unauthClient = MonitoringServiceClient(
           baseUrl: 'http://127.0.0.1:65530', // unreachable port
         );
-        unauthClient.authenticateWithProvisionedToken(
+        final unauthRes = await unauthClient.authenticateWithProvisionedToken(
           'invalid_token_12345678901234567890123456789012',
         );
+        expect(unauthRes.isFailure, isTrue);
+        expect(unauthClient.isAuthenticated, isFalse);
         final failingDevRepo = DeviceRepositoryImpl(
           db,
           fakeAuditRepo,
@@ -966,7 +969,10 @@ void main() {
         expect(failRes.failureOrNull, isA<NetworkFailure>());
         expect(
           failRes.failureOrNull?.message,
-          contains('Authoritative monitoring service is unreachable'),
+          anyOf(
+            contains('Authoritative monitoring service is unreachable'),
+            contains('Production client is not authenticated'),
+          ),
         );
 
         // 4. In production mode, AppDatabase throws StateError instead of falling back to LOCALAPPDATA
@@ -1196,6 +1202,14 @@ void main() {
           expect(discDevsRes.isFailure, isTrue);
           expect(discDevsRes.failureOrNull, isA<NetworkFailure>());
 
+          final allJobsRes = await discRepo.getAllScanJobs();
+          expect(allJobsRes.isFailure, isTrue);
+          expect(allJobsRes.failureOrNull, isA<NetworkFailure>());
+
+          final getJobRes = await discRepo.getScanJob(1);
+          expect(getJobRes.isFailure, isTrue);
+          expect(getJobRes.failureOrNull, isA<NetworkFailure>());
+
           // 6. ReportRepositoryImpl
           final reportRepo = ReportRepositoryImpl(db);
           final repRes = await reportRepo.generateReport(
@@ -1318,6 +1332,230 @@ void main() {
             await fixtureDir.delete(recursive: true);
           } catch (_) {}
         }
+      },
+    );
+
+    test(
+      'Case 21: Windows ACL policy validator strictly requires ReadAndExecute on base directory and rejects Read-only operator ACE',
+      () async {
+        final scriptPath = p.normalize(
+          p.join(
+            Directory.current.path,
+            'installer',
+            'apply_production_acls.ps1',
+          ),
+        );
+        expect(File(scriptPath).existsSync(), isTrue);
+
+        final fixtureDir = await Directory.systemTemp.createTemp(
+          'it_monitor_acl_rx_test_',
+        );
+        try {
+          final currentUser =
+              Platform.environment['USERNAME'] ?? 'Administrator';
+
+          final token = File(p.join(fixtureDir.path, 'trusted_client.token'));
+          token.writeAsStringSync('token_secret_for_rx_test_123456');
+
+          // 1. Initial baseline apply to establish clean ACLs
+          final initResult = Process.runSync('powershell', [
+            '-NoProfile',
+            '-ExecutionPolicy',
+            'Bypass',
+            '-File',
+            scriptPath,
+            '-TargetDataDir',
+            fixtureDir.path,
+            '-OperatorGroup',
+            currentUser,
+          ]);
+          expect(initResult.exitCode, equals(0));
+
+          // Baseline must pass validation (with non-inheriting ReadAndExecute for operator)
+          final baselineVal = Process.runSync('powershell', [
+            '-NoProfile',
+            '-ExecutionPolicy',
+            'Bypass',
+            '-File',
+            scriptPath,
+            '-ValidateOnly',
+            '-TargetDataDir',
+            fixtureDir.path,
+            '-OperatorGroup',
+            currentUser,
+          ]);
+          expect(baselineVal.exitCode, equals(0));
+
+          // 2. Modify operator ACE on base directory to be Read-only without Execute
+          // In icacls, /grant:r replaces existing rights for that user
+          final makeReadOnly = Process.runSync('icacls', [
+            fixtureDir.path,
+            '/grant:r',
+            '$currentUser:(R)',
+          ]);
+          expect(makeReadOnly.exitCode, equals(0));
+
+          // ValidateOnly MUST detect the Read-only ACE on base directory and fail with exit code 1
+          final valReadOnly = Process.runSync('powershell', [
+            '-NoProfile',
+            '-ExecutionPolicy',
+            'Bypass',
+            '-File',
+            scriptPath,
+            '-ValidateOnly',
+            '-TargetDataDir',
+            fixtureDir.path,
+            '-OperatorGroup',
+            currentUser,
+          ]);
+          expect(valReadOnly.exitCode, equals(1));
+          expect(
+            valReadOnly.stdout.toString(),
+            contains('Read-only access is non-compliant'),
+          );
+
+          // 3. Test standalone token file validation (-TargetTokenFile)
+          final valTokenSuccess = Process.runSync('powershell', [
+            '-NoProfile',
+            '-ExecutionPolicy',
+            'Bypass',
+            '-File',
+            scriptPath,
+            '-TargetTokenFile',
+            token.path,
+            '-OperatorGroup',
+            currentUser,
+          ]);
+          expect(valTokenSuccess.exitCode, equals(0));
+          expect(
+            valTokenSuccess.stdout.toString(),
+            contains('Token ACL is fully compliant'),
+          );
+
+          // 4. Inject unauthorized ACE onto token file and verify -TargetTokenFile rejects it
+          final poisonToken = Process.runSync('icacls', [
+            token.path,
+            '/grant',
+            'BUILTIN\\Users:(R)',
+          ]);
+          expect(poisonToken.exitCode, equals(0));
+
+          final valTokenFail = Process.runSync('powershell', [
+            '-NoProfile',
+            '-ExecutionPolicy',
+            'Bypass',
+            '-File',
+            scriptPath,
+            '-TargetTokenFile',
+            token.path,
+            '-OperatorGroup',
+            currentUser,
+          ]);
+          expect(valTokenFail.exitCode, equals(1));
+          expect(
+            valTokenFail.stdout.toString(),
+            contains('Prohibited principal'),
+          );
+        } finally {
+          try {
+            await fixtureDir.delete(recursive: true);
+          } catch (_) {}
+        }
+      },
+    );
+
+    test(
+      'Case 22: Discovery repository accurately propagates service failures and returns empty list on empty success',
+      () async {
+        final prevMode = AppConfig.runMode;
+        try {
+          AppConfig.runMode = AppRunMode.productionClient;
+
+          // 1. Unauthenticated client -> returns NetworkFailure
+          final unauthClient = MonitoringServiceClient(
+            baseUrl: 'http://127.0.0.1:65530',
+          );
+          final discRepoUnauth = DiscoveryRepositoryImpl(db, unauthClient);
+
+          final failJobsRes = await discRepoUnauth.getAllScanJobs();
+          expect(failJobsRes.isFailure, isTrue);
+          expect(failJobsRes.failureOrNull, isA<NetworkFailure>());
+
+          final failJobRes = await discRepoUnauth.getScanJob(1);
+          expect(failJobRes.isFailure, isTrue);
+          expect(failJobRes.failureOrNull, isA<NetworkFailure>());
+
+          // 2. Authenticated client connecting to running server with no scan jobs
+          final token = server.trustedClientToken!;
+          final authedClient = MonitoringServiceClient(
+            baseUrl: 'http://127.0.0.1:$serverPort',
+          );
+          final authRes = await authedClient.authenticateWithProvisionedToken(
+            token,
+          );
+          expect(authRes.isSuccess, isTrue);
+
+          final discRepoAuthed = DiscoveryRepositoryImpl(db, authedClient);
+          final emptyJobsRes = await discRepoAuthed.getAllScanJobs();
+          expect(emptyJobsRes.isSuccess, isTrue);
+          expect(emptyJobsRes.dataOrNull, isEmpty);
+
+          final notFoundRes = await discRepoAuthed.getScanJob(999);
+          expect(notFoundRes.isFailure, isTrue);
+          expect(notFoundRes.failureOrNull, isA<NotFoundFailure>());
+        } finally {
+          AppConfig.runMode = prevMode;
+        }
+      },
+    );
+
+    test(
+      'Case 23: Server-confirmed authenticateWithProvisionedToken verifies session against authoritative server',
+      () async {
+        final client = MonitoringServiceClient(
+          baseUrl: 'http://127.0.0.1:$serverPort',
+        );
+
+        // 1. Empty token fails immediately with 400
+        final emptyRes = await client.authenticateWithProvisionedToken('   ');
+        expect(emptyRes.isFailure, isTrue);
+        expect(emptyRes.statusCode, equals(400));
+        expect(client.isAuthenticated, isFalse);
+
+        // 2. Invalid token fails with 401 and clears session
+        final invalidRes = await client.authenticateWithProvisionedToken(
+          'non_existent_invalid_secret_token_12345678',
+        );
+        expect(invalidRes.isFailure, isTrue);
+        expect(invalidRes.statusCode, equals(401));
+        expect(client.isAuthenticated, isFalse);
+
+        // 3. Unreachable service fails with 503 and exposes clear error
+        final deadClient = MonitoringServiceClient(
+          baseUrl: 'http://127.0.0.1:65531',
+        );
+        final deadRes = await deadClient.authenticateWithProvisionedToken(
+          server.trustedClientToken!,
+        );
+        expect(deadRes.isFailure, isTrue);
+        expect(deadRes.statusCode, equals(503));
+        expect(deadClient.isAuthenticated, isFalse);
+        expect(
+          deadClient.lastConnectionError,
+          contains('Cannot reach authoritative service'),
+        );
+
+        // 4. Valid token succeeds, obtains server-confirmed session details, and sets isAuthenticated
+        final validRes = await client.authenticateWithProvisionedToken(
+          server.trustedClientToken!,
+        );
+        expect(validRes.isSuccess, isTrue);
+        expect(client.isAuthenticated, isTrue);
+        expect(client.currentSession?.role, equals('admin'));
+        expect(
+          client.currentSession?.username,
+          equals('Local Administrator (No Interactive Login)'),
+        );
       },
     );
   });

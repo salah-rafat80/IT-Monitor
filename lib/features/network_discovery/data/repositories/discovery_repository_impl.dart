@@ -246,9 +246,10 @@ class DiscoveryRepositoryImpl implements DiscoveryRepository {
   Future<Result<DiscoveryScanJob>> getScanJob(int scanId) async {
     if (AppConfig.isProductionClient) {
       final latest = await getLatestScanJob();
-      if (latest.isSuccess &&
-          latest.dataOrNull != null &&
-          latest.dataOrNull!.id == scanId) {
+      if (latest.isFailure) {
+        return Result.failure(latest.failureOrNull!);
+      }
+      if (latest.dataOrNull != null && latest.dataOrNull!.id == scanId) {
         return Result.success(latest.dataOrNull!);
       }
       return Result.failure(const NotFoundFailure('Scan job not found'));
@@ -315,7 +316,10 @@ class DiscoveryRepositoryImpl implements DiscoveryRepository {
   Future<Result<List<DiscoveryScanJob>>> getAllScanJobs() async {
     if (AppConfig.isProductionClient) {
       final latest = await getLatestScanJob();
-      if (latest.isSuccess && latest.dataOrNull != null) {
+      if (latest.isFailure) {
+        return Result.failure(latest.failureOrNull!);
+      }
+      if (latest.dataOrNull != null) {
         return Result.success([latest.dataOrNull!]);
       }
       return Result.success([]);

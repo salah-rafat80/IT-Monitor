@@ -608,35 +608,179 @@ class MonitoringServiceServer {
     }
   }
 
+  static String? _findAclScriptPath() {
+    final candidates = [
+      p.join(Directory.current.path, 'installer', 'apply_production_acls.ps1'),
+      p.join(
+        p.dirname(Platform.resolvedExecutable),
+        'installer',
+        'apply_production_acls.ps1',
+      ),
+      p.join(
+        p.dirname(Platform.resolvedExecutable),
+        'apply_production_acls.ps1',
+      ),
+      p.join(
+        Platform.environment['ProgramData'] ?? r'C:\ProgramData',
+        'ITNetworkMonitor',
+        'apply_production_acls.ps1',
+      ),
+    ];
+    for (final candidate in candidates) {
+      if (File(candidate).existsSync()) return candidate;
+    }
+    return null;
+  }
+
   void _verifyTokenAcls(String filePath) {
-    final result = Process.runSync('icacls', [filePath]);
+    if (!Platform.isWindows) return;
+
+    final scriptPath = _findAclScriptPath();
+    final operatorGroup = 'ITNetworkMonitorAdministrators';
+
+    // 1. If apply_production_acls.ps1 is available, reuse canonical policy validator
+    if (scriptPath != null) {
+      final args = [
+        '-NoProfile',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-File',
+        scriptPath,
+        '-TargetTokenFile',
+        filePath,
+        '-OperatorGroup',
+        operatorGroup,
+      ];
+      if (isDevelopment) {
+        args.add('-DevMode');
+        final u = Platform.environment['USERNAME'];
+        if (u != null && u.isNotEmpty) {
+          args.addAll(['-ServiceUser', u]);
+        }
+      }
+      final scriptResult = Process.runSync('powershell', args);
+      if (scriptResult.exitCode == 0) {
+        _log(
+          '[Security] Verified token file ACL using canonical policy validator: $filePath',
+        );
+        return;
+      } else {
+        throw StateError(
+          'Security violation: Token ACL rejected by authoritative policy validator:\n'
+          '${scriptResult.stdout}\n${scriptResult.stderr}',
+        );
+      }
+    }
+
+    // 2. Authoritative standalone PowerShell validator based on actual SecurityDescriptors, SIDs, and rights
+    final psScript =
+        '''
+\$ErrorActionPreference = 'Stop'
+\$filePath = '$filePath'
+\$operatorName = '$operatorGroup'
+\$isDev = \$${isDevelopment ? 'true' : 'false'}
+\$currentUser = '${Platform.environment['USERNAME'] ?? ''}'
+
+\$SID_SYSTEM = 'S-1-5-18'
+\$SID_ADMINS = 'S-1-5-32-544'
+\$PROHIBITED = @('S-1-5-32-545', 'S-1-1-0', 'S-1-5-11')
+\$WRITE_MODIFY_MASK = 0x120116 -bor 0x10000 -bor 0x40000 -bor 0x80000
+
+\$acl = [System.IO.File]::GetAccessControl(\$filePath)
+if (-not \$acl.AreAccessRulesProtected) {
+    throw 'DACL inheritance is not disabled (/inheritance:r required).'
+}
+
+\$operatorSid = \$null
+try {
+    \$operatorSid = (New-Object System.Security.Principal.NTAccount(\$operatorName)).Translate([System.Security.Principal.SecurityIdentifier]).Value
+} catch {
+    if (-not \$isDev) {
+        throw "Could not resolve operator group '\$operatorName' to SID."
+    }
+}
+
+\$currentUserSid = \$null
+if (\$currentUser) {
+    try {
+        \$currentUserSid = (New-Object System.Security.Principal.NTAccount(\$currentUser)).Translate([System.Security.Principal.SecurityIdentifier]).Value
+    } catch {}
+}
+
+\$hasSystem = \$false
+\$hasAdmins = \$false
+\$hasOperator = \$false
+
+foreach (\$rule in \$acl.Access) {
+    if (\$rule.AccessControlType -ne [System.Security.AccessControl.AccessControlType]::Allow) {
+        throw "Non-Allow ACE found for \$(\$rule.IdentityReference.Value)."
+    }
+    \$sid = try { \$rule.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value } catch { \$rule.IdentityReference.Value }
+    \$rights = \$rule.FileSystemRights
+
+    if (\$PROHIBITED -contains \$sid) {
+        throw "Prohibited principal SID \$sid has unauthorized rights: \$rights."
+    }
+
+    if (\$sid -eq \$SID_SYSTEM) {
+        if (-not \$rights.HasFlag([System.Security.AccessControl.FileSystemRights]::FullControl)) {
+            throw 'SYSTEM has insufficient rights; FullControl required.'
+        }
+        \$hasSystem = \$true
+        continue
+    }
+
+    if (\$sid -eq \$SID_ADMINS) {
+        if (-not \$rights.HasFlag([System.Security.AccessControl.FileSystemRights]::FullControl)) {
+            throw 'BUILTIN\\Administrators has insufficient rights; FullControl required.'
+        }
+        \$hasAdmins = \$true
+        continue
+    }
+
+    if (\$operatorSid -and \$sid -eq \$operatorSid) {
+        if (([int]\$rights -band \$WRITE_MODIFY_MASK) -ne 0) {
+            throw "Operator group has unauthorized write/modify rights: \$rights."
+        }
+        if (\$rights.HasFlag([System.Security.AccessControl.FileSystemRights]::ExecuteFile)) {
+            throw "Operator group has unauthorized execute rights: \$rights."
+        }
+        if (-not \$rights.HasFlag([System.Security.AccessControl.FileSystemRights]::Read)) {
+            throw "Operator group missing Read rights: \$rights."
+        }
+        if (\$rule.InheritanceFlags -ne [System.Security.AccessControl.InheritanceFlags]::None -or
+            \$rule.PropagationFlags -ne [System.Security.AccessControl.PropagationFlags]::None) {
+            throw 'Operator group must have non-inheriting ACE.'
+        }
+        \$hasOperator = \$true
+        continue
+    }
+
+    if (\$isDev -and \$currentUserSid -and \$sid -eq \$currentUserSid) {
+        continue
+    }
+
+    throw "Unexpected unapproved principal with SID \$sid (Name: \$(\$rule.IdentityReference.Value))."
+}
+
+if (-not \$hasSystem) { throw 'Missing required FullControl ACE for SYSTEM.' }
+if (-not \$hasAdmins) { throw 'Missing required FullControl ACE for BUILTIN\\Administrators.' }
+if (-not \$isDev -and -not \$hasOperator) { throw "Missing required Read ACE for operator group '\$operatorName'." }
+Write-Output 'OK'
+''';
+
+    final result = Process.runSync('powershell', [
+      '-NoProfile',
+      '-ExecutionPolicy',
+      'Bypass',
+      '-Command',
+      psScript,
+    ]);
+
     if (result.exitCode != 0) {
       throw StateError(
-        'Failed to inspect token file ACL for verification: ${result.stderr}',
-      );
-    }
-    final output = result.stdout.toString();
-    final lower = output.toLowerCase();
-
-    // Verify absence of unapproved principals
-    if (lower.contains(r'builtin\users') ||
-        lower.contains('everyone') ||
-        lower.contains(r'authenticated users')) {
-      throw StateError(
-        'Security violation: Prohibited principal found on token ACL verification:\n$output',
-      );
-    }
-
-    // Verify presence of required allowlisted principals
-    if (!lower.contains('system') || !lower.contains('administrator')) {
-      throw StateError(
-        'Security violation: Required allowlisted principal missing from token ACL verification:\n$output',
-      );
-    }
-
-    if (!isDevelopment && !lower.contains('itnetworkmonitoradministrators')) {
-      throw StateError(
-        'Security violation: Operator group "ITNetworkMonitorAdministrators" missing from token ACL verification:\n$output',
+        'Security violation: Token ACL inspection failed or rejected by authoritative DACL validator:\n'
+        '${result.stderr}\n${result.stdout}',
       );
     }
   }
@@ -2080,15 +2224,21 @@ class MonitoringServiceServer {
           return;
         }
 
-        final coordinator = getIt<DiscoveryCoordinator>();
-        final discoveryRepo = getIt<DiscoveryRepository>();
-        final latestJob = await discoveryRepo.getLatestScanJob();
+        final coordinator = getIt.isRegistered<DiscoveryCoordinator>()
+            ? getIt<DiscoveryCoordinator>()
+            : null;
+        final discoveryRepo = getIt.isRegistered<DiscoveryRepository>()
+            ? getIt<DiscoveryRepository>()
+            : null;
+        final latestJob = discoveryRepo != null
+            ? await discoveryRepo.getLatestScanJob()
+            : null;
 
         await _jsonResponse(request, {
           'success': true,
-          'isScanning': coordinator.isScanning,
-          'activeScanId': coordinator.activeScanId,
-          'latestScan': latestJob.dataOrNull?.toJson(),
+          'isScanning': coordinator?.isScanning ?? false,
+          'activeScanId': coordinator?.activeScanId,
+          'latestScan': latestJob?.dataOrNull?.toJson(),
         });
       } else if (path == '/api/discovery/devices' && request.method == 'GET') {
         final session = _authenticateRequest(request);

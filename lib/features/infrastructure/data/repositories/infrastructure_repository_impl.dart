@@ -4,10 +4,13 @@ import 'dart:convert';
 import 'package:drift/drift.dart';
 import 'package:injectable/injectable.dart';
 
+import '../../../../core/config/app_run_mode.dart';
 import '../../../../core/database/app_database.dart';
+import '../../../../core/di/injection.dart';
 import '../../../../core/errors/failures.dart';
 import '../../../../core/utils/result.dart';
 import '../../../auth/domain/repositories/auth_repository.dart';
+import '../../../monitoring/data/datasources/monitoring_service_client.dart';
 import '../../../users/domain/repositories/audit_log_repository.dart';
 import '../../domain/entities/unifi_device_entity.dart';
 import '../../domain/repositories/infrastructure_repository.dart';
@@ -17,14 +20,66 @@ class InfrastructureRepositoryImpl implements InfrastructureRepository {
   final AppDatabase _db;
   final AuditLogRepository _auditLogRepo;
   final AuthRepository _authRepo;
+  final MonitoringServiceClient? _serviceClient;
+  StreamSubscription? _serviceEventSub;
 
   final StreamController<List<UniFiDeviceEntity>> _devicesController =
       StreamController<List<UniFiDeviceEntity>>.broadcast();
 
-  InfrastructureRepositoryImpl(this._db, this._auditLogRepo, this._authRepo);
+  InfrastructureRepositoryImpl(
+    this._db,
+    this._auditLogRepo,
+    this._authRepo, [
+    this._serviceClient,
+  ]) {
+    _initServiceEventSubscription();
+  }
+
+  MonitoringServiceClient? get _effectiveClient =>
+      _serviceClient ??
+      (getIt.isRegistered<MonitoringServiceClient>()
+          ? getIt<MonitoringServiceClient>()
+          : null);
+
+  void _initServiceEventSubscription() {
+    final client = _effectiveClient;
+    if (client != null) {
+      _serviceEventSub?.cancel();
+      _serviceEventSub = client.eventStream.listen((event) {
+        if (event['event'] == 'infrastructure_updated' ||
+            event['event'] == 'infrastructure_deleted') {
+          _notifyChanged();
+        }
+      });
+    }
+  }
 
   @override
   Future<Result<List<UniFiDeviceEntity>>> getInfrastructureDevices() async {
+    if (AppConfig.isProductionClient) {
+      final client = _effectiveClient;
+      if (client == null || !client.isAuthenticated) {
+        return Result.failure(
+          NetworkFailure(
+            'Production client is not authenticated with the authoritative IT Network Monitor Service.',
+          ),
+        );
+      }
+      final res = await client.getInfrastructureDevices();
+      if (res.isSuccess && res.data != null) {
+        final list = res.data!
+            .map((item) => UniFiDeviceEntity.fromJson(item))
+            .toList();
+        return Result.success(list);
+      } else {
+        return Result.failure(
+          NetworkFailure(
+            'Authoritative monitoring service is unreachable (${res.errorMessage}).',
+          ),
+        );
+      }
+    }
+
     try {
       final rows = await _db.select(_db.infrastructureDevices).get();
       final entities = rows.map(_mapToEntity).toList();
@@ -38,6 +93,15 @@ class InfrastructureRepositoryImpl implements InfrastructureRepository {
 
   @override
   Future<Result<UniFiDeviceEntity?>> getDeviceById(int id) async {
+    if (AppConfig.isProductionClient) {
+      final allRes = await getInfrastructureDevices();
+      if (allRes.isFailure) {
+        return Result.failure(allRes.failureOrNull!);
+      }
+      final match = allRes.dataOrNull!.where((d) => d.id == id).firstOrNull;
+      return Result.success(match);
+    }
+
     try {
       final query = _db.select(_db.infrastructureDevices)
         ..where((t) => t.id.equals(id));
@@ -53,6 +117,17 @@ class InfrastructureRepositoryImpl implements InfrastructureRepository {
 
   @override
   Future<Result<UniFiDeviceEntity?>> getDeviceByIp(String ip) async {
+    if (AppConfig.isProductionClient) {
+      final allRes = await getInfrastructureDevices();
+      if (allRes.isFailure) {
+        return Result.failure(allRes.failureOrNull!);
+      }
+      final match = allRes.dataOrNull!
+          .where((d) => d.ip.trim() == ip.trim())
+          .firstOrNull;
+      return Result.success(match);
+    }
+
     try {
       final query = _db.select(_db.infrastructureDevices)
         ..where((t) => t.ip.equals(ip.trim()));
@@ -70,6 +145,32 @@ class InfrastructureRepositoryImpl implements InfrastructureRepository {
   Future<Result<UniFiDeviceEntity>> saveInfrastructureDevice(
     UniFiDeviceEntity device,
   ) async {
+    if (AppConfig.isProductionClient) {
+      final client = _effectiveClient;
+      if (client == null || !client.isAuthenticated) {
+        return Result.failure(
+          NetworkFailure(
+            'Production client is not authenticated with the authoritative IT Network Monitor Service.',
+          ),
+        );
+      }
+      final res = await client.saveInfrastructureDevice(device.toJson());
+      if (res.isSuccess && res.data != null) {
+        final devJson =
+            res.data!['device'] as Map<String, dynamic>? ?? res.data!;
+        _notifyChanged();
+        return Result.success(
+          device.copyWith(id: devJson['id'] as int? ?? device.id),
+        );
+      } else {
+        return Result.failure(
+          NetworkFailure(
+            'Failed to save infrastructure device via service API: ${res.errorMessage}',
+          ),
+        );
+      }
+    }
+
     try {
       final currentUserRes = await _authRepo.getCurrentUser();
       final currentUser = currentUserRes.dataOrNull;
@@ -166,6 +267,28 @@ class InfrastructureRepositoryImpl implements InfrastructureRepository {
 
   @override
   Future<Result<void>> deleteInfrastructureDevice(int id) async {
+    if (AppConfig.isProductionClient) {
+      final client = _effectiveClient;
+      if (client == null || !client.isAuthenticated) {
+        return Result.failure(
+          NetworkFailure(
+            'Production client is not authenticated with the authoritative IT Network Monitor Service.',
+          ),
+        );
+      }
+      final res = await client.deleteInfrastructureDevice(id);
+      if (res.isSuccess) {
+        _notifyChanged();
+        return Result.success(null);
+      } else {
+        return Result.failure(
+          NetworkFailure(
+            'Failed to delete infrastructure device via service API: ${res.errorMessage}',
+          ),
+        );
+      }
+    }
+
     try {
       final currentUserRes = await _authRepo.getCurrentUser();
       final currentUser = currentUserRes.dataOrNull;
@@ -236,6 +359,9 @@ class InfrastructureRepositoryImpl implements InfrastructureRepository {
 
   @override
   Stream<List<UniFiDeviceEntity>> watchInfrastructureDevices() {
+    if (AppConfig.isProductionClient) {
+      return _devicesController.stream;
+    }
     return (_db.select(
       _db.infrastructureDevices,
     )).watch().map((rows) => rows.map(_mapToEntity).toList());
@@ -250,6 +376,14 @@ class InfrastructureRepositoryImpl implements InfrastructureRepository {
 
   @override
   Future<Result<void>> bootstrapVerifiedAccessPoints() async {
+    if (AppConfig.isProductionClient) {
+      return Result.failure(
+        NetworkFailure(
+          'Infrastructure bootstrap is restricted to the authoritative service daemon.',
+        ),
+      );
+    }
+
     try {
       final verifiedAps = [
         (

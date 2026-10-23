@@ -31,8 +31,15 @@ class AppRouter {
     initialLocation: initialLocation,
     refreshListenable: GoRouterRefreshStream(getIt<AuthCubit>().stream),
     redirect: (context, state) {
-      // Direct access in administrator mode: any route to /login redirects to dashboard
-      if (state.uri.path == '/login') {
+      final authState = getIt<AuthCubit>().state;
+      final isAuth = authState is AuthAuthenticated;
+      final isLoginPage = state.uri.path == '/login';
+
+      if (!isAuth) {
+        return isLoginPage ? null : '/login';
+      }
+
+      if (isLoginPage) {
         return '/dashboard';
       }
       return null;

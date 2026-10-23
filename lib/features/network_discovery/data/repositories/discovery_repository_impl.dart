@@ -1,10 +1,14 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:drift/drift.dart';
 import 'package:injectable/injectable.dart';
 
+import '../../../../core/config/app_run_mode.dart';
 import '../../../../core/database/app_database.dart';
+import '../../../../core/di/injection.dart';
 import '../../../../core/errors/failures.dart';
 import '../../../../core/utils/result.dart';
+import '../../../monitoring/data/datasources/monitoring_service_client.dart';
 import '../../domain/entities/classification_confidence.dart';
 import '../../domain/entities/device_category.dart';
 import '../../domain/entities/discovered_device_entity.dart';
@@ -17,11 +21,74 @@ import '../../domain/repositories/discovery_repository.dart';
 @LazySingleton(as: DiscoveryRepository)
 class DiscoveryRepositoryImpl implements DiscoveryRepository {
   final AppDatabase _db;
+  final MonitoringServiceClient? _serviceClient;
+  StreamSubscription? _serviceEventSub;
 
-  DiscoveryRepositoryImpl(this._db);
+  final StreamController<List<DiscoveredDeviceEntity>>
+  _discoveredDevicesController =
+      StreamController<List<DiscoveredDeviceEntity>>.broadcast();
+  final StreamController<DiscoveryScanJob?> _scanJobController =
+      StreamController<DiscoveryScanJob?>.broadcast();
+
+  DiscoveryRepositoryImpl(this._db, [this._serviceClient]) {
+    _initServiceEventSubscription();
+  }
+
+  MonitoringServiceClient? get _effectiveClient =>
+      _serviceClient ??
+      (getIt.isRegistered<MonitoringServiceClient>()
+          ? getIt<MonitoringServiceClient>()
+          : null);
+
+  void _initServiceEventSubscription() {
+    final client = _effectiveClient;
+    if (client != null) {
+      _serviceEventSub?.cancel();
+      _serviceEventSub = client.eventStream.listen((event) {
+        final ev = event['event']?.toString();
+        if (ev == 'discovery_device_found' ||
+            ev == 'discovery_scan_completed' ||
+            ev == 'discovery_scan_cancelled' ||
+            ev == 'discovery_scan_failed') {
+          // Refresh discovered devices in background
+          getDiscoveredDevices().then((res) {
+            if (res.isSuccess && !_discoveredDevicesController.isClosed) {
+              _discoveredDevicesController.add(res.dataOrNull ?? []);
+            }
+          });
+          getLatestScanJob().then((res) {
+            if (res.isSuccess && !_scanJobController.isClosed) {
+              _scanJobController.add(res.dataOrNull);
+            }
+          });
+        }
+      });
+    }
+  }
 
   @override
   Future<Result<DiscoveryConfigEntity>> getConfig() async {
+    if (AppConfig.isProductionClient) {
+      final client = _effectiveClient;
+      if (client == null || !client.isAuthenticated) {
+        return Result.failure(
+          NetworkFailure(
+            'Production client is not authenticated with the authoritative IT Network Monitor Service.',
+          ),
+        );
+      }
+      final res = await client.getDiscoveryConfig();
+      if (res.isSuccess && res.data != null) {
+        return Result.success(DiscoveryConfigEntity.fromJson(res.data!));
+      } else {
+        return Result.failure(
+          NetworkFailure(
+            'Authoritative monitoring service is unreachable (${res.errorMessage}).',
+          ),
+        );
+      }
+    }
+
     try {
       final row = await (_db.select(
         _db.discoveryConfigurations,
@@ -58,6 +125,27 @@ class DiscoveryRepositoryImpl implements DiscoveryRepository {
 
   @override
   Future<Result<void>> saveConfig(DiscoveryConfigEntity config) async {
+    if (AppConfig.isProductionClient) {
+      final client = _effectiveClient;
+      if (client == null || !client.isAuthenticated) {
+        return Result.failure(
+          NetworkFailure(
+            'Production client is not authenticated with the authoritative IT Network Monitor Service.',
+          ),
+        );
+      }
+      final res = await client.saveDiscoveryConfig(config.toJson());
+      if (res.isSuccess) {
+        return Result.success(null);
+      } else {
+        return Result.failure(
+          NetworkFailure(
+            'Failed to save discovery configuration via service API: ${res.errorMessage}',
+          ),
+        );
+      }
+    }
+
     try {
       final existing = await (_db.select(
         _db.discoveryConfigurations,
@@ -87,6 +175,14 @@ class DiscoveryRepositoryImpl implements DiscoveryRepository {
 
   @override
   Future<Result<int>> createScanJob(DiscoveryScanJob job) async {
+    if (AppConfig.isProductionClient) {
+      return Result.failure(
+        NetworkFailure(
+          'Scan job creation is restricted to the authoritative service daemon.',
+        ),
+      );
+    }
+
     try {
       final id = await _db
           .into(_db.discoveryScans)
@@ -114,6 +210,14 @@ class DiscoveryRepositoryImpl implements DiscoveryRepository {
 
   @override
   Future<Result<void>> updateScanJob(DiscoveryScanJob job) async {
+    if (AppConfig.isProductionClient) {
+      return Result.failure(
+        NetworkFailure(
+          'Scan job updates are restricted to the authoritative service daemon.',
+        ),
+      );
+    }
+
     try {
       await (_db.update(
         _db.discoveryScans,
@@ -140,6 +244,16 @@ class DiscoveryRepositoryImpl implements DiscoveryRepository {
 
   @override
   Future<Result<DiscoveryScanJob>> getScanJob(int scanId) async {
+    if (AppConfig.isProductionClient) {
+      final latest = await getLatestScanJob();
+      if (latest.isSuccess &&
+          latest.dataOrNull != null &&
+          latest.dataOrNull!.id == scanId) {
+        return Result.success(latest.dataOrNull!);
+      }
+      return Result.failure(const NotFoundFailure('Scan job not found'));
+    }
+
     try {
       final row = await (_db.select(
         _db.discoveryScans,
@@ -155,6 +269,31 @@ class DiscoveryRepositoryImpl implements DiscoveryRepository {
 
   @override
   Future<Result<DiscoveryScanJob?>> getLatestScanJob() async {
+    if (AppConfig.isProductionClient) {
+      final client = _effectiveClient;
+      if (client == null || !client.isAuthenticated) {
+        return Result.failure(
+          NetworkFailure(
+            'Production client is not authenticated with the authoritative IT Network Monitor Service.',
+          ),
+        );
+      }
+      final res = await client.getDiscoveryStatus();
+      if (res.isSuccess && res.data != null) {
+        final latest = res.data!['latestScan'] as Map<String, dynamic>?;
+        if (latest != null) {
+          return Result.success(DiscoveryScanJob.fromJson(latest));
+        }
+        return Result.success(null);
+      } else {
+        return Result.failure(
+          NetworkFailure(
+            'Authoritative monitoring service is unreachable (${res.errorMessage}).',
+          ),
+        );
+      }
+    }
+
     try {
       final row =
           await (_db.select(_db.discoveryScans)
@@ -174,6 +313,14 @@ class DiscoveryRepositoryImpl implements DiscoveryRepository {
 
   @override
   Future<Result<List<DiscoveryScanJob>>> getAllScanJobs() async {
+    if (AppConfig.isProductionClient) {
+      final latest = await getLatestScanJob();
+      if (latest.isSuccess && latest.dataOrNull != null) {
+        return Result.success([latest.dataOrNull!]);
+      }
+      return Result.success([]);
+    }
+
     try {
       final rows =
           await (_db.select(_db.discoveryScans)..orderBy([
@@ -190,6 +337,14 @@ class DiscoveryRepositoryImpl implements DiscoveryRepository {
   Future<Result<int>> saveDiscoveredDevice(
     DiscoveredDeviceEntity device,
   ) async {
+    if (AppConfig.isProductionClient) {
+      return Result.failure(
+        NetworkFailure(
+          'Saving discovered devices directly is restricted to the authoritative service daemon.',
+        ),
+      );
+    }
+
     try {
       // Check if IP already recorded for this scan or existing records
       final existing =
@@ -250,6 +405,30 @@ class DiscoveryRepositoryImpl implements DiscoveryRepository {
   Future<Result<List<DiscoveredDeviceEntity>>> getDiscoveredDevices({
     int? scanId,
   }) async {
+    if (AppConfig.isProductionClient) {
+      final client = _effectiveClient;
+      if (client == null || !client.isAuthenticated) {
+        return Result.failure(
+          NetworkFailure(
+            'Production client is not authenticated with the authoritative IT Network Monitor Service.',
+          ),
+        );
+      }
+      final res = await client.getDiscoveryDevices(scanId);
+      if (res.isSuccess && res.data != null) {
+        final list = res.data!
+            .map((item) => DiscoveredDeviceEntity.fromJson(item))
+            .toList();
+        return Result.success(list);
+      } else {
+        return Result.failure(
+          NetworkFailure(
+            'Authoritative monitoring service is unreachable (${res.errorMessage}).',
+          ),
+        );
+      }
+    }
+
     try {
       var query = _db.select(_db.discoveredDevices);
       if (scanId != null) {
@@ -272,6 +451,15 @@ class DiscoveryRepositoryImpl implements DiscoveryRepository {
   Future<Result<DiscoveredDeviceEntity?>> getDiscoveredDeviceByIp(
     String ip,
   ) async {
+    if (AppConfig.isProductionClient) {
+      final allRes = await getDiscoveredDevices();
+      if (allRes.isFailure) return Result.failure(allRes.failureOrNull!);
+      final match = allRes.dataOrNull!
+          .where((d) => d.ip.trim() == ip.trim())
+          .firstOrNull;
+      return Result.success(match);
+    }
+
     try {
       final row =
           await (_db.select(_db.discoveredDevices)
@@ -297,6 +485,45 @@ class DiscoveryRepositoryImpl implements DiscoveryRepository {
     DeviceCategory? confirmedCategory,
     int? reviewerId,
   }) async {
+    if (AppConfig.isProductionClient) {
+      final client = _effectiveClient;
+      if (client == null || !client.isAuthenticated) {
+        return Result.failure(
+          NetworkFailure(
+            'Production client is not authenticated with the authoritative IT Network Monitor Service.',
+          ),
+        );
+      }
+      if (state == ReviewState.approved) {
+        final res = await client.approveDiscoveryDevice({
+          'deviceId': deviceId,
+          if (confirmedCategory != null)
+            'category': confirmedCategory.toValue(),
+        });
+        if (res.isSuccess) {
+          return Result.success(null);
+        } else {
+          return Result.failure(
+            NetworkFailure(
+              'Failed to approve device via service API: ${res.errorMessage}',
+            ),
+          );
+        }
+      } else if (state == ReviewState.rejected) {
+        final res = await client.rejectDiscoveryDevice(deviceId);
+        if (res.isSuccess) {
+          return Result.success(null);
+        } else {
+          return Result.failure(
+            NetworkFailure(
+              'Failed to reject device via service API: ${res.errorMessage}',
+            ),
+          );
+        }
+      }
+      return Result.success(null);
+    }
+
     try {
       await (_db.update(
         _db.discoveredDevices,
@@ -321,6 +548,14 @@ class DiscoveryRepositoryImpl implements DiscoveryRepository {
     int deviceId,
     DiscoveryEvidenceItem item,
   ) async {
+    if (AppConfig.isProductionClient) {
+      return Result.failure(
+        NetworkFailure(
+          'Saving evidence directly is restricted to the authoritative service daemon.',
+        ),
+      );
+    }
+
     try {
       await _db
           .into(_db.discoveryEvidences)
@@ -344,6 +579,15 @@ class DiscoveryRepositoryImpl implements DiscoveryRepository {
   Future<Result<List<DiscoveryEvidenceItem>>> getEvidenceForDevice(
     int deviceId,
   ) async {
+    if (AppConfig.isProductionClient) {
+      final allRes = await getDiscoveredDevices();
+      if (allRes.isFailure) return Result.failure(allRes.failureOrNull!);
+      final match = allRes.dataOrNull!
+          .where((d) => d.id == deviceId)
+          .firstOrNull;
+      return Result.success(match?.evidence ?? []);
+    }
+
     try {
       final rows =
           await (_db.select(_db.discoveryEvidences)
@@ -378,6 +622,9 @@ class DiscoveryRepositoryImpl implements DiscoveryRepository {
 
   @override
   Stream<DiscoveryScanJob?> watchLatestScanJob() {
+    if (AppConfig.isProductionClient) {
+      return _scanJobController.stream;
+    }
     return (_db.select(_db.discoveryScans)
           ..orderBy([
             (t) => OrderingTerm(expression: t.id, mode: OrderingMode.desc),
@@ -389,6 +636,9 @@ class DiscoveryRepositoryImpl implements DiscoveryRepository {
 
   @override
   Stream<List<DiscoveredDeviceEntity>> watchDiscoveredDevices({int? scanId}) {
+    if (AppConfig.isProductionClient) {
+      return _discoveredDevicesController.stream;
+    }
     var query = _db.select(_db.discoveredDevices);
     if (scanId != null) {
       query = query..where((t) => t.scanId.equals(scanId));

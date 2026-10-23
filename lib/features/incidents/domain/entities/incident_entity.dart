@@ -182,6 +182,39 @@ class IncidentEntity extends Equatable {
     };
   }
 
+  factory IncidentEntity.fromJson(Map<String, dynamic> json) {
+    return IncidentEntity(
+      id: json['id'] as int? ?? 0,
+      deviceId: json['deviceId'] as int? ?? 0,
+      deviceName: json['deviceName']?.toString() ?? '',
+      ownerName: json['ownerName']?.toString() ?? 'Unassigned',
+      department: json['department']?.toString() ?? 'General',
+      location: json['location']?.toString(),
+      deviceIp: json['deviceIp']?.toString() ?? '',
+      incidentType: IncidentTypeEnum.fromString(
+        json['incidentType']?.toString() ?? 'device_down',
+      ),
+      severity: IncidentSeverityEnum.fromString(
+        json['severity']?.toString() ?? 'critical',
+      ),
+      status: IncidentStatusEnum.fromString(
+        json['status']?.toString() ?? 'active',
+      ),
+      startedAt: json['startedAt'] != null
+          ? DateTime.parse(json['startedAt'].toString())
+          : DateTime.now(),
+      resolvedAt: json['resolvedAt'] != null
+          ? DateTime.tryParse(json['resolvedAt'].toString())
+          : null,
+      acknowledgedAt: json['acknowledgedAt'] != null
+          ? DateTime.tryParse(json['acknowledgedAt'].toString())
+          : null,
+      acknowledgedBy: json['acknowledgedBy']?.toString(),
+      notes: json['notes']?.toString(),
+      correlationMessage: json['correlationMessage']?.toString(),
+    );
+  }
+
   @override
   List<Object?> get props => [
     id,

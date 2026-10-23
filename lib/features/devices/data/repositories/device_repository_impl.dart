@@ -2,6 +2,7 @@ import 'package:drift/drift.dart';
 import 'package:drift/native.dart' show SqliteException;
 import 'package:injectable/injectable.dart';
 
+import '../../../../core/config/app_run_mode.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/errors/failures.dart';
@@ -31,6 +32,9 @@ class DeviceRepositoryImpl implements DeviceRepository {
     this._serviceClient,
   ]);
 
+  bool get _useAuthoritativeService =>
+      AppConfig.isProductionClient || _serviceClient != null;
+
   MonitoringServiceClient? get _effectiveClient =>
       _serviceClient ??
       (getIt.isRegistered<MonitoringServiceClient>()
@@ -45,8 +49,15 @@ class DeviceRepositoryImpl implements DeviceRepository {
 
   @override
   Future<Result<List<DeviceEntity>>> getDevices() async {
-    final client = _effectiveClient;
-    if (client != null && client.isAuthenticated) {
+    if (_useAuthoritativeService) {
+      final client = _effectiveClient;
+      if (client == null || !client.isAuthenticated) {
+        return Result.failure(
+          NetworkFailure(
+            'Production client is not authenticated with the authoritative IT Network Monitor Service.',
+          ),
+        );
+      }
       final res = await client.getDevices();
       if (res.isSuccess && res.data != null) {
         final list = res.data!.map((item) {
@@ -99,6 +110,18 @@ class DeviceRepositoryImpl implements DeviceRepository {
 
   @override
   Future<Result<DeviceEntity>> getDeviceById(int id) async {
+    if (_useAuthoritativeService) {
+      final allRes = await getDevices();
+      if (allRes.isFailure) {
+        return Result.failure(allRes.failureOrNull!);
+      }
+      final match = allRes.dataOrNull!.where((d) => d.id == id).firstOrNull;
+      if (match == null) {
+        return Result.failure(const NotFoundFailure('Device not found.'));
+      }
+      return Result.success(match);
+    }
+
     try {
       final r = await (_db.select(
         _db.devices,
@@ -149,6 +172,29 @@ class DeviceRepositoryImpl implements DeviceRepository {
 
   @override
   Future<Result<DeviceEntity>> addDevice(DeviceEntity device) async {
+    if (_useAuthoritativeService) {
+      final client = _effectiveClient;
+      if (client == null || !client.isAuthenticated) {
+        return Result.failure(
+          NetworkFailure(
+            'Production client is not authenticated with the authoritative IT Network Monitor Service.',
+          ),
+        );
+      }
+      final res = await client.addDevice(device.toJson());
+      if (res.isSuccess && res.data != null) {
+        final devMap =
+            res.data!['device'] as Map<String, dynamic>? ?? res.data!;
+        return Result.success(DeviceEntity.fromJson(devMap));
+      } else {
+        return Result.failure(
+          NetworkFailure(
+            'Failed to add device via service API: ${res.errorMessage}',
+          ),
+        );
+      }
+    }
+
     try {
       final canonicalIp = InventoryValidator.canonicalizeIpv4(device.ip);
       if (canonicalIp == null) {
@@ -228,6 +274,29 @@ class DeviceRepositoryImpl implements DeviceRepository {
 
   @override
   Future<Result<DeviceEntity>> updateDevice(DeviceEntity device) async {
+    if (_useAuthoritativeService) {
+      final client = _effectiveClient;
+      if (client == null || !client.isAuthenticated) {
+        return Result.failure(
+          NetworkFailure(
+            'Production client is not authenticated with the authoritative IT Network Monitor Service.',
+          ),
+        );
+      }
+      final res = await client.updateDevice(device.toJson());
+      if (res.isSuccess && res.data != null) {
+        final devMap =
+            res.data!['device'] as Map<String, dynamic>? ?? res.data!;
+        return Result.success(DeviceEntity.fromJson(devMap));
+      } else {
+        return Result.failure(
+          NetworkFailure(
+            'Failed to update device via service API: ${res.errorMessage}',
+          ),
+        );
+      }
+    }
+
     try {
       final canonicalIp = InventoryValidator.canonicalizeIpv4(device.ip);
       if (canonicalIp == null) {
@@ -313,8 +382,15 @@ class DeviceRepositoryImpl implements DeviceRepository {
     required String ownerName,
     String? adminUsername,
   }) async {
-    final client = _effectiveClient;
-    if (client != null && client.isAuthenticated) {
+    if (_useAuthoritativeService) {
+      final client = _effectiveClient;
+      if (client == null || !client.isAuthenticated) {
+        return Result.failure(
+          NetworkFailure(
+            'Production client is not authenticated with the authoritative IT Network Monitor Service.',
+          ),
+        );
+      }
       final res = await client.assignDeviceOwner(
         deviceId: deviceId,
         ownerName: ownerName,
@@ -412,6 +488,27 @@ class DeviceRepositoryImpl implements DeviceRepository {
 
   @override
   Future<Result<void>> deleteDevice(int id) async {
+    if (_useAuthoritativeService) {
+      final client = _effectiveClient;
+      if (client == null || !client.isAuthenticated) {
+        return Result.failure(
+          NetworkFailure(
+            'Production client is not authenticated with the authoritative IT Network Monitor Service.',
+          ),
+        );
+      }
+      final res = await client.deleteDevice(id);
+      if (res.isSuccess) {
+        return Result.success(null);
+      } else {
+        return Result.failure(
+          NetworkFailure(
+            'Failed to delete device via service API: ${res.errorMessage}',
+          ),
+        );
+      }
+    }
+
     try {
       final deviceRes = await getDeviceById(id);
       final device = deviceRes.dataOrNull;
@@ -438,6 +535,27 @@ class DeviceRepositoryImpl implements DeviceRepository {
     required int deviceId,
     required bool isEnabled,
   }) async {
+    if (_useAuthoritativeService) {
+      final client = _effectiveClient;
+      if (client == null || !client.isAuthenticated) {
+        return Result.failure(
+          NetworkFailure(
+            'Production client is not authenticated with the authoritative IT Network Monitor Service.',
+          ),
+        );
+      }
+      final res = await client.toggleDeviceMonitoring(deviceId, isEnabled);
+      if (res.isSuccess) {
+        return Result.success(null);
+      } else {
+        return Result.failure(
+          NetworkFailure(
+            'Failed to toggle device monitoring via service API: ${res.errorMessage}',
+          ),
+        );
+      }
+    }
+
     try {
       final now = DateTime.now();
       await (_db.update(
@@ -467,8 +585,17 @@ class DeviceRepositoryImpl implements DeviceRepository {
   ) async {
     try {
       final rawRows = ExcelInventoryParser.parseFile(bytes, filename);
-      final existingDevices = await _db.select(_db.devices).get();
-      final existingIps = existingDevices.map((d) => d.ip.trim()).toSet();
+      final Set<String> existingIps;
+      if (_useAuthoritativeService) {
+        final devRes = await getDevices();
+        if (devRes.isFailure) {
+          return Result.failure(devRes.failureOrNull!);
+        }
+        existingIps = devRes.dataOrNull!.map((d) => d.ip.trim()).toSet();
+      } else {
+        final existingDevices = await _db.select(_db.devices).get();
+        existingIps = existingDevices.map((d) => d.ip.trim()).toSet();
+      }
 
       final preview = InventoryValidator.validateRows(
         rows: rawRows,
@@ -485,6 +612,29 @@ class DeviceRepositoryImpl implements DeviceRepository {
 
   @override
   Future<Result<int>> commitImport(List<DeviceEntity> validDevices) async {
+    if (_useAuthoritativeService) {
+      final client = _effectiveClient;
+      if (client == null || !client.isAuthenticated) {
+        return Result.failure(
+          NetworkFailure(
+            'Production client is not authenticated with the authoritative IT Network Monitor Service.',
+          ),
+        );
+      }
+      final res = await client.importDevices(
+        validDevices.map((d) => d.toJson()).toList(),
+      );
+      if (res.isSuccess) {
+        return Result.success(res.data ?? 0);
+      } else {
+        return Result.failure(
+          NetworkFailure(
+            'Failed to commit inventory import via service API: ${res.errorMessage}',
+          ),
+        );
+      }
+    }
+
     try {
       int count = 0;
       final now = DateTime.now();
@@ -534,6 +684,14 @@ class DeviceRepositoryImpl implements DeviceRepository {
 
   @override
   Future<Result<int>> bootstrapApprovedInventory({bool force = false}) async {
+    if (AppConfig.isProductionClient) {
+      return Result.failure(
+        NetworkFailure(
+          'Inventory bootstrap is restricted to the authoritative service daemon.',
+        ),
+      );
+    }
+
     try {
       final existingDevices = await _db.select(_db.devices).get();
       if (existingDevices.isNotEmpty && !force) {

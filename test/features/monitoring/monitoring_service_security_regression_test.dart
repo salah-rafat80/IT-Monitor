@@ -17,12 +17,19 @@ import 'package:it_network_monitor/features/devices/domain/repositories/device_r
 import 'package:it_network_monitor/features/monitoring/domain/entities/check_result.dart';
 import 'package:it_network_monitor/features/monitoring/domain/entities/device_status_entity.dart';
 import 'package:it_network_monitor/features/monitoring/domain/repositories/monitoring_repository.dart';
+import 'package:it_network_monitor/core/config/app_run_mode.dart';
 import 'package:it_network_monitor/core/errors/failures.dart';
 import 'package:it_network_monitor/features/auth/domain/entities/audit_log_entity.dart';
 import 'package:it_network_monitor/features/devices/data/repositories/device_repository_impl.dart';
+import 'package:it_network_monitor/features/incidents/data/repositories/incident_repository_impl.dart';
+import 'package:it_network_monitor/features/incidents/domain/entities/incident_entity.dart';
+import 'package:it_network_monitor/features/infrastructure/data/repositories/infrastructure_repository_impl.dart';
 import 'package:it_network_monitor/features/monitoring/data/datasources/monitoring_service_client.dart';
 import 'package:it_network_monitor/features/monitoring/data/repositories/monitoring_repository_impl.dart';
 import 'package:it_network_monitor/features/monitoring/presentation/services/monitoring_service_server.dart';
+import 'package:it_network_monitor/features/network_discovery/data/repositories/discovery_repository_impl.dart';
+import 'package:it_network_monitor/features/reports/data/repositories/report_repository_impl.dart';
+import 'package:it_network_monitor/features/reports/domain/entities/report_entity.dart';
 import 'package:it_network_monitor/features/users/domain/repositories/audit_log_repository.dart';
 
 class FakeAuditLogRepository implements AuditLogRepository {
@@ -974,6 +981,342 @@ void main() {
           DatabaseConfig.isDevelopment = prevDevMode;
           client.dispose();
           unauthClient.dispose();
+        }
+      },
+    );
+
+    test(
+      'Case 17: Server-Confirmed Client Authentication via /api/auth/verify',
+      () async {
+        final token = server.trustedClientToken!;
+        expect(token, isNotNull);
+
+        // 1. Direct request without authorization header fails 401
+        final unauthReq = await httpClient.getUrl(
+          Uri.parse('http://127.0.0.1:$serverPort/api/auth/verify'),
+        );
+        final unauthResp = await unauthReq.close();
+        expect(unauthResp.statusCode, equals(401));
+
+        // 2. Direct request with bogus token fails 401
+        final bogusReq = await httpClient.getUrl(
+          Uri.parse('http://127.0.0.1:$serverPort/api/auth/verify'),
+        );
+        bogusReq.headers.set(
+          HttpHeaders.authorizationHeader,
+          'Bearer invalid_token_12345678901234567890123456789012',
+        );
+        final bogusResp = await bogusReq.close();
+        expect(bogusResp.statusCode, equals(401));
+
+        // 3. Direct request with valid token succeeds 200 and confirms session
+        final validReq = await httpClient.getUrl(
+          Uri.parse('http://127.0.0.1:$serverPort/api/auth/verify'),
+        );
+        validReq.headers.set(HttpHeaders.authorizationHeader, 'Bearer $token');
+        final validResp = await validReq.close();
+        expect(validResp.statusCode, equals(200));
+        final bodyStr = await utf8.decoder.bind(validResp).join();
+        final bodyJson = jsonDecode(bodyStr) as Map<String, dynamic>;
+        expect(bodyJson['success'], isTrue);
+        expect(bodyJson['session']['role'], equals('admin'));
+
+        // 4. MonitoringServiceClient.verifySession fails on invalid token
+        final client = MonitoringServiceClient(
+          baseUrl: 'http://127.0.0.1:$serverPort',
+        );
+        try {
+          final badVerify = await client.verifySession(
+            'non_existent_token_1234567890123456',
+          );
+          expect(badVerify.isSuccess, isFalse);
+          expect(client.isAuthenticated, isFalse);
+
+          // 5. MonitoringServiceClient.verifySession succeeds on valid token
+          final goodVerify = await client.verifySession(token);
+          expect(goodVerify.isSuccess, isTrue);
+          expect(client.isAuthenticated, isTrue);
+          expect(client.currentSession?.role, equals('admin'));
+          expect(
+            client.currentSession?.username,
+            equals('Local Administrator (No Interactive Login)'),
+          );
+
+          // 6. authenticateWithTrustedLocalToken successfully verifies with server
+          final authLocalRes = await client.authenticateWithTrustedLocalToken(
+            server.trustedTokenFilePath!,
+          );
+          expect(authLocalRes.isSuccess, isTrue);
+          expect(client.isAuthenticated, isTrue);
+        } finally {
+          client.dispose();
+        }
+      },
+    );
+
+    test(
+      'Case 18: In productionClient mode, unreachable service causes AuthCubit to emit AuthError and AuthUnauthenticated',
+      () async {
+        final prevMode = AppConfig.runMode;
+        try {
+          AppConfig.runMode = AppRunMode.productionClient;
+
+          // 1. When no client is registered in getIt
+          if (getIt.isRegistered<MonitoringServiceClient>()) {
+            await getIt.unregister<MonitoringServiceClient>();
+          }
+          final authRepo = FakeAuthRepository();
+          final authCubit = AuthCubit(authRepo);
+
+          await authCubit.checkAuthStatus();
+          expect(authCubit.state, isA<AuthUnauthenticated>());
+          expect(
+            (authCubit.state as AuthUnauthenticated).hasAdminAccount,
+            isTrue,
+          );
+
+          // 2. When client points to unreachable port
+          final deadClient = MonitoringServiceClient(
+            baseUrl: 'http://127.0.0.1:65531',
+          );
+          getIt.registerSingleton<MonitoringServiceClient>(deadClient);
+
+          await authCubit.checkAuthStatus(server.trustedTokenFilePath!);
+          expect(authCubit.state, isA<AuthUnauthenticated>());
+          expect(deadClient.isAuthenticated, isFalse);
+
+          await getIt.unregister<MonitoringServiceClient>();
+          deadClient.dispose();
+        } finally {
+          AppConfig.runMode = prevMode;
+        }
+      },
+    );
+
+    test(
+      'Case 19: In productionClient mode, all repositories fail closed with NetworkFailure without querying SQLite',
+      () async {
+        final prevMode = AppConfig.runMode;
+        try {
+          AppConfig.runMode = AppRunMode.productionClient;
+
+          // Ensure no client or only unauthenticated client in getIt
+          if (getIt.isRegistered<MonitoringServiceClient>()) {
+            await getIt.unregister<MonitoringServiceClient>();
+          }
+
+          final fakeAuditRepo = FakeAuditLogRepository();
+          final fakeAuthRepo = FakeAuthRepository();
+
+          // 1. DeviceRepositoryImpl
+          final devRepo = DeviceRepositoryImpl(db, fakeAuditRepo, fakeAuthRepo);
+          final devRes = await devRepo.getDevices();
+          expect(devRes.isFailure, isTrue);
+          expect(devRes.failureOrNull, isA<NetworkFailure>());
+
+          final addRes = await devRepo.addDevice(
+            DeviceEntity(
+              id: 999,
+              name: 'Unauthorized Node',
+              type: DeviceType.pc,
+              ip: '192.168.27.99',
+              ownerName: 'Evil',
+              department: 'Attacker',
+              createdAt: DateTime.now(),
+            ),
+          );
+          expect(addRes.isFailure, isTrue);
+          expect(addRes.failureOrNull, isA<NetworkFailure>());
+
+          final bootRes = await devRepo.bootstrapApprovedInventory();
+          expect(bootRes.isFailure, isTrue);
+          expect(bootRes.failureOrNull, isA<NetworkFailure>());
+
+          // 2. MonitoringRepositoryImpl
+          final monRepo = MonitoringRepositoryImpl(db);
+          final monRes = await monRepo.getDeviceStatuses();
+          expect(monRes.isFailure, isTrue);
+          expect(monRes.failureOrNull, isA<NetworkFailure>());
+
+          final saveCheckRes = await monRepo.saveCheckResult(
+            CheckResult(
+              deviceId: 1,
+              targetIp: '192.168.27.99',
+              isSuccess: true,
+              timestamp: DateTime.now(),
+            ),
+          );
+          expect(saveCheckRes.isFailure, isTrue);
+          expect(saveCheckRes.failureOrNull, isA<NetworkFailure>());
+
+          // 3. IncidentRepositoryImpl
+          final incRepo = IncidentRepositoryImpl(db, fakeAuditRepo);
+          final incRes = await incRepo.getActiveIncidents();
+          expect(incRes.isFailure, isTrue);
+          expect(incRes.failureOrNull, isA<NetworkFailure>());
+
+          final createIncRes = await incRepo.createIncident(
+            IncidentEntity(
+              id: 999,
+              deviceId: 1,
+              deviceName: 'Node',
+              ownerName: 'Owner',
+              department: 'IT',
+              deviceIp: '192.168.27.99',
+              incidentType: IncidentTypeEnum.deviceDown,
+              severity: IncidentSeverityEnum.critical,
+              status: IncidentStatusEnum.active,
+              startedAt: DateTime.now(),
+            ),
+          );
+          expect(createIncRes.isFailure, isTrue);
+          expect(createIncRes.failureOrNull, isA<NetworkFailure>());
+
+          // 4. InfrastructureRepositoryImpl
+          final infraRepo = InfrastructureRepositoryImpl(
+            db,
+            fakeAuditRepo,
+            fakeAuthRepo,
+          );
+          final infraRes = await infraRepo.getInfrastructureDevices();
+          expect(infraRes.isFailure, isTrue);
+          expect(infraRes.failureOrNull, isA<NetworkFailure>());
+
+          final bootInfraRes = await infraRepo.bootstrapVerifiedAccessPoints();
+          expect(bootInfraRes.isFailure, isTrue);
+          expect(bootInfraRes.failureOrNull, isA<NetworkFailure>());
+
+          // 5. DiscoveryRepositoryImpl
+          final discRepo = DiscoveryRepositoryImpl(db);
+          final discConfigRes = await discRepo.getConfig();
+          expect(discConfigRes.isFailure, isTrue);
+          expect(discConfigRes.failureOrNull, isA<NetworkFailure>());
+
+          final discDevsRes = await discRepo.getDiscoveredDevices();
+          expect(discDevsRes.isFailure, isTrue);
+          expect(discDevsRes.failureOrNull, isA<NetworkFailure>());
+
+          // 6. ReportRepositoryImpl
+          final reportRepo = ReportRepositoryImpl(db);
+          final repRes = await reportRepo.generateReport(
+            ReportPeriod.last24Hours,
+          );
+          expect(repRes.isFailure, isTrue);
+          expect(repRes.failureOrNull, isA<NetworkFailure>());
+
+          final purgeRes = await reportRepo.purgeCheckResultsOlderThanDays(30);
+          expect(purgeRes.isFailure, isTrue);
+          expect(purgeRes.failureOrNull, isA<NetworkFailure>());
+
+          // Confirm local SQLite tables remain untouched (0 rows)
+          final dbDevices = await db.select(db.devices).get();
+          expect(dbDevices, isEmpty);
+          final dbIncidents = await db.select(db.incidents).get();
+          expect(dbIncidents, isEmpty);
+          final dbChecks = await db.select(db.checkResults).get();
+          expect(dbChecks, isEmpty);
+        } finally {
+          AppConfig.runMode = prevMode;
+        }
+      },
+    );
+
+    test(
+      'Case 20: PowerShell ACL policy validator rejects unauthorized ACEs and unresolvable operator group',
+      () async {
+        final scriptPath = p.normalize(
+          p.join(
+            Directory.current.path,
+            'installer',
+            'apply_production_acls.ps1',
+          ),
+        );
+        expect(File(scriptPath).existsSync(), isTrue);
+
+        final fixtureDir = await Directory.systemTemp.createTemp(
+          'it_monitor_acl_neg_test_',
+        );
+        try {
+          final currentUser =
+              Platform.environment['USERNAME'] ?? 'Administrator';
+
+          final token = File(p.join(fixtureDir.path, 'trusted_client.token'));
+          token.writeAsStringSync('token_secret_acl_fixture_123456');
+
+          // 1. Initial baseline apply to establish clean ACLs
+          final initResult = Process.runSync('powershell', [
+            '-NoProfile',
+            '-ExecutionPolicy',
+            'Bypass',
+            '-File',
+            scriptPath,
+            '-TargetDataDir',
+            fixtureDir.path,
+            '-OperatorGroup',
+            currentUser,
+          ]);
+          expect(initResult.exitCode, equals(0));
+
+          // 2. Negative Test A: Grant prohibited BUILTIN\Users read permissions
+          final addUsersResult = Process.runSync('icacls', [
+            fixtureDir.path,
+            '/grant',
+            'BUILTIN\\Users:(OI)(CI)(R)',
+          ]);
+          expect(addUsersResult.exitCode, equals(0));
+
+          // ValidateOnly must detect the prohibited principal and exit 1
+          final valUsers = Process.runSync('powershell', [
+            '-NoProfile',
+            '-ExecutionPolicy',
+            'Bypass',
+            '-File',
+            scriptPath,
+            '-ValidateOnly',
+            '-TargetDataDir',
+            fixtureDir.path,
+            '-OperatorGroup',
+            currentUser,
+          ]);
+          expect(valUsers.exitCode, equals(1));
+          expect(valUsers.stdout.toString(), contains('Prohibited principal'));
+
+          // 3. Negative Test B: Strip BUILTIN\Users and test non-existent operator group
+          final cleanResult = Process.runSync('powershell', [
+            '-NoProfile',
+            '-ExecutionPolicy',
+            'Bypass',
+            '-File',
+            scriptPath,
+            '-TargetDataDir',
+            fixtureDir.path,
+            '-OperatorGroup',
+            currentUser,
+          ]);
+          expect(cleanResult.exitCode, equals(0));
+
+          // Audit with an invalid operator group name must fail
+          final valBadGroup = Process.runSync('powershell', [
+            '-NoProfile',
+            '-ExecutionPolicy',
+            'Bypass',
+            '-File',
+            scriptPath,
+            '-ValidateOnly',
+            '-TargetDataDir',
+            fixtureDir.path,
+            '-OperatorGroup',
+            'NonExistentGroup12345Special',
+          ]);
+          expect(valBadGroup.exitCode, equals(1));
+          expect(
+            valBadGroup.stdout.toString(),
+            contains('could not be resolved to SID'),
+          );
+        } finally {
+          try {
+            await fixtureDir.delete(recursive: true);
+          } catch (_) {}
         }
       },
     );

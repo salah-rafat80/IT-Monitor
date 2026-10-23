@@ -31,6 +31,30 @@ class UserEntity extends Equatable {
   bool get isAdmin => role == UserRole.admin;
   bool get isViewer => role == UserRole.viewer;
 
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'username': username,
+    'role': role.toValue(),
+    'isEnabled': isEnabled,
+    'createdAt': createdAt.toIso8601String(),
+    'lastLoginAt': lastLoginAt?.toIso8601String(),
+  };
+
+  factory UserEntity.fromJson(Map<String, dynamic> json) {
+    return UserEntity(
+      id: json['id'] as int? ?? 0,
+      username: json['username']?.toString() ?? '',
+      role: UserRole.fromString(json['role']?.toString() ?? 'viewer'),
+      isEnabled: json['isEnabled'] as bool? ?? true,
+      createdAt: json['createdAt'] != null
+          ? DateTime.tryParse(json['createdAt'].toString()) ?? DateTime.now()
+          : DateTime.now(),
+      lastLoginAt: json['lastLoginAt'] != null
+          ? DateTime.tryParse(json['lastLoginAt'].toString())
+          : null,
+    );
+  }
+
   @override
   List<Object?> get props => [
     id,

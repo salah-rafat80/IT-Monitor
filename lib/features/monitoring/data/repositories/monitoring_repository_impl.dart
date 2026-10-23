@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:drift/drift.dart';
 import 'package:injectable/injectable.dart';
 
+import '../../../../core/config/app_run_mode.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/errors/failures.dart';
@@ -23,6 +24,9 @@ class MonitoringRepositoryImpl implements MonitoringRepository {
   MonitoringRepositoryImpl(this._db, [this._serviceClient]) {
     _initServiceEventSubscription();
   }
+
+  bool get _useAuthoritativeService =>
+      AppConfig.isProductionClient || _serviceClient != null;
 
   MonitoringServiceClient? get _effectiveClient =>
       _serviceClient ??
@@ -50,8 +54,15 @@ class MonitoringRepositoryImpl implements MonitoringRepository {
 
   @override
   Future<Result<List<DeviceStatusEntity>>> getDeviceStatuses() async {
-    final client = _effectiveClient;
-    if (client != null && client.isAuthenticated) {
+    if (_useAuthoritativeService) {
+      final client = _effectiveClient;
+      if (client == null || !client.isAuthenticated) {
+        return Result.failure(
+          NetworkFailure(
+            'Production client is not authenticated with the authoritative IT Network Monitor Service.',
+          ),
+        );
+      }
       final res = await client.getDevices();
       if (res.isSuccess && res.data != null) {
         final list = res.data!.map((item) {
@@ -82,6 +93,17 @@ class MonitoringRepositoryImpl implements MonitoringRepository {
 
   @override
   Future<Result<DeviceStatusEntity>> getDeviceStatus(int deviceId) async {
+    if (_useAuthoritativeService) {
+      final allRes = await getDeviceStatuses();
+      if (allRes.isFailure) {
+        return Result.failure(allRes.failureOrNull!);
+      }
+      final match = allRes.dataOrNull!
+          .where((s) => s.deviceId == deviceId)
+          .firstOrNull;
+      return Result.success(match ?? DeviceStatusEntity.initial(deviceId));
+    }
+
     try {
       final r = await (_db.select(
         _db.deviceStatuses,
@@ -99,6 +121,14 @@ class MonitoringRepositoryImpl implements MonitoringRepository {
 
   @override
   Future<Result<void>> saveCheckResult(CheckResult result) async {
+    if (AppConfig.isProductionClient) {
+      return Result.failure(
+        NetworkFailure(
+          'Recording check results is restricted to the authoritative service daemon.',
+        ),
+      );
+    }
+
     try {
       await _db
           .into(_db.checkResults)
@@ -123,6 +153,14 @@ class MonitoringRepositoryImpl implements MonitoringRepository {
 
   @override
   Future<Result<void>> saveDeviceStatus(DeviceStatusEntity status) async {
+    if (AppConfig.isProductionClient) {
+      return Result.failure(
+        NetworkFailure(
+          'Updating device status directly is restricted to the authoritative service daemon.',
+        ),
+      );
+    }
+
     try {
       await _db
           .into(_db.deviceStatuses)
@@ -161,6 +199,30 @@ class MonitoringRepositoryImpl implements MonitoringRepository {
     required int deviceId,
     required bool isMaintenance,
   }) async {
+    if (_useAuthoritativeService) {
+      final client = _effectiveClient;
+      if (client == null || !client.isAuthenticated) {
+        return Result.failure(
+          NetworkFailure(
+            'Production client is not authenticated with the authoritative IT Network Monitor Service.',
+          ),
+        );
+      }
+      final res = await client.setMaintenanceMode(
+        deviceId: deviceId,
+        isMaintenance: isMaintenance,
+      );
+      if (res.isSuccess) {
+        return Result.success(null);
+      } else {
+        return Result.failure(
+          NetworkFailure(
+            'Failed to update maintenance mode via service API: ${res.errorMessage}',
+          ),
+        );
+      }
+    }
+
     try {
       final currentRes = await getDeviceStatus(deviceId);
       final current =

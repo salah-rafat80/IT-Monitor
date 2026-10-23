@@ -5,23 +5,60 @@ import 'package:injectable/injectable.dart';
 import 'package:it_network_monitor/features/incidents/domain/entities/incident_entity.dart';
 import 'package:it_network_monitor/features/incidents/domain/repositories/incident_repository.dart';
 
+import '../../../../core/config/app_run_mode.dart';
 import '../../../../core/database/app_database.dart';
+import '../../../../core/di/injection.dart';
 import '../../../../core/errors/failures.dart';
 import '../../../../core/utils/result.dart';
+import '../../../monitoring/data/datasources/monitoring_service_client.dart';
 import '../../../users/domain/repositories/audit_log_repository.dart';
 
 @LazySingleton(as: IncidentRepository)
 class IncidentRepositoryImpl implements IncidentRepository {
   final AppDatabase _db;
   final AuditLogRepository _auditLogRepo;
+  final MonitoringServiceClient? _serviceClient;
+  StreamSubscription? _serviceEventSub;
 
   final StreamController<List<IncidentEntity>> _activeIncidentsController =
       StreamController<List<IncidentEntity>>.broadcast();
 
-  IncidentRepositoryImpl(this._db, this._auditLogRepo);
+  IncidentRepositoryImpl(this._db, this._auditLogRepo, [this._serviceClient]) {
+    _initServiceEventSubscription();
+  }
+
+  MonitoringServiceClient? get _effectiveClient =>
+      _serviceClient ??
+      (getIt.isRegistered<MonitoringServiceClient>()
+          ? getIt<MonitoringServiceClient>()
+          : null);
+
+  void _initServiceEventSubscription() {
+    final client = _effectiveClient;
+    if (client != null) {
+      _serviceEventSub?.cancel();
+      _serviceEventSub = client.eventStream.listen((event) {
+        if (event['event'] == 'active_incidents_updated' &&
+            event['data'] is List) {
+          final list = (event['data'] as List)
+              .map((e) => IncidentEntity.fromJson(e as Map<String, dynamic>))
+              .toList();
+          _activeIncidentsController.add(list);
+        }
+      });
+    }
+  }
 
   @override
   Future<Result<IncidentEntity>> createIncident(IncidentEntity incident) async {
+    if (AppConfig.isProductionClient) {
+      return Result.failure(
+        NetworkFailure(
+          'Incident creation is restricted to the authoritative service daemon.',
+        ),
+      );
+    }
+
     try {
       final insertedId = await _db
           .into(_db.incidents)
@@ -60,6 +97,32 @@ class IncidentRepositoryImpl implements IncidentRepository {
 
   @override
   Future<Result<List<IncidentEntity>>> getActiveIncidents() async {
+    if (AppConfig.isProductionClient) {
+      final client = _effectiveClient;
+      if (client == null || !client.isAuthenticated) {
+        return Result.failure(
+          NetworkFailure(
+            'Production client is not authenticated with the authoritative IT Network Monitor Service.',
+          ),
+        );
+      }
+      final res = await client.getIncidents();
+      if (res.isSuccess && res.data != null) {
+        final activeRaw = res.data!['active'] as List<dynamic>? ?? [];
+        final list = activeRaw
+            .map((e) => IncidentEntity.fromJson(e as Map<String, dynamic>))
+            .toList();
+        return Result.success(list);
+      } else {
+        return Result.failure(
+          NetworkFailure(
+            'Authoritative monitoring service is unreachable (${res.errorMessage}). '
+            'Ensure IT Network Monitor Service is running.',
+          ),
+        );
+      }
+    }
+
     try {
       final query = _db.select(_db.incidents)
         ..where((t) => t.status.isIn(['active', 'acknowledged']))
@@ -80,6 +143,17 @@ class IncidentRepositoryImpl implements IncidentRepository {
   Future<Result<IncidentEntity?>> getActiveIncidentForDevice(
     int deviceId,
   ) async {
+    if (AppConfig.isProductionClient) {
+      final activeRes = await getActiveIncidents();
+      if (activeRes.isFailure) {
+        return Result.failure(activeRes.failureOrNull!);
+      }
+      final match = activeRes.dataOrNull!
+          .where((i) => i.deviceId == deviceId)
+          .firstOrNull;
+      return Result.success(match);
+    }
+
     try {
       final query = _db.select(_db.incidents)
         ..where(
@@ -99,6 +173,33 @@ class IncidentRepositoryImpl implements IncidentRepository {
 
   @override
   Future<Result<IncidentEntity?>> getIncidentById(int id) async {
+    if (AppConfig.isProductionClient) {
+      final client = _effectiveClient;
+      if (client == null || !client.isAuthenticated) {
+        return Result.failure(
+          NetworkFailure(
+            'Production client is not authenticated with the authoritative IT Network Monitor Service.',
+          ),
+        );
+      }
+      final res = await client.getIncidents();
+      if (res.isSuccess && res.data != null) {
+        final activeRaw = res.data!['active'] as List<dynamic>? ?? [];
+        final historyRaw = res.data!['history'] as List<dynamic>? ?? [];
+        for (final raw in [...activeRaw, ...historyRaw]) {
+          final inc = IncidentEntity.fromJson(raw as Map<String, dynamic>);
+          if (inc.id == id) return Result.success(inc);
+        }
+        return Result.success(null);
+      } else {
+        return Result.failure(
+          NetworkFailure(
+            'Authoritative monitoring service is unreachable (${res.errorMessage}).',
+          ),
+        );
+      }
+    }
+
     try {
       final query = _db.select(_db.incidents)..where((t) => t.id.equals(id));
       final rows = await query.get();
@@ -118,6 +219,27 @@ class IncidentRepositoryImpl implements IncidentRepository {
 
   @override
   Future<Result<void>> resolveIncident(int id, DateTime resolvedAt) async {
+    if (AppConfig.isProductionClient) {
+      final client = _effectiveClient;
+      if (client == null || !client.isAuthenticated) {
+        return Result.failure(
+          NetworkFailure(
+            'Production client is not authenticated with the authoritative IT Network Monitor Service.',
+          ),
+        );
+      }
+      final res = await client.resolveIncident(id);
+      if (res.isSuccess) {
+        return Result.success(null);
+      } else {
+        return Result.failure(
+          NetworkFailure(
+            'Failed to resolve incident via service API: ${res.errorMessage}',
+          ),
+        );
+      }
+    }
+
     try {
       final currentRes = await getIncidentById(id);
       final current = currentRes.dataOrNull;
@@ -150,6 +272,29 @@ class IncidentRepositoryImpl implements IncidentRepository {
     required String username,
     String? note,
   }) async {
+    if (AppConfig.isProductionClient) {
+      final client = _effectiveClient;
+      if (client == null || !client.isAuthenticated) {
+        return Result.failure(
+          NetworkFailure(
+            'Production client is not authenticated with the authoritative IT Network Monitor Service.',
+          ),
+        );
+      }
+      final res = await client.acknowledgeIncident(id);
+      if (res.isFailure) {
+        return Result.failure(
+          NetworkFailure(
+            'Failed to acknowledge incident via service API: ${res.errorMessage}',
+          ),
+        );
+      }
+      if (note != null && note.trim().isNotEmpty) {
+        await client.addIncidentNote(id, note.trim());
+      }
+      return Result.success(null);
+    }
+
     try {
       final currentRes = await getIncidentById(id);
       final current = currentRes.dataOrNull;
@@ -194,6 +339,27 @@ class IncidentRepositoryImpl implements IncidentRepository {
 
   @override
   Future<Result<void>> addNote({required int id, required String note}) async {
+    if (AppConfig.isProductionClient) {
+      final client = _effectiveClient;
+      if (client == null || !client.isAuthenticated) {
+        return Result.failure(
+          NetworkFailure(
+            'Production client is not authenticated with the authoritative IT Network Monitor Service.',
+          ),
+        );
+      }
+      final res = await client.addIncidentNote(id, note);
+      if (res.isSuccess) {
+        return Result.success(null);
+      } else {
+        return Result.failure(
+          NetworkFailure(
+            'Failed to add incident note via service API: ${res.errorMessage}',
+          ),
+        );
+      }
+    }
+
     try {
       final currentRes = await getIncidentById(id);
       final current = currentRes.dataOrNull;
@@ -233,6 +399,43 @@ class IncidentRepositoryImpl implements IncidentRepository {
     int? deviceId,
     String? location,
   }) async {
+    if (AppConfig.isProductionClient) {
+      final client = _effectiveClient;
+      if (client == null || !client.isAuthenticated) {
+        return Result.failure(
+          NetworkFailure(
+            'Production client is not authenticated with the authoritative IT Network Monitor Service.',
+          ),
+        );
+      }
+      final res = await client.getIncidents();
+      if (res.isSuccess && res.data != null) {
+        final historyRaw = res.data!['history'] as List<dynamic>? ?? [];
+        var list = historyRaw
+            .map((e) => IncidentEntity.fromJson(e as Map<String, dynamic>))
+            .toList();
+
+        if (type != null) {
+          list = list.where((i) => i.incidentType.toValue() == type).toList();
+        }
+        if (severity != null) {
+          list = list.where((i) => i.severity.toValue() == severity).toList();
+        }
+        if (deviceId != null) {
+          list = list.where((i) => i.deviceId == deviceId).toList();
+        }
+        if (location != null) {
+          list = list.where((i) => i.location == location).toList();
+        }
+        return Result.success(list);
+      } else {
+        return Result.failure(
+          NetworkFailure(
+            'Authoritative monitoring service is unreachable (${res.errorMessage}).',
+          ),
+        );
+      }
+    }
     try {
       final query = _db.select(_db.incidents)
         ..orderBy([

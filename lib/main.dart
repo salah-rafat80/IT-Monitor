@@ -3,26 +3,34 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import 'core/config/app_run_mode.dart';
 import 'core/di/injection.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
 import 'features/auth/presentation/bloc/auth_cubit.dart';
 import 'features/devices/presentation/bloc/devices_cubit.dart';
+import 'features/infrastructure/presentation/bloc/infrastructure_cubit.dart';
 import 'features/monitoring/data/datasources/monitoring_service_client.dart';
 import 'features/monitoring/presentation/bloc/monitoring_cubit.dart';
-import 'features/users/presentation/bloc/user_management_cubit.dart';
-import 'features/network_discovery/presentation/bloc/network_discovery_cubit.dart';
-
-import 'features/infrastructure/presentation/bloc/infrastructure_cubit.dart';
 import 'features/monitoring/presentation/services/monitoring_service_server.dart';
+import 'features/network_discovery/presentation/bloc/network_discovery_cubit.dart';
+import 'features/users/presentation/bloc/user_management_cubit.dart';
 
 void main(List<String> args) async {
   if (args.contains('--service')) {
+    AppConfig.runMode = AppRunMode.serviceDaemon;
     DartPluginRegistrant.ensureInitialized();
     final config = MonitoringServiceConfig.loadFromEnvironmentOrFile(args);
     final service = MonitoringServiceServer.fromConfig(config);
     await service.start();
     return;
+  }
+
+  if (args.contains('--standalone') ||
+      Platform.environment['IT_MONITOR_STANDALONE'] == 'true') {
+    AppConfig.runMode = AppRunMode.standaloneDevelopment;
+  } else {
+    AppConfig.runMode = AppRunMode.productionClient;
   }
 
   WidgetsFlutterBinding.ensureInitialized();
@@ -43,10 +51,8 @@ void main(List<String> args) async {
     return true;
   };
 
-  await configureDependencies();
-
-  // In Desktop Client mode, authenticate with the authoritative service using local trusted token
-  try {
+  // In Desktop Client mode, register authoritative MonitoringServiceClient in getIt before configureDependencies
+  if (AppConfig.isProductionClient) {
     final client = MonitoringServiceClient(
       baseUrl:
           Platform.environment['IT_MONITOR_SERVICE_URL'] ??
@@ -54,14 +60,34 @@ void main(List<String> args) async {
               ? 'http://127.0.0.1:8080'
               : 'https://127.0.0.1:8443'),
     );
-    final authRes = await client.authenticateWithTrustedLocalToken();
-    if (authRes.isSuccess && client.isAuthenticated) {
-      if (!getIt.isRegistered<MonitoringServiceClient>()) {
-        getIt.registerSingleton<MonitoringServiceClient>(client);
-      }
-      client.connectWebSocket().catchError((_) {});
+    if (!getIt.isRegistered<MonitoringServiceClient>()) {
+      getIt.registerSingleton<MonitoringServiceClient>(client);
     }
-  } catch (_) {}
+  }
+
+  await configureDependencies();
+
+  // Attempt initial server authentication with local trusted token
+  if (AppConfig.isProductionClient &&
+      getIt.isRegistered<MonitoringServiceClient>()) {
+    final client = getIt<MonitoringServiceClient>();
+    try {
+      final authRes = await client.authenticateWithTrustedLocalToken();
+      if (authRes.isSuccess && client.isAuthenticated) {
+        client.connectWebSocket().catchError((error) {
+          debugPrint('[MonitoringServiceClient WebSocket error]: $error');
+        });
+      } else {
+        debugPrint(
+          '[MonitoringServiceClient startup auth notice]: ${authRes.errorMessage}',
+        );
+      }
+    } catch (e, stack) {
+      debugPrint(
+        '[MonitoringServiceClient startup connection error]: $e\n$stack',
+      );
+    }
+  }
 
   runApp(const ITNetworkMonitorApp());
 }

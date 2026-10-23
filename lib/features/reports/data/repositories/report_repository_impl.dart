@@ -4,17 +4,27 @@ import 'package:drift/drift.dart';
 import 'package:injectable/injectable.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../../../../core/config/app_run_mode.dart';
 import '../../../../core/database/app_database.dart';
+import '../../../../core/di/injection.dart';
 import '../../../../core/errors/failures.dart';
 import '../../../../core/utils/result.dart';
+import '../../../monitoring/data/datasources/monitoring_service_client.dart';
 import '../../domain/entities/report_entity.dart';
 import '../../domain/repositories/report_repository.dart';
 
 @LazySingleton(as: ReportRepository)
 class ReportRepositoryImpl implements ReportRepository {
   final AppDatabase _db;
+  final MonitoringServiceClient? _serviceClient;
 
-  ReportRepositoryImpl(this._db);
+  ReportRepositoryImpl(this._db, [this._serviceClient]);
+
+  MonitoringServiceClient? get _effectiveClient =>
+      _serviceClient ??
+      (getIt.isRegistered<MonitoringServiceClient>()
+          ? getIt<MonitoringServiceClient>()
+          : null);
 
   /// Sanitizes text fields for RFC 4180 CSV compliance and neutralizes
   /// spreadsheet formula injection (CSV/DDE injection) on leading characters (=, +, -, @, \t).
@@ -47,6 +57,46 @@ class ReportRepositoryImpl implements ReportRepository {
   Future<Result<ReportSummaryEntity>> generateReport(
     ReportPeriod period,
   ) async {
+    if (AppConfig.isProductionClient) {
+      final client = _effectiveClient;
+      if (client == null || !client.isAuthenticated) {
+        return Result.failure(
+          NetworkFailure(
+            'Production client is not authenticated with the authoritative IT Network Monitor Service.',
+          ),
+        );
+      }
+      final res = await client.getReportSummary(period.name);
+      if (res.isSuccess && res.data != null) {
+        final r = res.data!;
+        final days = period == ReportPeriod.last30Days
+            ? 30
+            : (period == ReportPeriod.last7Days ? 7 : 1);
+        return Result.success(
+          ReportSummaryEntity(
+            period: period,
+            startDate: DateTime.now().subtract(Duration(days: days)),
+            endDate: DateTime.now(),
+            totalDevices: 0,
+            overallAvailabilityPercent:
+                (r['overallAvailabilityPercent'] as num?)?.toDouble(),
+            totalCheckCount: r['totalCheckCount'] as int? ?? 0,
+            successfulCheckCount: r['successfulCheckCount'] as int? ?? 0,
+            failedCheckCount: r['failedCheckCount'] as int? ?? 0,
+            avgLatencyMs: (r['avgLatencyMs'] as num?)?.toDouble(),
+            totalIncidents: r['totalIncidents'] as int? ?? 0,
+            deviceUptimes: const [],
+          ),
+        );
+      } else {
+        return Result.failure(
+          NetworkFailure(
+            'Authoritative monitoring service is unreachable (${res.errorMessage}).',
+          ),
+        );
+      }
+    }
+
     try {
       final now = DateTime.now();
       late DateTime startDate;
@@ -357,6 +407,53 @@ class ReportRepositoryImpl implements ReportRepository {
     ReportSummaryEntity report, [
     String? outputDirectoryPath,
   ]) async {
+    if (AppConfig.isProductionClient) {
+      final client = _effectiveClient;
+      if (client == null || !client.isAuthenticated) {
+        return Result.failure(
+          NetworkFailure(
+            'Production client is not authenticated with the authoritative IT Network Monitor Service.',
+          ),
+        );
+      }
+      final res = await client.exportReportCsv(report.period.name);
+      if (res.isSuccess && res.data != null) {
+        Directory targetDir;
+        if (outputDirectoryPath != null &&
+            outputDirectoryPath.trim().isNotEmpty) {
+          targetDir = Directory(outputDirectoryPath.trim());
+        } else {
+          try {
+            targetDir =
+                await getDownloadsDirectory() ??
+                await getApplicationDocumentsDirectory();
+          } catch (_) {
+            targetDir = Directory.systemTemp;
+          }
+        }
+
+        if (!targetDir.existsSync()) {
+          try {
+            targetDir.createSync(recursive: true);
+          } catch (_) {
+            targetDir = Directory.systemTemp;
+          }
+        }
+
+        final filePath =
+            '${targetDir.path}/IT_Network_Monitor_Report_${DateTime.now().millisecondsSinceEpoch}.csv';
+        final file = File(filePath);
+        await file.writeAsString(res.data!);
+        return Result.success(filePath);
+      } else {
+        return Result.failure(
+          NetworkFailure(
+            'Failed to export report CSV via service API: ${res.errorMessage}',
+          ),
+        );
+      }
+    }
+
     try {
       final buffer = StringBuffer();
       buffer.writeln('IT NETWORK MONITOR - AVAILABILITY REPORT');
@@ -432,6 +529,14 @@ class ReportRepositoryImpl implements ReportRepository {
 
   @override
   Future<Result<int>> purgeCheckResultsOlderThanDays(int days) async {
+    if (AppConfig.isProductionClient) {
+      return Result.failure(
+        NetworkFailure(
+          'Purging check results is restricted to the authoritative service daemon.',
+        ),
+      );
+    }
+
     try {
       final cutoffDate = DateTime.now().subtract(Duration(days: days));
       final count = await (_db.delete(

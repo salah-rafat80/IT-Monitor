@@ -138,6 +138,59 @@ class UniFiDeviceEntity extends Equatable {
     );
   }
 
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'name': name,
+      'ip': ip,
+      'mac': mac,
+      'role': role.toValue(),
+      'roleDisplayName': role.displayName,
+      'location': location,
+      'isCriticalInfrastructure': isCriticalInfrastructure,
+      'requiresAdminConfirmation': requiresAdminConfirmation,
+      'linkedSubnets': linkedSubnets,
+      'controllerUrl': controllerUrl,
+      'siteName': siteName,
+      'isEnabled': isEnabled,
+      'isReadOnly': isReadOnly,
+      'createdAt': createdAt.toIso8601String(),
+      'updatedAt': updatedAt?.toIso8601String(),
+    };
+  }
+
+  factory UniFiDeviceEntity.fromJson(Map<String, dynamic> json) {
+    List<String> subnets = [];
+    if (json['linkedSubnets'] is List) {
+      subnets = (json['linkedSubnets'] as List)
+          .map((e) => e.toString())
+          .toList();
+    }
+    return UniFiDeviceEntity(
+      id: json['id'] as int? ?? 0,
+      name: json['name']?.toString() ?? '',
+      ip: json['ip']?.toString() ?? '',
+      mac: json['mac']?.toString(),
+      role: UniFiDeviceRole.fromString(
+        json['role']?.toString() ?? json['deviceRole']?.toString(),
+      ),
+      location: json['location']?.toString(),
+      isCriticalInfrastructure: json['isCriticalInfrastructure'] == true,
+      requiresAdminConfirmation: json['requiresAdminConfirmation'] != false,
+      linkedSubnets: subnets,
+      controllerUrl: json['controllerUrl']?.toString(),
+      siteName: json['siteName']?.toString() ?? 'default',
+      isEnabled: json['isEnabled'] != false,
+      isReadOnly: json['isReadOnly'] != false,
+      createdAt: json['createdAt'] != null
+          ? DateTime.tryParse(json['createdAt'].toString()) ?? DateTime.now()
+          : DateTime.now(),
+      updatedAt: json['updatedAt'] != null
+          ? DateTime.tryParse(json['updatedAt'].toString())
+          : null,
+    );
+  }
+
   @override
   List<Object?> get props => [
     id,

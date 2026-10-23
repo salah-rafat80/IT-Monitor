@@ -31,6 +31,9 @@ import '../../domain/repositories/monitoring_repository.dart';
 import '../../domain/services/monitoring_scheduler.dart';
 import '../../../infrastructure/domain/entities/unifi_device_entity.dart';
 import '../../../infrastructure/domain/repositories/infrastructure_repository.dart';
+import '../../../../core/config/app_run_mode.dart';
+import '../../../users/domain/repositories/audit_log_repository.dart';
+import '../../../users/domain/repositories/user_repository.dart';
 
 /// Cryptographically secure user session for the monitoring service.
 class ServiceSession {
@@ -298,6 +301,7 @@ class MonitoringServiceServer {
   }
 
   Future<void> start() async {
+    AppConfig.runMode = AppRunMode.serviceDaemon;
     _log(
       'Initializing IT Network Monitor Service (Port: $port, TLS: $useTls, DevMode: $isDevelopment)...',
     );
@@ -897,6 +901,26 @@ class MonitoringServiceServer {
           'success': true,
           'message': 'Session invalidated',
         });
+      } else if ((path == '/api/auth/verify' || path == '/api/auth/session') &&
+          request.method == 'GET') {
+        final session = _authenticateRequest(request);
+        if (session == null) {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': 'Unauthorized: Valid session token required',
+          }, status: HttpStatus.unauthorized);
+          return;
+        }
+
+        await _jsonResponse(request, {
+          'success': true,
+          'session': {
+            'userId': session.userId,
+            'username': session.username,
+            'role': session.role,
+            'expiresAt': session.expiresAt.toIso8601String(),
+          },
+        });
       } else if (path == '/api/devices' && request.method == 'GET') {
         final session = _authenticateRequest(request);
         if (session == null) {
@@ -928,6 +952,210 @@ class MonitoringServiceServer {
             'success': false,
             'error': 'Failed to load devices',
           }, status: 500);
+        }
+      } else if (path == '/api/devices' && request.method == 'POST') {
+        final session = _authenticateRequest(request);
+        if (session == null) {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': 'Unauthorized: Valid session token required',
+          }, status: HttpStatus.unauthorized);
+          return;
+        }
+        if (!_isAdmin(session)) {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': 'Forbidden: Admin role required to create device',
+          }, status: HttpStatus.forbidden);
+          return;
+        }
+
+        final body = await _readJsonBody(request);
+        final device = DeviceEntity.fromJson(body);
+        final deviceRepo = getIt<DeviceRepository>();
+        final res = await deviceRepo.addDevice(device);
+
+        if (res.isSuccess) {
+          final created = res.dataOrNull!;
+          _broadcastEvent('device_created', created.toJson());
+          await _jsonResponse(request, {
+            'success': true,
+            'device': created.toJson(),
+          });
+        } else {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': res.failureOrNull?.message ?? 'Failed to add device',
+          }, status: 400);
+        }
+      } else if ((path == '/api/devices' ||
+              path.startsWith('/api/devices/update')) &&
+          request.method == 'PUT') {
+        final session = _authenticateRequest(request);
+        if (session == null) {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': 'Unauthorized: Valid session token required',
+          }, status: HttpStatus.unauthorized);
+          return;
+        }
+        if (!_isAdmin(session)) {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': 'Forbidden: Admin role required to update device',
+          }, status: HttpStatus.forbidden);
+          return;
+        }
+
+        final body = await _readJsonBody(request);
+        final device = DeviceEntity.fromJson(body);
+        final deviceRepo = getIt<DeviceRepository>();
+        final res = await deviceRepo.updateDevice(device);
+
+        if (res.isSuccess) {
+          final updated = res.dataOrNull!;
+          _broadcastEvent('device_updated', updated.toJson());
+          await _jsonResponse(request, {
+            'success': true,
+            'device': updated.toJson(),
+          });
+        } else {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': res.failureOrNull?.message ?? 'Failed to update device',
+          }, status: 400);
+        }
+      } else if (path.startsWith('/api/devices/') &&
+          path != '/api/devices/assign-owner' &&
+          path != '/api/devices/toggle-monitoring' &&
+          path != '/api/devices/import' &&
+          request.method == 'DELETE') {
+        final session = _authenticateRequest(request);
+        if (session == null) {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': 'Unauthorized: Valid session token required',
+          }, status: HttpStatus.unauthorized);
+          return;
+        }
+        if (!_isAdmin(session)) {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': 'Forbidden: Admin role required to delete device',
+          }, status: HttpStatus.forbidden);
+          return;
+        }
+
+        final idStr = path.substring('/api/devices/'.length);
+        final id = int.tryParse(idStr);
+        if (id == null) {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': 'Invalid device ID',
+          }, status: 400);
+          return;
+        }
+
+        final deviceRepo = getIt<DeviceRepository>();
+        final res = await deviceRepo.deleteDevice(id);
+
+        if (res.isSuccess) {
+          _broadcastEvent('device_deleted', {'deviceId': id});
+          await _jsonResponse(request, {
+            'success': true,
+            'message': 'Device deleted successfully',
+          });
+        } else {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': res.failureOrNull?.message ?? 'Failed to delete device',
+          }, status: 400);
+        }
+      } else if (path == '/api/devices/toggle-monitoring' &&
+          request.method == 'POST') {
+        final session = _authenticateRequest(request);
+        if (session == null) {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': 'Unauthorized: Valid session token required',
+          }, status: HttpStatus.unauthorized);
+          return;
+        }
+        if (!_isAdmin(session)) {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': 'Forbidden: Admin role required to toggle monitoring',
+          }, status: HttpStatus.forbidden);
+          return;
+        }
+
+        final body = await _readJsonBody(request);
+        final deviceId = body['deviceId'] as int?;
+        final isMonitored = body['isMonitored'] as bool? ?? true;
+
+        if (deviceId == null) {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': 'Missing deviceId',
+          }, status: 400);
+          return;
+        }
+
+        final deviceRepo = getIt<DeviceRepository>();
+        final res = await deviceRepo.toggleDeviceMonitoring(
+          deviceId: deviceId,
+          isEnabled: isMonitored,
+        );
+        if (res.isSuccess) {
+          final updated = await deviceRepo.getDeviceById(deviceId);
+          _broadcastEvent('device_updated', updated.dataOrNull?.toJson());
+          await _jsonResponse(request, {
+            'success': true,
+            'device': updated.dataOrNull?.toJson(),
+          });
+        } else {
+          await _jsonResponse(request, {
+            'success': false,
+            'error':
+                res.failureOrNull?.message ?? 'Failed to toggle monitoring',
+          }, status: 400);
+        }
+      } else if (path == '/api/devices/import' && request.method == 'POST') {
+        final session = _authenticateRequest(request);
+        if (session == null) {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': 'Unauthorized: Valid session token required',
+          }, status: HttpStatus.unauthorized);
+          return;
+        }
+        if (!_isAdmin(session)) {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': 'Forbidden: Admin role required to import devices',
+          }, status: HttpStatus.forbidden);
+          return;
+        }
+
+        final body = await _readJsonBody(request);
+        final rawDevices = body['devices'] as List<dynamic>? ?? [];
+        final devices = rawDevices
+            .map((d) => DeviceEntity.fromJson(d as Map<String, dynamic>))
+            .toList();
+
+        final deviceRepo = getIt<DeviceRepository>();
+        final res = await deviceRepo.commitImport(devices);
+        if (res.isSuccess) {
+          _broadcastEvent('devices_imported', {'count': res.dataOrNull});
+          await _jsonResponse(request, {
+            'success': true,
+            'importedCount': res.dataOrNull,
+          });
+        } else {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': res.failureOrNull?.message ?? 'Failed to import devices',
+          }, status: 400);
         }
       } else if (path == '/api/devices/assign-owner' &&
           request.method == 'POST') {
@@ -1087,6 +1315,83 @@ class MonitoringServiceServer {
           await _jsonResponse(request, {
             'success': false,
             'error': res.failureOrNull?.message,
+          }, status: 400);
+        }
+      } else if (path.startsWith('/api/infrastructure/unifi/devices/') &&
+          request.method == 'DELETE') {
+        final session = _authenticateRequest(request);
+        if (session == null) {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': 'Unauthorized: Valid session token required',
+          }, status: HttpStatus.unauthorized);
+          return;
+        }
+        if (!_isAdmin(session)) {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': 'Forbidden: Admin role required to delete infrastructure',
+          }, status: HttpStatus.forbidden);
+          return;
+        }
+
+        final idStr = path.substring(
+          '/api/infrastructure/unifi/devices/'.length,
+        );
+        final id = int.tryParse(idStr);
+        if (id == null) {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': 'Invalid infrastructure device ID',
+          }, status: 400);
+          return;
+        }
+
+        final infraRepo = getIt<InfrastructureRepository>();
+        final res = await infraRepo.deleteInfrastructureDevice(id);
+        if (res.isSuccess) {
+          _broadcastEvent('infrastructure_deleted', {'deviceId': id});
+          await _jsonResponse(request, {
+            'success': true,
+            'message': 'Infrastructure device deleted',
+          });
+        } else {
+          await _jsonResponse(request, {
+            'success': false,
+            'error':
+                res.failureOrNull?.message ??
+                'Failed to delete infrastructure device',
+          }, status: 400);
+        }
+      } else if (path == '/api/incidents/resolve' && request.method == 'POST') {
+        final session = _authenticateRequest(request);
+        if (session == null) {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': 'Unauthorized: Valid session token required',
+          }, status: HttpStatus.unauthorized);
+          return;
+        }
+
+        final body = await _readJsonBody(request);
+        final incidentId = body['incidentId'] as int?;
+
+        if (incidentId != null) {
+          final incidentRepo = getIt<IncidentRepository>();
+          final res = await incidentRepo.resolveIncident(
+            incidentId,
+            DateTime.now(),
+          );
+          await _jsonResponse(request, {
+            'success': res.isSuccess,
+            'message': res.isSuccess
+                ? 'Incident resolved'
+                : res.failureOrNull?.message,
+          });
+        } else {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': 'Missing incidentId',
           }, status: 400);
         }
       } else if (path == '/api/incidents' && request.method == 'GET') {
@@ -1318,6 +1623,107 @@ class MonitoringServiceServer {
           await _jsonResponse(request, {
             'success': false,
             'error': res.failureOrNull?.message,
+          }, status: 500);
+        }
+      } else if (path == '/api/reports/export-csv' && request.method == 'GET') {
+        final session = _authenticateRequest(request);
+        if (session == null) {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': 'Unauthorized: Valid session token required',
+          }, status: HttpStatus.unauthorized);
+          return;
+        }
+
+        final periodStr =
+            request.uri.queryParameters['period'] ?? 'last24Hours';
+        final period = periodStr == 'last7Days'
+            ? ReportPeriod.last7Days
+            : (periodStr == 'last30Days'
+                  ? ReportPeriod.last30Days
+                  : ReportPeriod.last24Hours);
+
+        final reportRepo = getIt<ReportRepository>();
+        final reportRes = await reportRepo.generateReport(period);
+        if (!reportRes.isSuccess || reportRes.dataOrNull == null) {
+          await _jsonResponse(request, {
+            'success': false,
+            'error':
+                reportRes.failureOrNull?.message ?? 'Failed to generate report',
+          }, status: 500);
+          return;
+        }
+
+        final res = await reportRepo.exportReportToCsv(reportRes.dataOrNull!);
+        if (res.isSuccess && res.dataOrNull != null) {
+          final csvContent = await File(res.dataOrNull!).readAsString();
+          await _jsonResponse(request, {'success': true, 'csv': csvContent});
+        } else {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': res.failureOrNull?.message ?? 'Failed to export CSV',
+          }, status: 500);
+        }
+      } else if (path == '/api/users' && request.method == 'GET') {
+        final session = _authenticateRequest(request);
+        if (session == null) {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': 'Unauthorized: Valid session token required',
+          }, status: HttpStatus.unauthorized);
+          return;
+        }
+        if (!_isAdmin(session)) {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': 'Forbidden: Admin role required to view users',
+          }, status: HttpStatus.forbidden);
+          return;
+        }
+
+        final userRepo = getIt<UserRepository>();
+        final res = await userRepo.getUsers();
+        if (res.isSuccess) {
+          await _jsonResponse(request, {
+            'success': true,
+            'users': res.dataOrNull!.map((u) => u.toJson()).toList(),
+          });
+        } else {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': res.failureOrNull?.message ?? 'Failed to load users',
+          }, status: 500);
+        }
+      } else if (path == '/api/audit-logs' && request.method == 'GET') {
+        final session = _authenticateRequest(request);
+        if (session == null) {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': 'Unauthorized: Valid session token required',
+          }, status: HttpStatus.unauthorized);
+          return;
+        }
+        if (!_isAdmin(session)) {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': 'Forbidden: Admin role required to view audit logs',
+          }, status: HttpStatus.forbidden);
+          return;
+        }
+
+        final limitStr = request.uri.queryParameters['limit'];
+        final limit = limitStr != null ? int.tryParse(limitStr) ?? 100 : 100;
+        final auditRepo = getIt<AuditLogRepository>();
+        final res = await auditRepo.getAuditLogs(limit: limit);
+        if (res.isSuccess) {
+          await _jsonResponse(request, {
+            'success': true,
+            'logs': res.dataOrNull!.map((l) => l.toJson()).toList(),
+          });
+        } else {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': res.failureOrNull?.message ?? 'Failed to load audit logs',
           }, status: 500);
         }
       } else if (path == '/api/monitoring/manual-check' &&

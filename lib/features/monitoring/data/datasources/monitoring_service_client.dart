@@ -39,6 +39,8 @@ class ServiceApiResponse<T> {
   const ServiceApiResponse.failure(this.errorMessage, {this.statusCode = 400})
     : isSuccess = false,
       data = null;
+
+  bool get isFailure => !isSuccess;
 }
 
 /// Secure HTTPS / WSS client connector for Desktop Clients communicating
@@ -87,8 +89,78 @@ class MonitoringServiceClient {
 
   Stream<Map<String, dynamic>> get eventStream => _eventStreamController.stream;
 
+  String? _lastConnectionError;
+
+  String? get lastConnectionError => _lastConnectionError;
+  bool get isWebSocketConnected => _webSocket != null;
+
+  /// Verify a session token with the authoritative service and receive explicit confirmation.
+  Future<ServiceApiResponse<ClientSessionInfo>> verifySession([
+    String? tokenToVerify,
+  ]) async {
+    final token = tokenToVerify ?? _currentSession?.token;
+    if (token == null || token.isEmpty) {
+      _currentSession = null;
+      return const ServiceApiResponse.failure(
+        'No session token available to verify.',
+        statusCode: 401,
+      );
+    }
+
+    try {
+      final uri = Uri.parse('$baseUrl/api/auth/verify');
+      final request = await _httpClient!.getUrl(uri);
+      request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $token');
+      final response = await request.close();
+      final responseBody = await utf8.decoder.bind(response).join();
+
+      dynamic parsed;
+      try {
+        parsed = jsonDecode(responseBody);
+      } catch (_) {
+        parsed = null;
+      }
+
+      if (response.statusCode == 200 &&
+          parsed is Map &&
+          parsed['success'] == true &&
+          parsed['session'] is Map) {
+        final sessionData = parsed['session'] as Map<String, dynamic>;
+        _currentSession = ClientSessionInfo(
+          token: token,
+          username:
+              sessionData['username']?.toString() ??
+              'Local Administrator (No Interactive Login)',
+          role: sessionData['role']?.toString() ?? 'admin',
+          expiresAt:
+              DateTime.tryParse(sessionData['expiresAt']?.toString() ?? '') ??
+              DateTime.now().add(const Duration(hours: 24)),
+        );
+        _lastConnectionError = null;
+        return ServiceApiResponse.success(_currentSession!);
+      } else {
+        _currentSession = null;
+        final errMsg = (parsed is Map && parsed.containsKey('error'))
+            ? parsed['error']?.toString()
+            : 'Session token rejected by service (Status: ${response.statusCode})';
+        _lastConnectionError = errMsg;
+        return ServiceApiResponse.failure(
+          errMsg,
+          statusCode: response.statusCode,
+        );
+      }
+    } catch (e) {
+      _currentSession = null;
+      _lastConnectionError = 'Cannot reach authoritative service: $e';
+      return ServiceApiResponse.failure(
+        'Failed to connect to authoritative monitoring service: $e',
+        statusCode: 503,
+      );
+    }
+  }
+
   /// Authenticate using local machine-bound trusted token created by the service in ProgramData.
-  /// Preserves direct launch without interactive login.
+  /// Preserves direct launch without interactive login by requiring explicit server verification.
   Future<ServiceApiResponse<ClientSessionInfo>>
   authenticateWithTrustedLocalToken([String? customTokenPath]) async {
     try {
@@ -102,31 +174,28 @@ class MonitoringServiceClient {
 
       final file = File(tokenPath);
       if (!file.existsSync()) {
+        _currentSession = null;
         return const ServiceApiResponse.failure(
-          'Trusted local client token not found. Service may not be running locally.',
+          'Trusted local client token not found. The IT Network Monitor Service may not be running.',
           statusCode: 401,
         );
       }
 
       final token = file.readAsStringSync().trim();
-      if (token.isEmpty) {
+      if (token.isEmpty || token.length < 32) {
+        _currentSession = null;
         return const ServiceApiResponse.failure(
-          'Trusted local client token is empty.',
+          'Trusted local client token is empty or invalid.',
           statusCode: 401,
         );
       }
 
-      _currentSession = ClientSessionInfo(
-        token: token,
-        username: 'Local Administrator (No Interactive Login)',
-        role: 'admin',
-        expiresAt: DateTime.now().add(const Duration(days: 365)),
-      );
-
-      return ServiceApiResponse.success(_currentSession!);
+      // Send token over secure transport and require explicit server-side acceptance
+      return await verifySession(token);
     } catch (e) {
+      _currentSession = null;
       return ServiceApiResponse.failure(
-        'Failed to read trusted client token: $e',
+        'Failed to read or verify trusted client token: $e',
         statusCode: 401,
       );
     }
@@ -249,6 +318,190 @@ class MonitoringServiceClient {
     );
     if (response.isSuccess) {
       return ServiceApiResponse.success(response.data as Map<String, dynamic>);
+    }
+    return ServiceApiResponse.failure(
+      response.errorMessage,
+      statusCode: response.statusCode,
+    );
+  }
+
+  /// Add a new device to authoritative inventory on the service.
+  Future<ServiceApiResponse<Map<String, dynamic>>> addDevice(
+    Map<String, dynamic> deviceJson,
+  ) async {
+    final response = await _sendRequest(
+      method: 'POST',
+      endpoint: '/api/devices',
+      body: deviceJson,
+      requireAuth: true,
+    );
+    if (response.isSuccess && response.data is Map) {
+      return ServiceApiResponse.success(response.data as Map<String, dynamic>);
+    }
+    return ServiceApiResponse.failure(
+      response.errorMessage,
+      statusCode: response.statusCode,
+    );
+  }
+
+  /// Update an existing device in authoritative inventory on the service.
+  Future<ServiceApiResponse<Map<String, dynamic>>> updateDevice(
+    Map<String, dynamic> deviceJson,
+  ) async {
+    final response = await _sendRequest(
+      method: 'PUT',
+      endpoint: '/api/devices',
+      body: deviceJson,
+      requireAuth: true,
+    );
+    if (response.isSuccess && response.data is Map) {
+      return ServiceApiResponse.success(response.data as Map<String, dynamic>);
+    }
+    return ServiceApiResponse.failure(
+      response.errorMessage,
+      statusCode: response.statusCode,
+    );
+  }
+
+  /// Delete a device from authoritative inventory on the service.
+  Future<ServiceApiResponse<void>> deleteDevice(int id) async {
+    final response = await _sendRequest(
+      method: 'DELETE',
+      endpoint: '/api/devices/$id',
+      requireAuth: true,
+    );
+    if (response.isSuccess) {
+      return const ServiceApiResponse.success(null);
+    }
+    return ServiceApiResponse.failure(
+      response.errorMessage,
+      statusCode: response.statusCode,
+    );
+  }
+
+  /// Toggle monitoring enabled state on a device.
+  Future<ServiceApiResponse<Map<String, dynamic>>> toggleDeviceMonitoring(
+    int deviceId,
+    bool isMonitored,
+  ) async {
+    final response = await _sendRequest(
+      method: 'POST',
+      endpoint: '/api/devices/toggle-monitoring',
+      body: {'deviceId': deviceId, 'isMonitored': isMonitored},
+      requireAuth: true,
+    );
+    if (response.isSuccess && response.data is Map) {
+      return ServiceApiResponse.success(response.data as Map<String, dynamic>);
+    }
+    return ServiceApiResponse.failure(
+      response.errorMessage,
+      statusCode: response.statusCode,
+    );
+  }
+
+  /// Import batch of devices into authoritative inventory.
+  Future<ServiceApiResponse<int>> importDevices(
+    List<Map<String, dynamic>> devicesJson,
+  ) async {
+    final response = await _sendRequest(
+      method: 'POST',
+      endpoint: '/api/devices/import',
+      body: {'devices': devicesJson},
+      requireAuth: true,
+    );
+    if (response.isSuccess && response.data is Map) {
+      final json = response.data as Map<String, dynamic>;
+      return ServiceApiResponse.success(json['importedCount'] as int? ?? 0);
+    }
+    return ServiceApiResponse.failure(
+      response.errorMessage,
+      statusCode: response.statusCode,
+    );
+  }
+
+  /// Delete an infrastructure device from the service.
+  Future<ServiceApiResponse<void>> deleteInfrastructureDevice(int id) async {
+    final response = await _sendRequest(
+      method: 'DELETE',
+      endpoint: '/api/infrastructure/unifi/devices/$id',
+      requireAuth: true,
+    );
+    if (response.isSuccess) {
+      return const ServiceApiResponse.success(null);
+    }
+    return ServiceApiResponse.failure(
+      response.errorMessage,
+      statusCode: response.statusCode,
+    );
+  }
+
+  /// Resolve an active incident on the service.
+  Future<ServiceApiResponse<void>> resolveIncident(int incidentId) async {
+    final response = await _sendRequest(
+      method: 'POST',
+      endpoint: '/api/incidents/resolve',
+      body: {'incidentId': incidentId},
+      requireAuth: true,
+    );
+    if (response.isSuccess) {
+      return const ServiceApiResponse.success(null);
+    }
+    return ServiceApiResponse.failure(
+      response.errorMessage,
+      statusCode: response.statusCode,
+    );
+  }
+
+  /// Export historical availability report as CSV.
+  Future<ServiceApiResponse<String>> exportReportCsv(String period) async {
+    final response = await _sendRequest(
+      method: 'GET',
+      endpoint: '/api/reports/export-csv?period=$period',
+      requireAuth: true,
+    );
+    if (response.isSuccess && response.data is Map) {
+      final json = response.data as Map<String, dynamic>;
+      return ServiceApiResponse.success(json['csv']?.toString() ?? '');
+    }
+    return ServiceApiResponse.failure(
+      response.errorMessage,
+      statusCode: response.statusCode,
+    );
+  }
+
+  /// Fetch users list from the service.
+  Future<ServiceApiResponse<List<Map<String, dynamic>>>> getUsers() async {
+    final response = await _sendRequest(
+      method: 'GET',
+      endpoint: '/api/users',
+      requireAuth: true,
+    );
+    if (response.isSuccess && response.data is Map) {
+      final json = response.data as Map<String, dynamic>;
+      final list =
+          (json['users'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? [];
+      return ServiceApiResponse.success(list);
+    }
+    return ServiceApiResponse.failure(
+      response.errorMessage,
+      statusCode: response.statusCode,
+    );
+  }
+
+  /// Fetch audit logs from the service.
+  Future<ServiceApiResponse<List<Map<String, dynamic>>>> getAuditLogs({
+    int limit = 100,
+  }) async {
+    final response = await _sendRequest(
+      method: 'GET',
+      endpoint: '/api/audit-logs?limit=$limit',
+      requireAuth: true,
+    );
+    if (response.isSuccess && response.data is Map) {
+      final json = response.data as Map<String, dynamic>;
+      final list =
+          (json['logs'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? [];
+      return ServiceApiResponse.success(list);
     }
     return ServiceApiResponse.failure(
       response.errorMessage,
@@ -459,6 +712,152 @@ class MonitoringServiceClient {
       method: 'POST',
       endpoint: '/api/discovery/approve',
       body: body,
+      requireAuth: true,
+    );
+    if (response.isSuccess && response.data is Map) {
+      return ServiceApiResponse.success(response.data as Map<String, dynamic>);
+    }
+    return ServiceApiResponse.failure(
+      response.errorMessage,
+      statusCode: response.statusCode,
+    );
+  }
+
+  /// Reject a discovered device.
+  Future<ServiceApiResponse<void>> rejectDiscoveryDevice(int deviceId) async {
+    final response = await _sendRequest(
+      method: 'POST',
+      endpoint: '/api/discovery/reject',
+      body: {'deviceId': deviceId},
+      requireAuth: true,
+    );
+    if (response.isSuccess) {
+      return const ServiceApiResponse.success(null);
+    }
+    return ServiceApiResponse.failure(
+      response.errorMessage,
+      statusCode: response.statusCode,
+    );
+  }
+
+  /// Fetch discovery configuration from authoritative service.
+  Future<ServiceApiResponse<Map<String, dynamic>>> getDiscoveryConfig() async {
+    final response = await _sendRequest(
+      method: 'GET',
+      endpoint: '/api/discovery/config',
+      requireAuth: true,
+    );
+    if (response.isSuccess && response.data is Map) {
+      final json = response.data as Map<String, dynamic>;
+      return ServiceApiResponse.success(
+        json['config'] as Map<String, dynamic>? ?? {},
+      );
+    }
+    return ServiceApiResponse.failure(
+      response.errorMessage,
+      statusCode: response.statusCode,
+    );
+  }
+
+  /// Save discovery configuration to authoritative service.
+  Future<ServiceApiResponse<void>> saveDiscoveryConfig(
+    Map<String, dynamic> config,
+  ) async {
+    final response = await _sendRequest(
+      method: 'POST',
+      endpoint: '/api/discovery/config',
+      body: config,
+      requireAuth: true,
+    );
+    if (response.isSuccess) {
+      return const ServiceApiResponse.success(null);
+    }
+    return ServiceApiResponse.failure(
+      response.errorMessage,
+      statusCode: response.statusCode,
+    );
+  }
+
+  /// Fetch monitoring configuration from authoritative service.
+  Future<ServiceApiResponse<Map<String, dynamic>>> getMonitoringConfig() async {
+    final response = await _sendRequest(
+      method: 'GET',
+      endpoint: '/api/settings',
+      requireAuth: true,
+    );
+    if (response.isSuccess && response.data is Map) {
+      final json = response.data as Map<String, dynamic>;
+      return ServiceApiResponse.success(
+        json['config'] as Map<String, dynamic>? ?? {},
+      );
+    }
+    return ServiceApiResponse.failure(
+      response.errorMessage,
+      statusCode: response.statusCode,
+    );
+  }
+
+  /// Update monitoring configuration on authoritative service.
+  Future<ServiceApiResponse<void>> updateMonitoringConfig(
+    Map<String, dynamic> config,
+  ) async {
+    final response = await _sendRequest(
+      method: 'POST',
+      endpoint: '/api/settings',
+      body: config,
+      requireAuth: true,
+    );
+    if (response.isSuccess) {
+      return const ServiceApiResponse.success(null);
+    }
+    return ServiceApiResponse.failure(
+      response.errorMessage,
+      statusCode: response.statusCode,
+    );
+  }
+
+  /// Trigger a manual ping/port check for a device via the service.
+  Future<ServiceApiResponse<void>> manualCheck(int deviceId) async {
+    final response = await _sendRequest(
+      method: 'POST',
+      endpoint: '/api/monitoring/manual-check',
+      body: {'deviceId': deviceId},
+      requireAuth: true,
+    );
+    if (response.isSuccess) {
+      return const ServiceApiResponse.success(null);
+    }
+    return ServiceApiResponse.failure(
+      response.errorMessage,
+      statusCode: response.statusCode,
+    );
+  }
+
+  /// Set maintenance mode for a device via the service.
+  Future<ServiceApiResponse<void>> setMaintenanceMode({
+    required int deviceId,
+    required bool isMaintenance,
+  }) async {
+    final response = await _sendRequest(
+      method: 'POST',
+      endpoint: '/api/monitoring/toggle-maintenance',
+      body: {'deviceId': deviceId, 'isMaintenance': isMaintenance},
+      requireAuth: true,
+    );
+    if (response.isSuccess) {
+      return const ServiceApiResponse.success(null);
+    }
+    return ServiceApiResponse.failure(
+      response.errorMessage,
+      statusCode: response.statusCode,
+    );
+  }
+
+  /// Fetch grouped topology from authoritative service.
+  Future<ServiceApiResponse<Map<String, dynamic>>> getTopology() async {
+    final response = await _sendRequest(
+      method: 'GET',
+      endpoint: '/api/topology',
       requireAuth: true,
     );
     if (response.isSuccess && response.data is Map) {

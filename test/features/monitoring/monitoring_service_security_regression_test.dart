@@ -1558,5 +1558,345 @@ void main() {
         );
       },
     );
+
+    test(
+      'Case 24: Remote token startup flow succeeds without local token file and clears session on invalid token',
+      () async {
+        final prevMode = AppConfig.runMode;
+        try {
+          AppConfig.runMode = AppRunMode.productionClient;
+
+          final validRemoteToken = server.trustedClientToken!;
+          final remoteClient = MonitoringServiceClient(
+            baseUrl: 'http://127.0.0.1:$serverPort',
+            provisionedToken: validRemoteToken,
+          );
+
+          if (getIt.isRegistered<MonitoringServiceClient>()) {
+            getIt.unregister<MonitoringServiceClient>();
+          }
+          getIt.registerSingleton<MonitoringServiceClient>(remoteClient);
+
+          final authRepo = FakeAuthRepository();
+          final authCubit = AuthCubit(authRepo);
+
+          // 1. Initial checkAuthStatus with valid remote token and NO local token file
+          expect(remoteClient.isRemoteTokenMode, isTrue);
+          await authCubit.checkAuthStatus();
+
+          expect(remoteClient.isAuthenticated, isTrue);
+          expect(authCubit.state, isA<AuthAuthenticated>());
+          final authUser = (authCubit.state as AuthAuthenticated).user;
+          expect(authUser.username, contains('Local Administrator'));
+          expect(authUser.role, equals(UserRole.admin));
+
+          // 2. Re-verifying session preserves remote authenticated session
+          await authCubit.checkAuthStatus();
+          expect(remoteClient.isAuthenticated, isTrue);
+          expect(authCubit.state, isA<AuthAuthenticated>());
+
+          // 3. Invalid remote token fails closed, clears session, and emits AuthUnauthenticated
+          final invalidRemoteClient = MonitoringServiceClient(
+            baseUrl: 'http://127.0.0.1:$serverPort',
+            provisionedToken: 'invalid_remote_token_12345678901234567890',
+          );
+          getIt.unregister<MonitoringServiceClient>();
+          getIt.registerSingleton<MonitoringServiceClient>(invalidRemoteClient);
+
+          final invalidAuthCubit = AuthCubit(authRepo);
+          await invalidAuthCubit.checkAuthStatus();
+
+          expect(invalidRemoteClient.isAuthenticated, isFalse);
+          expect(invalidRemoteClient.currentSession, isNull);
+          expect(invalidAuthCubit.state, isA<AuthUnauthenticated>());
+        } finally {
+          AppConfig.runMode = prevMode;
+        }
+      },
+    );
+
+    test(
+      'Case 25: Local token startup flow authenticates via custom local token file and clears session on failure',
+      () async {
+        final prevMode = AppConfig.runMode;
+        final tempDir = await Directory.systemTemp.createTemp(
+          'it_monitor_local_token_',
+        );
+        try {
+          AppConfig.runMode = AppRunMode.productionClient;
+
+          final validToken = server.trustedClientToken!;
+          final tokenFile = File(p.join(tempDir.path, 'trusted_client.token'));
+          tokenFile.writeAsStringSync(validToken);
+
+          final localClient = MonitoringServiceClient(
+            baseUrl: 'http://127.0.0.1:$serverPort',
+          );
+
+          if (getIt.isRegistered<MonitoringServiceClient>()) {
+            getIt.unregister<MonitoringServiceClient>();
+          }
+          getIt.registerSingleton<MonitoringServiceClient>(localClient);
+
+          final authRepo = FakeAuthRepository();
+          final authCubit = AuthCubit(authRepo);
+
+          // 1. Valid local token file
+          await authCubit.checkAuthStatus(tokenFile.path);
+          expect(localClient.isAuthenticated, isTrue);
+          expect(authCubit.state, isA<AuthAuthenticated>());
+
+          // 2. Corrupt/missing local token file clears session and emits unauthenticated
+          final corruptTokenFile = File(p.join(tempDir.path, 'corrupt.token'));
+          corruptTokenFile.writeAsStringSync('short');
+
+          final failCubit = AuthCubit(authRepo);
+          await failCubit.checkAuthStatus(corruptTokenFile.path);
+          expect(localClient.isAuthenticated, isFalse);
+          expect(localClient.currentSession, isNull);
+          expect(failCubit.state, isA<AuthUnauthenticated>());
+        } finally {
+          AppConfig.runMode = prevMode;
+          try {
+            await tempDir.delete(recursive: true);
+          } catch (_) {}
+        }
+      },
+    );
+
+    test(
+      'Case 26: Negative ACL tests inject risky rights (DeleteSubdirectoriesAndFiles, Write, inheritance) and prove -ValidateOnly fails',
+      () async {
+        if (!Platform.isWindows) return;
+
+        final scriptCandidate = p.join(
+          Directory.current.path,
+          'installer',
+          'apply_production_acls.ps1',
+        );
+        if (!File(scriptCandidate).existsSync()) return;
+
+        final fixtureDir = await Directory.systemTemp.createTemp(
+          'it_monitor_acl_negative_test_',
+        );
+        try {
+          final currentUser =
+              Platform.environment['USERNAME'] ?? 'Administrator';
+          final token = File(p.join(fixtureDir.path, 'trusted_client.token'));
+          token.writeAsStringSync('token_secret_for_neg_acl_test_123456');
+
+          // Establish baseline
+          final initRes = Process.runSync('powershell', [
+            '-NoProfile',
+            '-ExecutionPolicy',
+            'Bypass',
+            '-File',
+            scriptCandidate,
+            '-TargetDataDir',
+            fixtureDir.path,
+            '-OperatorGroup',
+            currentUser,
+          ]);
+          expect(initRes.exitCode, equals(0));
+
+          final baseVal = Process.runSync('powershell', [
+            '-NoProfile',
+            '-ExecutionPolicy',
+            'Bypass',
+            '-File',
+            scriptCandidate,
+            '-ValidateOnly',
+            '-TargetDataDir',
+            fixtureDir.path,
+            '-OperatorGroup',
+            currentUser,
+          ]);
+          expect(baseVal.exitCode, equals(0));
+
+          // 1. Inject DeleteSubdirectoriesAndFiles (0x40 / DELETE_CHILD)
+          final injectDeleteChild = Process.runSync('powershell', [
+            '-NoProfile',
+            '-Command',
+            '''
+\$acl = [System.IO.Directory]::GetAccessControl('${fixtureDir.path}')
+\$sid = (New-Object System.Security.Principal.NTAccount('$currentUser')).Translate([System.Security.Principal.SecurityIdentifier])
+\$rule = New-Object System.Security.AccessControl.FileSystemAccessRule(\$sid, [System.Security.AccessControl.FileSystemRights]::DeleteSubdirectoriesAndFiles, [System.Security.AccessControl.AccessControlType]::Allow)
+\$acl.AddAccessRule(\$rule)
+[System.IO.Directory]::SetAccessControl('${fixtureDir.path}', \$acl)
+''',
+          ]);
+          expect(injectDeleteChild.exitCode, equals(0));
+
+          final valDeleteChild = Process.runSync('powershell', [
+            '-NoProfile',
+            '-ExecutionPolicy',
+            'Bypass',
+            '-File',
+            scriptCandidate,
+            '-ValidateOnly',
+            '-TargetDataDir',
+            fixtureDir.path,
+            '-OperatorGroup',
+            currentUser,
+          ]);
+          expect(valDeleteChild.exitCode, equals(1));
+          expect(
+            valDeleteChild.stdout.toString(),
+            contains('unauthorized rights'),
+          );
+
+          // Reset baseline
+          Process.runSync('powershell', [
+            '-NoProfile',
+            '-ExecutionPolicy',
+            'Bypass',
+            '-File',
+            scriptCandidate,
+            '-TargetDataDir',
+            fixtureDir.path,
+            '-OperatorGroup',
+            currentUser,
+          ]);
+
+          // 2. Inject WriteData
+          final injectWrite = Process.runSync('icacls', [
+            fixtureDir.path,
+            '/grant',
+            '$currentUser:(WD)',
+          ]);
+          expect(injectWrite.exitCode, equals(0));
+
+          final valWrite = Process.runSync('powershell', [
+            '-NoProfile',
+            '-ExecutionPolicy',
+            'Bypass',
+            '-File',
+            scriptCandidate,
+            '-ValidateOnly',
+            '-TargetDataDir',
+            fixtureDir.path,
+            '-OperatorGroup',
+            currentUser,
+          ]);
+          expect(valWrite.exitCode, equals(1));
+          expect(valWrite.stdout.toString(), contains('unauthorized'));
+
+          // Reset baseline
+          Process.runSync('powershell', [
+            '-NoProfile',
+            '-ExecutionPolicy',
+            'Bypass',
+            '-File',
+            scriptCandidate,
+            '-TargetDataDir',
+            fixtureDir.path,
+            '-OperatorGroup',
+            currentUser,
+          ]);
+
+          // 3. Inject inheritance flags onto Operator ACE (ContainerInherit)
+          final injectInherit = Process.runSync('powershell', [
+            '-NoProfile',
+            '-Command',
+            '''
+\$acl = [System.IO.Directory]::GetAccessControl('${fixtureDir.path}')
+\$sid = (New-Object System.Security.Principal.NTAccount('$currentUser')).Translate([System.Security.Principal.SecurityIdentifier])
+\$rule = New-Object System.Security.AccessControl.FileSystemAccessRule(\$sid, [System.Security.AccessControl.FileSystemRights]::ReadAndExecute, [System.Security.AccessControl.InheritanceFlags]::ContainerInherit, [System.Security.AccessControl.PropagationFlags]::None, [System.Security.AccessControl.AccessControlType]::Allow)
+\$acl.AddAccessRule(\$rule)
+[System.IO.Directory]::SetAccessControl('${fixtureDir.path}', \$acl)
+''',
+          ]);
+          expect(injectInherit.exitCode, equals(0));
+
+          final valInherit = Process.runSync('powershell', [
+            '-NoProfile',
+            '-ExecutionPolicy',
+            'Bypass',
+            '-File',
+            scriptCandidate,
+            '-ValidateOnly',
+            '-TargetDataDir',
+            fixtureDir.path,
+            '-OperatorGroup',
+            currentUser,
+          ]);
+          expect(valInherit.exitCode, equals(1));
+          expect(
+            valInherit.stdout.toString(),
+            contains('non-zero inheritance/propagation flags'),
+          );
+        } finally {
+          try {
+            await fixtureDir.delete(recursive: true);
+          } catch (_) {}
+        }
+      },
+    );
+
+    test(
+      'Case 27: PowerShell fallback _verifyTokenAcls safely handles paths with apostrophes and metacharacters',
+      () async {
+        if (!Platform.isWindows) return;
+
+        final fixtureDir = await Directory.systemTemp.createTemp(
+          "it_monitor_O'Connor_metachar_",
+        );
+        try {
+          final tokenPath = p.join(
+            fixtureDir.path,
+            "O'Connor_\$secret#token.token",
+          );
+          final tokenFile = File(tokenPath);
+          tokenFile.writeAsStringSync(
+            'valid_secret_for_apostrophe_path_12345678',
+          );
+
+          final currentUser =
+              Platform.environment['USERNAME'] ?? 'Administrator';
+
+          // Apply hardened ACLs using PowerShell with environment-based passing
+          final setupAcl = Process.runSync(
+            'powershell',
+            [
+              '-NoProfile',
+              '-Command',
+              r'''
+$Path = $env:TARGET_PATH
+$User = $env:TARGET_USER
+$acl = [System.IO.File]::GetAccessControl($Path)
+$acl.SetAccessRuleProtection($true, $false)
+$rules = @($acl.GetAccessRules($true, $true, [System.Security.Principal.SecurityIdentifier]))
+foreach ($r in $rules) { $acl.PurgeAccessRules($r.IdentityReference) }
+$systemSid = New-Object System.Security.Principal.SecurityIdentifier('S-1-5-18')
+$adminsSid = New-Object System.Security.Principal.SecurityIdentifier('S-1-5-32-544')
+$userSid = (New-Object System.Security.Principal.NTAccount($User)).Translate([System.Security.Principal.SecurityIdentifier])
+$acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($systemSid, [System.Security.AccessControl.FileSystemRights]::FullControl, [System.Security.AccessControl.AccessControlType]::Allow)))
+$acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($adminsSid, [System.Security.AccessControl.FileSystemRights]::FullControl, [System.Security.AccessControl.AccessControlType]::Allow)))
+$acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($userSid, [System.Security.AccessControl.FileSystemRights]::Read, [System.Security.AccessControl.AccessControlType]::Allow)))
+[System.IO.File]::SetAccessControl($Path, $acl)
+''',
+            ],
+            environment: {'TARGET_PATH': tokenPath, 'TARGET_USER': currentUser},
+          );
+          expect(setupAcl.exitCode, equals(0));
+
+          // Run fallback verification on the token file with apostrophes and special characters
+          final testServer = MonitoringServiceServer(
+            port: 65529,
+            useTls: false,
+            isDevelopment: true,
+          );
+
+          expect(
+            () => testServer.verifyTokenAclsForTesting(tokenPath),
+            returnsNormally,
+          );
+        } finally {
+          try {
+            await fixtureDir.delete(recursive: true);
+          } catch (_) {}
+        }
+      },
+    );
   });
 }

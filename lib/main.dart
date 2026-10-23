@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:path/path.dart' as p;
 
 import 'core/config/app_run_mode.dart';
 import 'core/di/injection.dart';
@@ -57,12 +58,25 @@ void main(List<String> args) async {
 
   // In Desktop Client mode, register authoritative MonitoringServiceClient in getIt before configureDependencies
   if (AppConfig.isProductionClient) {
+    final programData = Platform.environment['ProgramData'];
+    final defaultCertPath = programData != null
+        ? p.join(programData, 'ITNetworkMonitor', 'certs', 'server.crt')
+        : null;
+    final trustedCert =
+        Platform.environment['IT_MONITOR_TRUSTED_CERT_PATH'] ??
+        (defaultCertPath != null && File(defaultCertPath).existsSync()
+            ? defaultCertPath
+            : null);
+    final envToken = Platform.environment['IT_MONITOR_CLIENT_TOKEN']?.trim();
+
     final client = MonitoringServiceClient(
       baseUrl:
           Platform.environment['IT_MONITOR_SERVICE_URL'] ??
           (Platform.environment['IT_MONITOR_USE_TLS'] == 'false'
               ? 'http://127.0.0.1:8080'
               : 'https://127.0.0.1:8443'),
+      trustedCertPath: trustedCert,
+      provisionedToken: envToken,
     );
     if (!getIt.isRegistered<MonitoringServiceClient>()) {
       getIt.registerSingleton<MonitoringServiceClient>(client);
@@ -80,9 +94,11 @@ void main(List<String> args) async {
       getIt.isRegistered<MonitoringServiceClient>()) {
     final client = getIt<MonitoringServiceClient>();
     try {
-      final envToken = Platform.environment['IT_MONITOR_CLIENT_TOKEN'];
-      final authRes = (envToken != null && envToken.trim().isNotEmpty)
-          ? await client.authenticateWithProvisionedToken(envToken.trim())
+      final authRes =
+          client.isRemoteTokenMode && client.currentProvisionedToken != null
+          ? await client.authenticateWithProvisionedToken(
+              client.currentProvisionedToken!,
+            )
           : await client.authenticateWithTrustedLocalToken();
 
       if (authRes.isSuccess && client.isAuthenticated) {

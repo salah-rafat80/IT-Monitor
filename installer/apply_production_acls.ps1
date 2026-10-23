@@ -33,6 +33,9 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+if (-not $TargetTokenFile -and $env:IT_MONITOR_TARGET_TOKEN_FILE) {
+    $TargetTokenFile = $env:IT_MONITOR_TARGET_TOKEN_FILE
+}
 $DataDir = $TargetDataDir
 
 # Well-known SIDs for robust, language-agnostic principal matching
@@ -44,10 +47,21 @@ $SID_AUTH_USERS = "S-1-5-11"
 
 $PROHIBITED_SIDS = @($SID_USERS, $SID_EVERYONE, $SID_AUTH_USERS)
 
+$DELETE_CHILD = [int][System.Security.AccessControl.FileSystemRights]::DeleteSubdirectoriesAndFiles
 $WRITE_MODIFY_MASK = [int][System.Security.AccessControl.FileSystemRights]::Write -bor
                      [int][System.Security.AccessControl.FileSystemRights]::Delete -bor
+                     $DELETE_CHILD -bor
                      [int][System.Security.AccessControl.FileSystemRights]::ChangePermissions -bor
                      [int][System.Security.AccessControl.FileSystemRights]::TakeOwnership
+
+# Exact allowed operator rights allowlists:
+# Base directory requires ReadAndExecute (traversal only, non-inheriting)
+$OPERATOR_BASE_DIR_ALLOWED_RIGHTS = [int][System.Security.AccessControl.FileSystemRights]::ReadAndExecute -bor
+                                    [int][System.Security.AccessControl.FileSystemRights]::Synchronize
+
+# Token file requires Read-only (non-inheriting, no execute, no write/delete)
+$OPERATOR_TOKEN_ALLOWED_RIGHTS = [int][System.Security.AccessControl.FileSystemRights]::Read -bor
+                                 [int][System.Security.AccessControl.FileSystemRights]::Synchronize
 
 function Get-PrincipalSid {
     param([System.Security.Principal.IdentityReference]$IdentityRef)
@@ -207,7 +221,8 @@ function Audit-DaclPolicy {
         [System.Security.AccessControl.FileSystemSecurity]$Acl,
         [string]$PathDescription,
         [bool]$IsBaseDir = $false,
-        [bool]$IsToken = $false
+        [bool]$IsToken = $false,
+        [bool]$IsDirectory = $false
     )
 
     $localFindings = @()
@@ -245,6 +260,13 @@ function Audit-DaclPolicy {
         if ($sid -eq $SID_SYSTEM) {
             if ($rights.HasFlag([System.Security.AccessControl.FileSystemRights]::FullControl)) {
                 $hasSystemFullControl = $true
+                if ($IsDirectory -or $IsBaseDir) {
+                    $hasExpectedInherit = $rule.InheritanceFlags.HasFlag([System.Security.AccessControl.InheritanceFlags]::ContainerInherit) -and
+                                          $rule.InheritanceFlags.HasFlag([System.Security.AccessControl.InheritanceFlags]::ObjectInherit)
+                    if (-not $hasExpectedInherit) {
+                        $localFindings += "[$PathDescription] NT AUTHORITY\SYSTEM on directory is missing required child inheritance (ContainerInherit + ObjectInherit required, found: $($rule.InheritanceFlags))."
+                    }
+                }
             } else {
                 $localFindings += "[$PathDescription] NT AUTHORITY\SYSTEM has insufficient rights: $rights (FullControl required)."
             }
@@ -254,6 +276,13 @@ function Audit-DaclPolicy {
         if ($sid -eq $SID_ADMINS) {
             if ($rights.HasFlag([System.Security.AccessControl.FileSystemRights]::FullControl)) {
                 $hasAdminsFullControl = $true
+                if ($IsDirectory -or $IsBaseDir) {
+                    $hasExpectedInherit = $rule.InheritanceFlags.HasFlag([System.Security.AccessControl.InheritanceFlags]::ContainerInherit) -and
+                                          $rule.InheritanceFlags.HasFlag([System.Security.AccessControl.InheritanceFlags]::ObjectInherit)
+                    if (-not $hasExpectedInherit) {
+                        $localFindings += "[$PathDescription] BUILTIN\Administrators on directory is missing required child inheritance (ContainerInherit + ObjectInherit required, found: $($rule.InheritanceFlags))."
+                    }
+                }
             } else {
                 $localFindings += "[$PathDescription] BUILTIN\Administrators has insufficient rights: $rights (FullControl required)."
             }
@@ -270,8 +299,12 @@ function Audit-DaclPolicy {
                 if ($hasInherit) {
                     $localFindings += "[$PathDescription] Operator group '$OperatorGroup' has non-zero inheritance/propagation flags ($($rule.InheritanceFlags), $($rule.PropagationFlags)) on base directory. Traversal permissions must not inherit into child files."
                 }
+                # Check exact rights allowlist
+                if (([int]$rights -band -bnot $OPERATOR_BASE_DIR_ALLOWED_RIGHTS) -ne 0) {
+                    $localFindings += "[$PathDescription] Operator group '$OperatorGroup' has unauthorized rights on base directory outside permitted allowlist (found: $rights). Prohibited rights include DeleteSubdirectoriesAndFiles, Write, Delete, ChangePermissions, TakeOwnership."
+                }
                 if (([int]$rights -band $WRITE_MODIFY_MASK) -ne 0) {
-                    $localFindings += "[$PathDescription] Operator group '$OperatorGroup' has unauthorized write/modify rights on base directory: $rights"
+                    $localFindings += "[$PathDescription] Operator group '$OperatorGroup' has unauthorized write/modify/delete rights on base directory: $rights"
                 }
                 # Policy strictly requires ReadAndExecute. Read-only ACE is non-compliant.
                 if (-not $rights.HasFlag([System.Security.AccessControl.FileSystemRights]::ReadAndExecute)) {
@@ -283,6 +316,10 @@ function Audit-DaclPolicy {
                               ($rule.PropagationFlags -ne [System.Security.AccessControl.PropagationFlags]::None)
                 if ($hasInherit) {
                     $localFindings += "[$PathDescription] Operator group '$OperatorGroup' has non-zero inheritance/propagation flags ($($rule.InheritanceFlags), $($rule.PropagationFlags)) on trusted token."
+                }
+                # Check exact rights allowlist
+                if (([int]$rights -band -bnot $OPERATOR_TOKEN_ALLOWED_RIGHTS) -ne 0) {
+                    $localFindings += "[$PathDescription] Operator group '$OperatorGroup' has unauthorized rights on trusted token outside permitted allowlist (found: $rights)."
                 }
                 if (([int]$rights -band $WRITE_MODIFY_MASK) -ne 0) {
                     $localFindings += "[$PathDescription] Operator group '$OperatorGroup' has unauthorized write/modify/delete rights on trusted token: $rights"
@@ -353,7 +390,7 @@ function Invoke-AclPolicyAudit {
         return @{ InspectedCount = $inspectedCount; Findings = @("[BaseDir] Could not inspect base directory ACL: $($baseResult.Error)"); FatalError = $true; ExitCode = 2 }
     }
     $inspectedCount++
-    $auditFindings += Audit-DaclPolicy -Acl $baseResult.Acl -PathDescription "BaseDir" -IsBaseDir $true
+    $auditFindings += Audit-DaclPolicy -Acl $baseResult.Acl -PathDescription "BaseDir" -IsBaseDir $true -IsDirectory $true
 
     # 2. Trusted Client Token
     $tokenPath = Join-Path $DataDir "trusted_client.token"
@@ -418,7 +455,7 @@ function Invoke-AclPolicyAudit {
             return @{ InspectedCount = $inspectedCount; Findings = @("[Certs] Could not inspect certs/ ACL: $($certsResult.Error)"); FatalError = $true; ExitCode = 2 }
         }
         $inspectedCount++
-        $auditFindings += Audit-DaclPolicy -Acl $certsResult.Acl -PathDescription "Certs"
+        $auditFindings += Audit-DaclPolicy -Acl $certsResult.Acl -PathDescription "Certs" -IsDirectory $true
     } elseif ($certsStatus -eq "AccessDenied") {
         return @{ InspectedCount = $inspectedCount; Findings = @("[Certs] Access denied inspecting certs/ directory."); FatalError = $true; ExitCode = 2 }
     }
@@ -433,7 +470,7 @@ function Invoke-AclPolicyAudit {
             return @{ InspectedCount = $inspectedCount; Findings = @("[Logs] Could not inspect logs/ ACL: $($logsResult.Error)"); FatalError = $true; ExitCode = 2 }
         }
         $inspectedCount++
-        $auditFindings += Audit-DaclPolicy -Acl $logsResult.Acl -PathDescription "Logs"
+        $auditFindings += Audit-DaclPolicy -Acl $logsResult.Acl -PathDescription "Logs" -IsDirectory $true
     } elseif ($logsStatus -eq "AccessDenied") {
         return @{ InspectedCount = $inspectedCount; Findings = @("[Logs] Access denied inspecting logs/ directory."); FatalError = $true; ExitCode = 2 }
     }

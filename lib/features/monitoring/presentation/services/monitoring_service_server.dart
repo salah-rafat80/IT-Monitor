@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
+import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 
 import '../../../../core/database/app_database.dart';
@@ -319,16 +320,18 @@ class MonitoringServiceServer {
       if (certPath == null || !File(certPath!).existsSync()) {
         final err =
             'Production security violation: TLS certificate file not found or inaccessible at "$certPath". '
-            'In production, valid certificate and private key files are required. Ensure certificate exists and '
-            'the service account has read access.';
+            'In production, valid certificate and private key files are required. '
+            'ACTION REQUIRED: Run "provision_tls_certificate.bat" (or "installer\\provision_tls_certificate.ps1") as Administrator '
+            'to generate and provision initial production TLS credentials, or place your organization\'s valid server.crt in the certs directory.';
         _log('FATAL: $err');
         throw StateError(err);
       }
       if (keyPath == null || !File(keyPath!).existsSync()) {
         final err =
             'Production security violation: TLS private key file not found or inaccessible at "$keyPath". '
-            'In production, valid certificate and private key files are required. Ensure private key exists and '
-            'the service account has read access.';
+            'In production, valid certificate and private key files are required. '
+            'ACTION REQUIRED: Run "provision_tls_certificate.bat" (or "installer\\provision_tls_certificate.ps1") as Administrator '
+            'to generate and provision initial production TLS credentials, or place your organization\'s valid server.key in the certs directory.';
         _log('FATAL: $err');
         throw StateError(err);
       }
@@ -632,6 +635,11 @@ class MonitoringServiceServer {
     return null;
   }
 
+  @visibleForTesting
+  void verifyTokenAclsForTesting(String filePath) {
+    _verifyTokenAcls(filePath);
+  }
+
   void _verifyTokenAcls(String filePath) {
     if (!Platform.isWindows) return;
 
@@ -672,102 +680,129 @@ class MonitoringServiceServer {
       }
     }
 
-    // 2. Authoritative standalone PowerShell validator based on actual SecurityDescriptors, SIDs, and rights
-    final psScript =
-        '''
-\$ErrorActionPreference = 'Stop'
-\$filePath = '$filePath'
-\$operatorName = '$operatorGroup'
-\$isDev = \$${isDevelopment ? 'true' : 'false'}
-\$currentUser = '${Platform.environment['USERNAME'] ?? ''}'
+    // 2. Authoritative standalone PowerShell validator based on actual SecurityDescriptors, SIDs, and rights.
+    // Dynamic values are passed strictly via the process environment map,
+    // avoiding PowerShell source string interpolation, argument parsing bugs, and script injection.
+    const psScript = r'''
+$ErrorActionPreference = 'Stop'
 
-\$SID_SYSTEM = 'S-1-5-18'
-\$SID_ADMINS = 'S-1-5-32-544'
-\$PROHIBITED = @('S-1-5-32-545', 'S-1-1-0', 'S-1-5-11')
-\$WRITE_MODIFY_MASK = 0x120116 -bor 0x10000 -bor 0x40000 -bor 0x80000
+$TargetFilePath = $env:IT_MONITOR_TARGET_TOKEN_FILE
+$OperatorGroupName = $env:IT_MONITOR_OPERATOR_GROUP
+$IsDevMode = $env:IT_MONITOR_IS_DEV -eq 'true'
+$CurrentUsername = $env:IT_MONITOR_CURRENT_USER
 
-\$acl = [System.IO.File]::GetAccessControl(\$filePath)
-if (-not \$acl.AreAccessRulesProtected) {
+$SID_SYSTEM = 'S-1-5-18'
+$SID_ADMINS = 'S-1-5-32-544'
+$PROHIBITED = @('S-1-5-32-545', 'S-1-1-0', 'S-1-5-11')
+
+# Risky / write-modify rights mask including DeleteSubdirectoriesAndFiles (0x40)
+$DELETE_CHILD = [int][System.Security.AccessControl.FileSystemRights]::DeleteSubdirectoriesAndFiles
+$WRITE_MODIFY_MASK = [int][System.Security.AccessControl.FileSystemRights]::Write -bor
+                     [int][System.Security.AccessControl.FileSystemRights]::Delete -bor
+                     $DELETE_CHILD -bor
+                     [int][System.Security.AccessControl.FileSystemRights]::ChangePermissions -bor
+                     [int][System.Security.AccessControl.FileSystemRights]::TakeOwnership
+
+# Exact allowed operator rights allowlist on token file (Read + Synchronize only)
+$OPERATOR_TOKEN_ALLOWED_RIGHTS = [int][System.Security.AccessControl.FileSystemRights]::Read -bor
+                                 [int][System.Security.AccessControl.FileSystemRights]::Synchronize
+
+if (-not $TargetFilePath -or -not [System.IO.File]::Exists($TargetFilePath)) {
+    throw "Target token file does not exist or is inaccessible: '$TargetFilePath'"
+}
+
+$acl = [System.IO.File]::GetAccessControl($TargetFilePath)
+if (-not $acl.AreAccessRulesProtected) {
     throw 'DACL inheritance is not disabled (/inheritance:r required).'
 }
 
-\$operatorSid = \$null
+$operatorSid = $null
 try {
-    \$operatorSid = (New-Object System.Security.Principal.NTAccount(\$operatorName)).Translate([System.Security.Principal.SecurityIdentifier]).Value
+    $operatorSid = (New-Object System.Security.Principal.NTAccount($OperatorGroupName)).Translate([System.Security.Principal.SecurityIdentifier]).Value
 } catch {
-    if (-not \$isDev) {
-        throw "Could not resolve operator group '\$operatorName' to SID."
+    if (-not $IsDevMode) {
+        throw "Could not resolve operator group '$OperatorGroupName' to SID."
     }
 }
 
-\$currentUserSid = \$null
-if (\$currentUser) {
+$currentUserSid = $null
+if ($CurrentUsername) {
     try {
-        \$currentUserSid = (New-Object System.Security.Principal.NTAccount(\$currentUser)).Translate([System.Security.Principal.SecurityIdentifier]).Value
+        $currentUserSid = (New-Object System.Security.Principal.NTAccount($CurrentUsername)).Translate([System.Security.Principal.SecurityIdentifier]).Value
     } catch {}
 }
 
-\$hasSystem = \$false
-\$hasAdmins = \$false
-\$hasOperator = \$false
+$hasSystem = $false
+$hasAdmins = $false
+$hasOperator = $false
 
-foreach (\$rule in \$acl.Access) {
-    if (\$rule.AccessControlType -ne [System.Security.AccessControl.AccessControlType]::Allow) {
-        throw "Non-Allow ACE found for \$(\$rule.IdentityReference.Value)."
+foreach ($rule in $acl.Access) {
+    if ($rule.AccessControlType -ne [System.Security.AccessControl.AccessControlType]::Allow) {
+        throw "Non-Allow ACE found for $($rule.IdentityReference.Value)."
     }
-    \$sid = try { \$rule.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value } catch { \$rule.IdentityReference.Value }
-    \$rights = \$rule.FileSystemRights
+    $sid = try { $rule.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value } catch { $rule.IdentityReference.Value }
+    $rights = $rule.FileSystemRights
 
-    if (\$PROHIBITED -contains \$sid) {
-        throw "Prohibited principal SID \$sid has unauthorized rights: \$rights."
+    if ($PROHIBITED -contains $sid) {
+        throw "Prohibited principal SID $sid has unauthorized rights: $rights."
     }
 
-    if (\$sid -eq \$SID_SYSTEM) {
-        if (-not \$rights.HasFlag([System.Security.AccessControl.FileSystemRights]::FullControl)) {
+    if ($sid -eq $SID_SYSTEM) {
+        if (-not $rights.HasFlag([System.Security.AccessControl.FileSystemRights]::FullControl)) {
             throw 'SYSTEM has insufficient rights; FullControl required.'
         }
-        \$hasSystem = \$true
+        $hasSystem = $true
         continue
     }
 
-    if (\$sid -eq \$SID_ADMINS) {
-        if (-not \$rights.HasFlag([System.Security.AccessControl.FileSystemRights]::FullControl)) {
-            throw 'BUILTIN\\Administrators has insufficient rights; FullControl required.'
+    if ($sid -eq $SID_ADMINS) {
+        if (-not $rights.HasFlag([System.Security.AccessControl.FileSystemRights]::FullControl)) {
+            throw 'BUILTIN\Administrators has insufficient rights; FullControl required.'
         }
-        \$hasAdmins = \$true
+        $hasAdmins = $true
         continue
     }
 
-    if (\$operatorSid -and \$sid -eq \$operatorSid) {
-        if (([int]\$rights -band \$WRITE_MODIFY_MASK) -ne 0) {
-            throw "Operator group has unauthorized write/modify rights: \$rights."
+    if ($operatorSid -and $sid -eq $operatorSid) {
+        if (([int]$rights -band -bnot $OPERATOR_TOKEN_ALLOWED_RIGHTS) -ne 0) {
+            throw "Operator group has unauthorized rights outside allowlist: $rights."
         }
-        if (\$rights.HasFlag([System.Security.AccessControl.FileSystemRights]::ExecuteFile)) {
-            throw "Operator group has unauthorized execute rights: \$rights."
+        if (([int]$rights -band $WRITE_MODIFY_MASK) -ne 0) {
+            throw "Operator group has unauthorized write/modify rights: $rights."
         }
-        if (-not \$rights.HasFlag([System.Security.AccessControl.FileSystemRights]::Read)) {
-            throw "Operator group missing Read rights: \$rights."
+        if ($rights.HasFlag([System.Security.AccessControl.FileSystemRights]::ExecuteFile)) {
+            throw "Operator group has unauthorized execute rights: $rights."
         }
-        if (\$rule.InheritanceFlags -ne [System.Security.AccessControl.InheritanceFlags]::None -or
-            \$rule.PropagationFlags -ne [System.Security.AccessControl.PropagationFlags]::None) {
+        if (-not $rights.HasFlag([System.Security.AccessControl.FileSystemRights]::Read)) {
+            throw "Operator group missing Read rights: $rights."
+        }
+        if ($rule.InheritanceFlags -ne [System.Security.AccessControl.InheritanceFlags]::None -or
+            $rule.PropagationFlags -ne [System.Security.AccessControl.PropagationFlags]::None) {
             throw 'Operator group must have non-inheriting ACE.'
         }
-        \$hasOperator = \$true
+        $hasOperator = $true
         continue
     }
 
-    if (\$isDev -and \$currentUserSid -and \$sid -eq \$currentUserSid) {
+    if ($IsDevMode -and $currentUserSid -and $sid -eq $currentUserSid) {
         continue
     }
 
-    throw "Unexpected unapproved principal with SID \$sid (Name: \$(\$rule.IdentityReference.Value))."
+    throw "Unexpected unapproved principal with SID $sid (Name: $($rule.IdentityReference.Value))."
 }
 
-if (-not \$hasSystem) { throw 'Missing required FullControl ACE for SYSTEM.' }
-if (-not \$hasAdmins) { throw 'Missing required FullControl ACE for BUILTIN\\Administrators.' }
-if (-not \$isDev -and -not \$hasOperator) { throw "Missing required Read ACE for operator group '\$operatorName'." }
+if (-not $hasSystem) { throw 'Missing required FullControl ACE for SYSTEM.' }
+if (-not $hasAdmins) { throw 'Missing required FullControl ACE for BUILTIN\Administrators.' }
+if (-not $IsDevMode -and -not $hasOperator) { throw "Missing required Read ACE for operator group '$OperatorGroupName'." }
 Write-Output 'OK'
 ''';
+
+    final envMap = {
+      'IT_MONITOR_TARGET_TOKEN_FILE': filePath,
+      'IT_MONITOR_OPERATOR_GROUP': operatorGroup,
+      'IT_MONITOR_IS_DEV': isDevelopment ? 'true' : 'false',
+      'IT_MONITOR_CURRENT_USER': Platform.environment['USERNAME'] ?? '',
+    };
 
     final result = Process.runSync('powershell', [
       '-NoProfile',
@@ -775,7 +810,7 @@ Write-Output 'OK'
       'Bypass',
       '-Command',
       psScript,
-    ]);
+    ], environment: envMap);
 
     if (result.exitCode != 0) {
       throw StateError(

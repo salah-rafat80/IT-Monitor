@@ -50,10 +50,13 @@ class MonitoringServiceClient {
   baseUrl; // e.g. "https://127.0.0.1:8443" or "http://127.0.0.1:8080"
   final String? trustedCertPath;
   final SecurityContext? customSecurityContext;
+  final String? provisionedToken;
 
   HttpClient? _httpClient;
   WebSocket? _webSocket;
   ClientSessionInfo? _currentSession;
+  bool _isRemoteTokenMode = false;
+  String? _effectiveProvisionedToken;
 
   final StreamController<Map<String, dynamic>> _eventStreamController =
       StreamController<Map<String, dynamic>>.broadcast();
@@ -62,17 +65,51 @@ class MonitoringServiceClient {
     required this.baseUrl,
     this.trustedCertPath,
     this.customSecurityContext,
+    this.provisionedToken,
   }) {
+    if (provisionedToken != null && provisionedToken!.trim().isNotEmpty) {
+      _isRemoteTokenMode = true;
+      _effectiveProvisionedToken = provisionedToken!.trim();
+    }
     _initHttpClient();
   }
 
   void _initHttpClient() {
     SecurityContext? secContext = customSecurityContext;
-    if (secContext == null &&
-        trustedCertPath != null &&
-        File(trustedCertPath!).existsSync()) {
-      secContext = SecurityContext(withTrustedRoots: false);
-      secContext.setTrustedCertificates(trustedCertPath!);
+    String? certPath = trustedCertPath;
+
+    final isHttps = baseUrl.toLowerCase().startsWith('https:');
+
+    if (isHttps && secContext == null) {
+      if (certPath == null || !File(certPath).existsSync()) {
+        final envCert = Platform.environment['IT_MONITOR_TRUSTED_CERT_PATH'];
+        if (envCert != null && File(envCert).existsSync()) {
+          certPath = envCert;
+        } else {
+          final programData = Platform.environment['ProgramData'];
+          if (programData != null) {
+            final defaultCert = p.join(
+              programData,
+              'ITNetworkMonitor',
+              'certs',
+              'server.crt',
+            );
+            if (File(defaultCert).existsSync()) {
+              certPath = defaultCert;
+            }
+          }
+        }
+      }
+
+      if (certPath != null) {
+        try {
+          if (File(certPath).existsSync()) {
+            final testSec = SecurityContext(withTrustedRoots: false);
+            testSec.setTrustedCertificates(certPath);
+            secContext = testSec;
+          }
+        } catch (_) {}
+      }
     }
 
     _httpClient = HttpClient(context: secContext);
@@ -86,6 +123,29 @@ class MonitoringServiceClient {
       _currentSession != null && !_currentSession!.isExpired;
 
   bool get isAdmin => isAuthenticated && _currentSession!.isAdmin;
+
+  bool get isRemoteTokenMode {
+    if (_isRemoteTokenMode) return true;
+    final envToken = Platform.environment['IT_MONITOR_CLIENT_TOKEN'];
+    return envToken != null && envToken.trim().isNotEmpty;
+  }
+
+  String? get currentProvisionedToken {
+    if (_effectiveProvisionedToken != null &&
+        _effectiveProvisionedToken!.isNotEmpty) {
+      return _effectiveProvisionedToken;
+    }
+    final envToken = Platform.environment['IT_MONITOR_CLIENT_TOKEN']?.trim();
+    if (envToken != null && envToken.isNotEmpty) {
+      return envToken;
+    }
+    return null;
+  }
+
+  void clearSession() {
+    _currentSession = null;
+    _lastConnectionError = null;
+  }
 
   Stream<Map<String, dynamic>> get eventStream => _eventStreamController.stream;
 
@@ -163,6 +223,7 @@ class MonitoringServiceClient {
   /// Preserves direct launch without interactive login by requiring explicit server verification.
   Future<ServiceApiResponse<ClientSessionInfo>>
   authenticateWithTrustedLocalToken([String? customTokenPath]) async {
+    _isRemoteTokenMode = false;
     try {
       final programData = Platform.environment['ProgramData'];
       final tokenPath =
@@ -216,6 +277,8 @@ class MonitoringServiceClient {
         statusCode: 400,
       );
     }
+    _isRemoteTokenMode = true;
+    _effectiveProvisionedToken = cleanToken;
     return await verifySession(cleanToken);
   }
 

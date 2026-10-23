@@ -77,9 +77,33 @@ class AuthCubit extends Cubit<AuthState> {
         return;
       }
 
-      final authRes = await client.authenticateWithTrustedLocalToken(
-        customTokenPath,
-      );
+      ServiceApiResponse<ClientSessionInfo> authRes;
+
+      if (customTokenPath != null) {
+        authRes = await client.authenticateWithTrustedLocalToken(
+          customTokenPath,
+        );
+      } else if (client.isRemoteTokenMode) {
+        // Remote-token mode: re-verify current session/token with authoritative service
+        // rather than switching or falling back to a local token file.
+        if (client.isAuthenticated && client.currentSession != null) {
+          authRes = await client.verifySession();
+        } else {
+          final token = client.currentProvisionedToken;
+          if (token != null && token.isNotEmpty) {
+            authRes = await client.authenticateWithProvisionedToken(token);
+          } else {
+            authRes = const ServiceApiResponse.failure(
+              'No remote token configured.',
+              statusCode: 401,
+            );
+          }
+        }
+      } else {
+        // Local mode: continue using local trusted token and server-side verification
+        authRes = await client.authenticateWithTrustedLocalToken();
+      }
+
       if (authRes.isSuccess && client.isAuthenticated) {
         final session = client.currentSession!;
         emit(
@@ -95,6 +119,7 @@ class AuthCubit extends Cubit<AuthState> {
         );
         return;
       } else {
+        client.clearSession();
         final errMsg =
             authRes.errorMessage ??
             'Failed to establish authenticated session with authoritative service.';

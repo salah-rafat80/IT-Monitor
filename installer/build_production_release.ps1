@@ -117,7 +117,29 @@ Copy-Item -Path "$PSScriptRoot\install_service.bat" -Destination $StageDir -Forc
 Copy-Item -Path "$PSScriptRoot\uninstall_service.bat" -Destination $StageDir -Force
 Copy-Item -Path "$PSScriptRoot\apply_production_acls.bat" -Destination $StageDir -Force
 Copy-Item -Path "$PSScriptRoot\apply_production_acls.ps1" -Destination $StageDir -Force
+Copy-Item -Path "$PSScriptRoot\provision_tls_certificate.bat" -Destination $StageDir -Force
+Copy-Item -Path "$PSScriptRoot\provision_tls_certificate.ps1" -Destination $StageDir -Force
 Copy-Item -Path "$PSScriptRoot\service_config.json.default" -Destination $StageDir -Force
+
+# Packaging validation: Assert all mandatory security and operational scripts exist in staging
+$RequiredPayloadFiles = @(
+    "apply_production_acls.bat",
+    "apply_production_acls.ps1",
+    "provision_tls_certificate.bat",
+    "provision_tls_certificate.ps1",
+    "install_windows_service_scm.bat",
+    "uninstall_windows_service_scm.bat",
+    "service_config.json.default"
+)
+
+foreach ($reqFile in $RequiredPayloadFiles) {
+    $stageItem = Join-Path $StageDir $reqFile
+    if (-not (Test-Path -LiteralPath $stageItem) -or (Get-Item -LiteralPath $stageItem).Length -eq 0) {
+        Write-Error "Packaging validation failure: Required payload file '$reqFile' is missing or 0 bytes in staging ($StageDir)."
+        exit 1
+    }
+}
+Write-Host "      Staging payload security validation passed (all ACL and TLS scripts verified)." -ForegroundColor Green
 
 # Copy Readme / Setup Guide
 $ReadmeContent = @"
@@ -184,6 +206,33 @@ if (-not (Test-Path $ZipPath) -or (Get-Item $ZipPath).Length -eq 0) {
 }
 $ZipSizeMB = [math]::Round((Get-Item $ZipPath).Length / 1MB, 2)
 Write-Host "      Archive created successfully: $ZipPath ($ZipSizeMB MB)" -ForegroundColor Green
+
+# Verify ZIP archive contains required ACL and TLS scripts
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$zipArchive = [System.IO.Compression.ZipFile]::OpenRead($ZipPath)
+try {
+    $zipEntryNames = @($zipArchive.Entries | Select-Object -ExpandProperty Name)
+    foreach ($reqFile in $RequiredPayloadFiles) {
+        if ($zipEntryNames -notcontains $reqFile) {
+            Write-Error "Packaging validation failure: Release ZIP archive '$ZipPath' is missing required file '$reqFile'."
+            exit 1
+        }
+    }
+    Write-Host "      Release ZIP payload verified (all ACL and TLS scripts confirmed inside archive)." -ForegroundColor Green
+} finally {
+    $zipArchive.Dispose()
+}
+
+# Verify Inno Setup script explicitly includes required files
+$IssScript = Join-Path $PSScriptRoot "InnoSetup_Installer_Script.iss"
+$issContent = Get-Content -Path $IssScript -Raw
+if ($issContent -notmatch 'Source:\s*"apply_production_acls\.ps1"' -or
+    $issContent -notmatch 'Source:\s*"apply_production_acls\.bat"' -or
+    $issContent -notmatch 'Source:\s*"provision_tls_certificate\.ps1"') {
+    Write-Error "Packaging validation failure: Inno Setup script does not explicitly include all mandatory ACL and TLS scripts under [Files]."
+    exit 1
+}
+Write-Host "      Inno Setup [Files] section verified (all ACL and TLS scripts explicitly registered)." -ForegroundColor Green
 
 # 5. Compile Inno Setup Production Installer
 Write-Host "[5/6] Compiling Production Inno Setup Installer..." -ForegroundColor Yellow

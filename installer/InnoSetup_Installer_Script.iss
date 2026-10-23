@@ -56,6 +56,9 @@ Source: "uninstall_windows_service_scm.bat"; DestDir: "{app}"; Flags: ignorevers
 Source: "install_service.bat"; DestDir: "{app}"; Flags: ignoreversion
 Source: "uninstall_service.bat"; DestDir: "{app}"; Flags: ignoreversion
 Source: "apply_production_acls.bat"; DestDir: "{app}"; Flags: ignoreversion
+Source: "apply_production_acls.ps1"; DestDir: "{app}"; Flags: ignoreversion
+Source: "provision_tls_certificate.bat"; DestDir: "{app}"; Flags: ignoreversion
+Source: "provision_tls_certificate.ps1"; DestDir: "{app}"; Flags: ignoreversion
 
 ; 3. Default Configuration Template (Preserved Across Upgrades and Uninstallation)
 Source: "service_config.json.default"; DestDir: "{commonappdata}\ITNetworkMonitor"; DestName: "service_config.json"; Flags: onlyifdoesntexist uninsneveruninstall
@@ -75,7 +78,10 @@ Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Componen
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon; Components: client
 
 [Run]
-; Enforce least-privilege ACLs on ProgramData directories and authoritative files
+; 1. Provision initial TLS certificates and private key if not present
+Filename: "{app}\provision_tls_certificate.bat"; StatusMsg: "Provisioning TLS certificates and secure key store..."; Flags: runhidden waituntilterminated
+
+; 2. Enforce least-privilege ACLs on ProgramData directories and authoritative files
 Filename: "{app}\apply_production_acls.bat"; StatusMsg: "Configuring least-privilege security ACLs on data directories..."; Flags: runhidden waituntilterminated
 
 ; Service Registration and Startup via SCM

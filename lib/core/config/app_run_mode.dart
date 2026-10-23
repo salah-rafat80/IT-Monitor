@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 
 /// Explicit application runtime mode.
 ///
@@ -22,7 +23,7 @@ enum AppRunMode {
 /// Global application configuration defining operational runtime mode and boundaries.
 class AppConfig {
   static AppRunMode _detectDefaultRunMode() {
-    if (Platform.environment.containsKey('FLUTTER_TEST')) {
+    if (Platform.environment.containsKey('FLUTTER_TEST') || kDebugMode) {
       return AppRunMode.standaloneDevelopment;
     }
     return AppRunMode.productionClient;

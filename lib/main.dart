@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:ui';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -26,8 +27,11 @@ void main(List<String> args) async {
     return;
   }
 
-  if (args.contains('--standalone') ||
-      Platform.environment['IT_MONITOR_STANDALONE'] == 'true') {
+  if (args.contains('--client')) {
+    AppConfig.runMode = AppRunMode.productionClient;
+  } else if (args.contains('--standalone') ||
+      Platform.environment['IT_MONITOR_STANDALONE'] == 'true' ||
+      kDebugMode) {
     AppConfig.runMode = AppRunMode.standaloneDevelopment;
   } else {
     AppConfig.runMode = AppRunMode.productionClient;

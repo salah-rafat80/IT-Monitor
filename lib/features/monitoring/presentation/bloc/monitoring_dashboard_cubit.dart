@@ -51,6 +51,16 @@ class MonitoringDashboardCubit extends Cubit<MonitoringDashboardState> {
         return;
       }
 
+      if (statusesRes.isFailure) {
+        final reason = statusesRes.failureOrNull?.message;
+        emit(
+          MonitoringDashboardError(
+            'Failed to load device statuses from authoritative monitoring service${reason != null ? ": $reason" : "."}',
+          ),
+        );
+        return;
+      }
+
       _cachedDevices = devicesRes.dataOrNull ?? [];
       final statusList = statusesRes.dataOrNull ?? [];
       _cachedStatusMap = {for (final s in statusList) s.deviceId: s};
@@ -101,12 +111,31 @@ class MonitoringDashboardCubit extends Cubit<MonitoringDashboardState> {
       await _scheduler.triggerAllChecks(force: true);
       final devicesRes = await _deviceRepo.getDevices();
       final statusesRes = await _monitoringRepo.getDeviceStatuses();
-      if (devicesRes.isSuccess) {
-        _cachedDevices = devicesRes.dataOrNull ?? [];
-        final statusList = statusesRes.dataOrNull ?? [];
-        _cachedStatusMap = {for (final s in statusList) s.deviceId: s};
-        _rebuildAndEmitLoaded();
+      if (devicesRes.isFailure) {
+        if (!isClosed) {
+          emit(
+            MonitoringDashboardError(
+              devicesRes.failureOrNull?.message ?? 'Failed to refresh devices',
+            ),
+          );
+        }
+        return;
       }
+      if (statusesRes.isFailure) {
+        if (!isClosed) {
+          emit(
+            MonitoringDashboardError(
+              statusesRes.failureOrNull?.message ??
+                  'Failed to refresh device statuses from authoritative monitoring service.',
+            ),
+          );
+        }
+        return;
+      }
+      _cachedDevices = devicesRes.dataOrNull ?? [];
+      final statusList = statusesRes.dataOrNull ?? [];
+      _cachedStatusMap = {for (final s in statusList) s.deviceId: s};
+      _rebuildAndEmitLoaded();
     } catch (e) {
       if (!isClosed) {
         emit(MonitoringDashboardError('Failed to refresh devices: $e'));

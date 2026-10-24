@@ -7,7 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 
 import '../../../../core/database/app_database.dart';
-import 'package:drift/drift.dart' show Value;
+import 'package:drift/drift.dart' show InsertMode, Value;
 import '../../../../core/di/injection.dart';
 import '../../../../core/errors/failures.dart';
 import '../../../../core/utils/password_hash.dart';
@@ -345,6 +345,56 @@ class MonitoringServiceServer {
       }
       await configureDependencies();
       _log('Database and dependencies configured successfully.');
+    }
+
+    // Ensure authoritative inventory and verified access points are bootstrapped
+    if (getIt.isRegistered<DeviceRepository>()) {
+      try {
+        final devRepo = getIt<DeviceRepository>();
+        await devRepo.bootstrapApprovedInventory();
+      } catch (e) {
+        _log('Warning: Failed to bootstrap approved inventory at startup: $e');
+      }
+    }
+    if (getIt.isRegistered<InfrastructureRepository>()) {
+      try {
+        final infraRepo = getIt<InfrastructureRepository>();
+        await infraRepo.bootstrapVerifiedAccessPoints();
+      } catch (e) {
+        _log('Warning: Failed to bootstrap verified APs at startup: $e');
+      }
+    }
+
+    // Reconcile and initialize status rows for any inventory devices missing from device_statuses
+    if (getIt.isRegistered<AppDatabase>()) {
+      try {
+        final db = getIt<AppDatabase>();
+        final uninitializedRows = await db.customSelect(
+          'SELECT d.id FROM devices d LEFT JOIN device_statuses s ON d.id = s.device_id WHERE s.device_id IS NULL',
+        ).get();
+        if (uninitializedRows.isNotEmpty) {
+          final now = DateTime.now();
+          await db.batch((batch) {
+            for (final row in uninitializedRows) {
+              final devId = row.read<int>('id');
+              batch.insert(
+                db.deviceStatuses,
+                DeviceStatusesCompanion.insert(
+                  deviceId: Value(devId),
+                  status: const Value('unknown'),
+                  statusChangedAt: Value(now),
+                ),
+                mode: InsertMode.insertOrIgnore,
+              );
+            }
+          });
+          _log(
+            'Reconciled and initialized status rows for ${uninitializedRows.length} inventory devices.',
+          );
+        }
+      } catch (e) {
+        _log('Warning: Failed to reconcile initial device statuses: $e');
+      }
     }
 
     // 2. Start Monitoring Engine if registered
@@ -1125,10 +1175,15 @@ Write-Output 'OK'
           final statusesMap = {
             for (var s in statRes.dataOrNull!) s.deviceId: s,
           };
-          final payload = devRes.dataOrNull!.map((d) {
-            final st = statusesMap[d.id] ?? DeviceStatusEntity.initial(d.id);
-            return {'device': d.toJson(), 'status': st.toJson()};
-          }).toList();
+          final payload = <Map<String, dynamic>>[];
+          for (final d in devRes.dataOrNull!) {
+            var st = statusesMap[d.id];
+            if (st == null) {
+              st = DeviceStatusEntity.initial(d.id);
+              await monitoringRepo.saveDeviceStatus(st);
+            }
+            payload.add({'device': d.toJson(), 'status': st.toJson()});
+          }
 
           await _jsonResponse(request, {'success': true, 'devices': payload});
         } else {

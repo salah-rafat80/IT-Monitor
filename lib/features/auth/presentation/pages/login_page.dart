@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/config/app_run_mode.dart';
+import '../../../../core/di/injection.dart';
+import '../../../monitoring/data/datasources/monitoring_service_client.dart';
 import '../bloc/auth_cubit.dart';
 
 class LoginPage extends StatefulWidget {
@@ -160,18 +162,46 @@ class _LoginPageState extends State<LoginPage> {
                               const SizedBox(height: 12),
                               const Divider(),
                               const SizedBox(height: 8),
-                              Text(
-                                'Troubleshooting steps:\n'
-                                '• Ensure ITNetworkMonitorService is running:\n'
-                                '   Get-Service ITNetworkMonitorService\n'
-                                '• Ensure current Windows user is in the authorized group:\n'
-                                '   net localgroup ITNetworkMonitorAdministrators\n'
-                                '• Check logs at %ProgramData%\\ITNetworkMonitor\\logs\\',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontFamily: 'Consolas',
-                                  height: 1.4,
-                                ),
+                              Builder(
+                                builder: (context) {
+                                  final client = getIt.isRegistered<MonitoringServiceClient>()
+                                      ? getIt<MonitoringServiceClient>()
+                                      : null;
+                                  final isRemote = client?.isRemoteTokenMode == true ||
+                                      (client != null &&
+                                          !client.baseUrl.contains('127.0.0.1') &&
+                                          !client.baseUrl.contains('localhost'));
+
+                                  if (isRemote) {
+                                    return Text(
+                                      'LAN Client Troubleshooting:\n'
+                                      '• Central Service URL: ${client?.baseUrl ?? "Not Configured"}\n'
+                                      '• Ensure central server firewall allows inbound TCP port 8443\n'
+                                      '• Ensure server public certificate (server.crt) is placed in:\n'
+                                      '   %ProgramData%\\ITNetworkMonitor\\server.crt\n'
+                                      '• Verify provisioned token in %ProgramData%\\ITNetworkMonitor\\client_config.json',
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        fontFamily: 'Consolas',
+                                        height: 1.4,
+                                      ),
+                                    );
+                                  }
+
+                                  return const Text(
+                                    'Local Service Troubleshooting:\n'
+                                    '• Ensure ITNetworkMonitorService is running:\n'
+                                    '   Get-Service ITNetworkMonitorService\n'
+                                    '• Ensure current Windows user is in the authorized group:\n'
+                                    '   net localgroup ITNetworkMonitorAdministrators\n'
+                                    '• Check logs at %ProgramData%\\ITNetworkMonitor\\logs\\',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontFamily: 'Consolas',
+                                      height: 1.4,
+                                    ),
+                                  );
+                                },
                               ),
                             ],
                           ),
@@ -187,21 +217,6 @@ class _LoginPageState extends State<LoginPage> {
                             backgroundColor: const Color(0xFF0F62FE),
                             foregroundColor: Colors.white,
                             padding: const EdgeInsets.symmetric(vertical: 16),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        OutlinedButton.icon(
-                          onPressed: () {
-                            AppConfig.runMode =
-                                AppRunMode.standaloneDevelopment;
-                            context.read<AuthCubit>().checkAuthStatus();
-                          },
-                          icon: const Icon(Icons.computer),
-                          label: const Text(
-                            'Continue in Standalone Mode (تشغيل مباشر مستقل)',
-                          ),
-                          style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 14),
                           ),
                         ),
                       ],

@@ -59,11 +59,18 @@ class TopologyCubit extends Cubit<TopologyState> {
 
       // Initial statuses
       final statusRes = await _monitoringRepo.getDeviceStatuses();
+      if (statusRes.isFailure) {
+        final reason = statusRes.failureOrNull?.message;
+        emit(
+          TopologyError(
+            'Failed to load device statuses from authoritative monitoring service${reason != null ? ": $reason" : "."}',
+          ),
+        );
+        return;
+      }
       final statusMap = <int, DeviceStatusEntity>{};
-      if (statusRes.isSuccess) {
-        for (final s in statusRes.dataOrNull!) {
-          statusMap[s.deviceId] = s;
-        }
+      for (final s in statusRes.dataOrNull!) {
+        statusMap[s.deviceId] = s;
       }
 
       final monitoredList = _cachedDevices.map((d) {

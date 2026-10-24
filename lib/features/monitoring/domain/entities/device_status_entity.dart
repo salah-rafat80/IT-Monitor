@@ -9,12 +9,16 @@ enum DeviceStatusEnum {
   maintenance;
 
   static DeviceStatusEnum fromString(String value) {
-    switch (value.toLowerCase()) {
+    switch (value.toLowerCase().trim()) {
       case 'up':
+      case 'connected':
+      case 'online':
         return DeviceStatusEnum.up;
       case 'degraded':
         return DeviceStatusEnum.degraded;
       case 'down':
+      case 'disconnected':
+      case 'offline':
         return DeviceStatusEnum.down;
       case 'unreachable':
         return DeviceStatusEnum.unreachable;

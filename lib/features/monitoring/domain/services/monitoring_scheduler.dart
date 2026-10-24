@@ -142,12 +142,17 @@ class MonitoringScheduler {
     if (force) {
       _lastCheckTimestamps.clear();
     }
-    await _executeMonitoringCycle(force: force);
+    await _executeMonitoringCycle(force: force, waitForCompletion: true);
   }
 
-  Future<void> _executeMonitoringCycle({bool force = false}) async {
-    if (!_isRunning || _isPaused) return;
+  Future<void> _executeMonitoringCycle({
+    bool force = false,
+    bool waitForCompletion = false,
+  }) async {
+    if ((!_isRunning && !force) || _isPaused) return;
     _cycleCount++;
+
+    final futures = <Future<void>>[];
 
     final devicesRes = await _deviceRepo.getDevices();
     if (devicesRes.isFailure) {
@@ -159,7 +164,7 @@ class MonitoringScheduler {
     final devices = devicesRes.dataOrNull ?? [];
 
     for (final device in devices) {
-      if (!_isRunning || _isPaused) {
+      if ((!_isRunning && !force) || _isPaused) {
         break;
       }
 
@@ -191,7 +196,11 @@ class MonitoringScheduler {
       }
 
       // Dispatch async check without blocking loop or UI thread
-      unawaited(_runCheckForDevice(device));
+      if (waitForCompletion) {
+        futures.add(_runCheckForDevice(device));
+      } else {
+        unawaited(_runCheckForDevice(device));
+      }
     }
 
     // Monitor critical infrastructure assets (UniFi Gateways, Controllers, Switches)
@@ -206,7 +215,7 @@ class MonitoringScheduler {
       final infraDevices = infraRes.dataOrNull ?? [];
 
       for (final infra in infraDevices) {
-        if (!_isRunning || _isPaused) break;
+        if ((!_isRunning && !force) || _isPaused) break;
         if (_inFlightDeviceIds.length >= _config.maxConcurrentChecks) break;
         if (!infra.isEnabled || infra.ip.trim().isEmpty) continue;
 
@@ -223,8 +232,16 @@ class MonitoringScheduler {
           continue;
         }
 
-        unawaited(_runCheckForInfraDevice(infra));
+        if (waitForCompletion) {
+          futures.add(_runCheckForInfraDevice(infra));
+        } else {
+          unawaited(_runCheckForInfraDevice(infra));
+        }
       }
+    }
+
+    if (waitForCompletion && futures.isNotEmpty) {
+      await Future.wait(futures);
     }
   }
 

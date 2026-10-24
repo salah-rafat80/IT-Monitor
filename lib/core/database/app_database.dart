@@ -241,7 +241,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 10;
+  int get schemaVersion => 11;
 
   @override
   MigrationStrategy get migration {
@@ -490,6 +490,26 @@ class AppDatabase extends _$AppDatabase {
           } catch (e, st) {
             _logMigrationDiagnostic(
               'from < 10: atomic migration transaction',
+              e,
+              st,
+            );
+            rethrow;
+          }
+        }
+        if (from < 11) {
+          try {
+            await transaction(() async {
+              // Normalize legacy status strings to canonical states in device_statuses
+              await customStatement(
+                "UPDATE device_statuses SET status = 'down' WHERE LOWER(TRIM(status)) IN ('disconnected', 'offline');",
+              );
+              await customStatement(
+                "UPDATE device_statuses SET status = 'up' WHERE LOWER(TRIM(status)) IN ('connected', 'online');",
+              );
+            });
+          } catch (e, st) {
+            _logMigrationDiagnostic(
+              'from < 11: normalize legacy device statuses',
               e,
               st,
             );

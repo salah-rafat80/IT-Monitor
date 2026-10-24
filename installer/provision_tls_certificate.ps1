@@ -346,6 +346,21 @@ foreach ($d in $AdditionalDnsNames) {
 
 $targetIps = [System.Collections.Generic.List[string]]::new()
 $targetIps.Add("127.0.0.1")
+
+# Auto-discover active non-loopback IPv4 addresses on the host for LAN client connectivity
+try {
+    $hostIps = [System.Net.Dns]::GetHostAddresses([System.Net.Dns]::GetHostName()) |
+        Where-Object { $_.AddressFamily -eq [System.Net.Sockets.AddressFamily]::InterNetwork } |
+        ForEach-Object { $_.IPAddressToString }
+    foreach ($hip in $hostIps) {
+        if ($hip -and $hip -ne "127.0.0.1" -and -not $targetIps.Contains($hip)) {
+            $targetIps.Add($hip)
+        }
+    }
+} catch {
+    # Non-fatal in constrained/offline test environments
+}
+
 foreach ($ipStr in $AdditionalIpAddresses) {
     if ($ipStr -and $ipStr.Trim().Length -gt 0) {
         $cleanIp = $ipStr.Trim()

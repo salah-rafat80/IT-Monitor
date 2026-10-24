@@ -58,6 +58,9 @@ class MonitoringServiceClient {
   ClientSessionInfo? _currentSession;
   bool _isRemoteTokenMode = false;
   String? _effectiveProvisionedToken;
+  Timer? _wsReconnectTimer;
+  bool _isDisposed = false;
+  String? _lastWebSocketError;
 
   final StreamController<Map<String, dynamic>> _eventStreamController =
       StreamController<Map<String, dynamic>>.broadcast();
@@ -186,15 +189,56 @@ class MonitoringServiceClient {
   void clearSession() {
     _currentSession = null;
     _lastConnectionError = null;
+    _lastWebSocketError = null;
+    _wsReconnectTimer?.cancel();
+    _wsReconnectTimer = null;
     disconnectWebSocket();
   }
 
   Stream<Map<String, dynamic>> get eventStream => _eventStreamController.stream;
 
   String? _lastConnectionError;
-
   String? get lastConnectionError => _lastConnectionError;
+  String? get lastWebSocketError => _lastWebSocketError;
   bool get isWebSocketConnected => _webSocket != null;
+
+  String classifyConnectionException(Object error) =>
+      _classifyConnectionException(error);
+
+  String _classifyConnectionException(Object error) {
+    if (error is SocketException) {
+      final osCode = error.osError?.errorCode;
+      final osMsg = error.osError?.message ?? '';
+      if (osCode == 10061 ||
+          osCode == 1225 ||
+          osMsg.toLowerCase().contains('connection refused')) {
+        return 'Cannot reach authoritative service ($baseUrl). Service connection refused: The IT Network Monitor Windows Service is not running, stopped, or not listening on this port.';
+      }
+      if (osCode == 10060 ||
+          osCode == 10065 ||
+          osCode == 10051 ||
+          osMsg.toLowerCase().contains('timed out') ||
+          osMsg.toLowerCase().contains('unreachable')) {
+        return 'Cannot reach authoritative service ($baseUrl). Service host unreachable: Verify network routing, server IP, and firewall rules for port 8443.';
+      }
+      return 'Cannot reach authoritative service ($baseUrl). Network socket error: ${error.message}';
+    } else if (error is HandshakeException ||
+        error is TlsException ||
+        error.toString().contains('CERTIFICATE_VERIFY_FAILED')) {
+      final errStr = error.toString();
+      if (errStr.contains('Hostname mismatch') ||
+          errStr.contains('IP address mismatch')) {
+        return 'TLS SAN Mismatch: Server certificate does not match the service endpoint in "$baseUrl". Certificate SAN must contain this IP address or hostname.';
+      }
+      return 'TLS Trust Verification Failed: Service certificate is untrusted, expired, or not trusted by client context. Ensure public server.crt is trusted: $error';
+    } else if (error is PathAccessException ||
+        error.toString().contains('Access is denied')) {
+      return 'Access Denied: Current Windows user does not have permission to access client credentials. Membership in "ITNetworkMonitorAdministrators" is required: $error';
+    } else if (error is TimeoutException) {
+      return 'Connection timed out connecting to authoritative service ($baseUrl). Check server health and firewall.';
+    }
+    return 'Failed to connect to authoritative monitoring service ($baseUrl): $error';
+  }
 
   /// Verify a session token with the authoritative service and receive explicit confirmation.
   Future<ServiceApiResponse<ClientSessionInfo>> verifySession([
@@ -311,10 +355,15 @@ class MonitoringServiceClient {
       return ServiceApiResponse.success(_currentSession!);
     } catch (e) {
       clearSession();
-      _lastConnectionError = 'Cannot reach authoritative service: $e';
+      final classified = _classifyConnectionException(e);
+      _lastConnectionError = classified;
       return ServiceApiResponse.failure(
-        'Failed to connect to authoritative monitoring service: $e',
-        statusCode: 503,
+        classified,
+        statusCode:
+            (e is SocketException &&
+                (e.osError?.errorCode == 10061 || e.osError?.errorCode == 1225))
+            ? 503
+            : 500,
       );
     }
   }
@@ -353,10 +402,16 @@ class MonitoringServiceClient {
 
       // Send token over secure transport and require explicit server-side acceptance
       return await verifySession(token);
+    } on PathAccessException catch (e) {
+      _currentSession = null;
+      return ServiceApiResponse.failure(
+        'Access Denied: Current Windows account does not have read permissions for the trusted client token. Membership in "ITNetworkMonitorAdministrators" is required: $e',
+        statusCode: 403,
+      );
     } catch (e) {
       _currentSession = null;
       return ServiceApiResponse.failure(
-        'Failed to read or verify trusted client token: $e',
+        'Failed to read or verify trusted client token: ${_classifyConnectionException(e)}',
         statusCode: 401,
       );
     }
@@ -375,6 +430,14 @@ class MonitoringServiceClient {
       return const ServiceApiResponse.failure(
         'Cannot authenticate with an empty provisioned token.',
         statusCode: 400,
+      );
+    }
+    if (cleanToken.length < 32) {
+      _currentSession = null;
+      _lastConnectionError = 'Provisioned token is invalid (< 32 characters).';
+      return const ServiceApiResponse.failure(
+        'Provisioned token is invalid (< 32 characters). Verify provisioned token in client_config.json.',
+        statusCode: 401,
       );
     }
     _isRemoteTokenMode = true;
@@ -1044,37 +1107,73 @@ class MonitoringServiceClient {
       );
     }
 
-    // Connect without exposing the bearer token in the URL / query parameters.
-    // Use the standard HTTP Authorization header in the WebSocket upgrade handshake.
+    _wsReconnectTimer?.cancel();
+    _wsReconnectTimer = null;
+
     final wsUri = Uri.parse(
       baseUrl,
     ).replace(scheme: baseUrl.startsWith('https') ? 'wss' : 'ws', path: '/ws');
 
-    _webSocket = await WebSocket.connect(
-      wsUri.toString(),
-      headers: {
-        HttpHeaders.authorizationHeader: 'Bearer ${_currentSession!.token}',
-      },
-      customClient: HttpClient(context: _securityContext),
-    );
+    try {
+      final ws = await WebSocket.connect(
+        wsUri.toString(),
+        headers: {
+          HttpHeaders.authorizationHeader: 'Bearer ${_currentSession!.token}',
+        },
+        customClient: HttpClient(context: _securityContext),
+      );
 
-    _webSocket!.listen(
-      (data) {
+      _webSocket = ws;
+      _lastWebSocketError = null;
+
+      ws.listen(
+        (data) {
+          try {
+            final event = jsonDecode(data.toString()) as Map<String, dynamic>;
+            _eventStreamController.add(event);
+          } catch (_) {}
+        },
+        onDone: () {
+          _webSocket = null;
+          if (!_isDisposed && isAuthenticated) {
+            _scheduleWebSocketReconnect();
+          }
+        },
+        onError: (err) {
+          _webSocket = null;
+          _lastWebSocketError = _classifyConnectionException(err);
+          if (!_isDisposed && isAuthenticated) {
+            _scheduleWebSocketReconnect();
+          }
+        },
+      );
+    } catch (e) {
+      _webSocket = null;
+      _lastWebSocketError = _classifyConnectionException(e);
+      if (!_isDisposed && isAuthenticated) {
+        _scheduleWebSocketReconnect();
+      }
+      rethrow;
+    }
+  }
+
+  void _scheduleWebSocketReconnect() {
+    if (_isDisposed || !isAuthenticated || _wsReconnectTimer != null) return;
+    _wsReconnectTimer = Timer(const Duration(seconds: 3), () async {
+      _wsReconnectTimer = null;
+      if (!_isDisposed && isAuthenticated && _webSocket == null) {
         try {
-          final event = jsonDecode(data.toString()) as Map<String, dynamic>;
-          _eventStreamController.add(event);
-        } catch (_) {}
-      },
-      onDone: () {
-        _webSocket = null;
-      },
-      onError: (_) {
-        _webSocket = null;
-      },
-    );
+          await connectWebSocket();
+        } catch (_) {
+          // Reconnection attempt failed; will retry again via scheduler on error
+        }
+      }
+    });
   }
 
   Future<void> disconnectWebSocket() async {
+    _wsReconnectTimer?.cancel();
+    _wsReconnectTimer = null;
     final ws = _webSocket;
     _webSocket = null;
     try {
@@ -1152,6 +1251,9 @@ class MonitoringServiceClient {
   }
 
   void dispose() {
+    _isDisposed = true;
+    _wsReconnectTimer?.cancel();
+    _wsReconnectTimer = null;
     disconnectWebSocket();
     _httpClient?.close(force: true);
     _eventStreamController.close();

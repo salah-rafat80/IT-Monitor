@@ -57,6 +57,15 @@ class MonitoringCubit extends Cubit<MonitoringState> {
   Future<void> initMonitoring({bool startScheduler = false}) async {
     final initialStatusesRes = await _monitoringRepo.getDeviceStatuses();
     if (isClosed) return;
+    if (initialStatusesRes.isFailure) {
+      final reason = initialStatusesRes.failureOrNull?.message;
+      emit(
+        MonitoringError(
+          'Failed to load device statuses from authoritative monitoring service${reason != null ? ": $reason" : "."}',
+        ),
+      );
+      return;
+    }
     final initialStatuses = initialStatusesRes.dataOrNull ?? [];
 
     emit(

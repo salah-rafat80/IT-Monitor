@@ -170,12 +170,15 @@ class MonitoringFilterBar extends StatelessWidget {
                   value: state.statusFilter,
                   items: const [
                     DropdownMenuItem(value: null, child: Text('All Statuses')),
-                    DropdownMenuItem(value: 'up', child: Text('Up')),
+                    DropdownMenuItem(value: 'up', child: Text('Connected')),
                     DropdownMenuItem(
                       value: 'degraded',
                       child: Text('Degraded'),
                     ),
-                    DropdownMenuItem(value: 'down', child: Text('Down')),
+                    DropdownMenuItem(
+                      value: 'down',
+                      child: Text('Disconnected'),
+                    ),
                     DropdownMenuItem(value: 'unknown', child: Text('Unknown')),
                     DropdownMenuItem(
                       value: 'maintenance',

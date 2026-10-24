@@ -60,8 +60,11 @@ Source: "apply_production_acls.ps1"; DestDir: "{app}"; Flags: ignoreversion
 Source: "provision_tls_certificate.bat"; DestDir: "{app}"; Flags: ignoreversion
 Source: "provision_tls_certificate.ps1"; DestDir: "{app}"; Flags: ignoreversion
 
-; 3. Default Configuration Template (Preserved Across Upgrades and Uninstallation)
-Source: "service_config.json.default"; DestDir: "{commonappdata}\ITNetworkMonitor"; DestName: "service_config.json"; Flags: onlyifdoesntexist uninsneveruninstall
+; 3. Default Configuration Templates (Preserved Across Upgrades and Uninstallation)
+Source: "service_config.json.default"; DestDir: "{commonappdata}\ITNetworkMonitor"; DestName: "service_config.json"; Flags: onlyifdoesntexist uninsneveruninstall; Components: service
+Source: "client_config.json.default"; DestDir: "{commonappdata}\ITNetworkMonitor"; DestName: "client_config.json"; Flags: onlyifdoesntexist uninsneveruninstall; Components: client
+Source: "configure_lan_client.bat"; DestDir: "{app}"; Flags: ignoreversion; Components: client
+Source: "configure_lan_client.ps1"; DestDir: "{app}"; Flags: ignoreversion; Components: client
 
 [Dirs]
 ; Least-privilege production permissions:
@@ -78,8 +81,8 @@ Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Componen
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon; Components: client
 
 [Run]
-; 1. Provision initial TLS certificates and private key if not present
-Filename: "{app}\provision_tls_certificate.bat"; Parameters: "-AddToTrustedRoot"; StatusMsg: "Provisioning TLS certificates and secure key store..."; Flags: runhidden waituntilterminated
+; 1. Provision initial TLS certificates and private key if not present (Service Component Only)
+Filename: "{app}\provision_tls_certificate.bat"; Parameters: "-AddToTrustedRoot"; StatusMsg: "Provisioning TLS certificates and secure key store..."; Flags: runhidden waituntilterminated; Components: service
 
 ; 2. Enforce least-privilege ACLs on ProgramData directories and authoritative files
 Filename: "{app}\apply_production_acls.bat"; StatusMsg: "Configuring least-privilege security ACLs on data directories..."; Flags: runhidden waituntilterminated

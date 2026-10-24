@@ -136,6 +136,9 @@ if (-not (Test-Path $headlessServiceExe)) {
 if (Test-Path "$PSScriptRoot\START_MONITOR.bat") {
     Copy-Item -Path "$PSScriptRoot\START_MONITOR.bat" -Destination $StageDir -Force
 }
+if (Test-Path "$PSScriptRoot\START_SERVICE_CLIENT.bat") {
+    Copy-Item -Path "$PSScriptRoot\START_SERVICE_CLIENT.bat" -Destination $StageDir -Force
+}
 Get-ChildItem -Path $PSScriptRoot -Filter "*.txt" | ForEach-Object {
     Copy-Item -Path $_.FullName -Destination $StageDir -Force
 }

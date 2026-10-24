@@ -35,7 +35,58 @@ void main(List<String> args) async {
       kDebugMode) {
     AppConfig.runMode = AppRunMode.standaloneDevelopment;
   } else {
-    AppConfig.runMode = AppRunMode.productionClient;
+    // Check if the service token exists and is readable, or if remote token is configured
+    final programData = Platform.environment['ProgramData'];
+    final defaultToken = programData != null
+        ? File(p.join(programData, 'ITNetworkMonitor', 'trusted_client.token'))
+        : null;
+    final hasEnvToken =
+        Platform.environment['IT_MONITOR_CLIENT_TOKEN']?.isNotEmpty ?? false;
+
+    bool hasReadableLocalToken = false;
+    if (defaultToken != null && defaultToken.existsSync()) {
+      try {
+        final content = defaultToken.readAsStringSync().trim();
+        hasReadableLocalToken = content.isNotEmpty;
+      } catch (_) {
+        hasReadableLocalToken = false;
+      }
+    }
+
+    bool isServiceActive = false;
+    if (hasEnvToken || hasReadableLocalToken) {
+      final serviceUrlStr =
+          Platform.environment['IT_MONITOR_SERVICE_URL'] ??
+          (Platform.environment['IT_MONITOR_USE_TLS'] == 'false'
+              ? 'http://127.0.0.1:8080'
+              : 'https://127.0.0.1:8443');
+      final serviceUri = Uri.tryParse(serviceUrlStr);
+      final probeHost = serviceUri?.host.isNotEmpty == true
+          ? serviceUri!.host
+          : '127.0.0.1';
+      final probePort = serviceUri?.hasPort == true
+          ? serviceUri!.port
+          : (serviceUri?.scheme == 'http' ? 8080 : 8443);
+
+      try {
+        final socket = await Socket.connect(
+          probeHost,
+          probePort,
+          timeout: const Duration(milliseconds: 300),
+        );
+        socket.destroy();
+        isServiceActive = true;
+      } catch (_) {
+        isServiceActive = false;
+      }
+    }
+
+    if (isServiceActive) {
+      AppConfig.runMode = AppRunMode.productionClient;
+    } else {
+      // Default to standalone mode so the application always opens directly on any computer
+      AppConfig.runMode = AppRunMode.standaloneDevelopment;
+    }
   }
 
   WidgetsFlutterBinding.ensureInitialized();

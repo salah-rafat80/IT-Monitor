@@ -235,6 +235,11 @@ class AuthCubit extends Cubit<AuthState> {
   }
 
   Future<void> logout() async {
+    if (getIt.isRegistered<MonitoringServiceClient>()) {
+      try {
+        await getIt<MonitoringServiceClient>().logout();
+      } catch (_) {}
+    }
     await _authRepo.logout();
     final userRes = await _authRepo.getCurrentUser();
     if (userRes.dataOrNull != null) {

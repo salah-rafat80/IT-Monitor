@@ -54,6 +54,7 @@ class MonitoringServiceClient {
 
   HttpClient? _httpClient;
   WebSocket? _webSocket;
+  SecurityContext? _securityContext;
   ClientSessionInfo? _currentSession;
   bool _isRemoteTokenMode = false;
   String? _effectiveProvisionedToken;
@@ -81,43 +82,83 @@ class MonitoringServiceClient {
     final isHttps = baseUrl.toLowerCase().startsWith('https:');
 
     if (isHttps && secContext == null) {
-      if (certPath == null || !File(certPath).existsSync()) {
+      if (certPath != null) {
+        final certFile = File(certPath);
+        if (!certFile.existsSync()) {
+          throw StateError(
+            'Configured trusted TLS certificate file not found: "$certPath".',
+          );
+        }
+        try {
+          final testSec = SecurityContext(withTrustedRoots: false);
+          testSec.setTrustedCertificates(certPath);
+          secContext = testSec;
+        } catch (e) {
+          throw StateError(
+            'Failed to load configured trusted TLS certificate from "$certPath": $e',
+          );
+        }
+      } else {
         final envCert = Platform.environment['IT_MONITOR_TRUSTED_CERT_PATH'];
-        if (envCert != null && File(envCert).existsSync()) {
-          certPath = envCert;
+        if (envCert != null && envCert.trim().isNotEmpty) {
+          final envFile = File(envCert.trim());
+          if (!envFile.existsSync()) {
+            throw StateError(
+              'Environment trusted TLS certificate file not found: "$envCert".',
+            );
+          }
+          try {
+            final testSec = SecurityContext(withTrustedRoots: false);
+            testSec.setTrustedCertificates(envFile.path);
+            secContext = testSec;
+            certPath = envFile.path;
+          } catch (e) {
+            throw StateError(
+              'Failed to load environment trusted TLS certificate from "$envCert": $e',
+            );
+          }
         } else {
           final programData = Platform.environment['ProgramData'];
           if (programData != null) {
-            final defaultCert = p.join(
+            final publicCert = p.join(
+              programData,
+              'ITNetworkMonitor',
+              'server.crt',
+            );
+            final certsDirCert = p.join(
               programData,
               'ITNetworkMonitor',
               'certs',
               'server.crt',
             );
-            if (File(defaultCert).existsSync()) {
-              certPath = defaultCert;
+
+            if (File(publicCert).existsSync()) {
+              try {
+                final testSec = SecurityContext(withTrustedRoots: false);
+                testSec.setTrustedCertificates(publicCert);
+                secContext = testSec;
+                certPath = publicCert;
+              } catch (_) {}
+            } else if (File(certsDirCert).existsSync()) {
+              try {
+                final testSec = SecurityContext(withTrustedRoots: false);
+                testSec.setTrustedCertificates(certsDirCert);
+                secContext = testSec;
+                certPath = certsDirCert;
+              } catch (_) {}
             }
           }
         }
       }
-
-      if (certPath != null) {
-        try {
-          if (File(certPath).existsSync()) {
-            final testSec = SecurityContext(withTrustedRoots: false);
-            testSec.setTrustedCertificates(certPath);
-            secContext = testSec;
-          }
-        } catch (_) {}
-      }
     }
 
-    _httpClient = HttpClient(context: secContext);
-    // Explicitly enforce certificate validation (strict validation against trusted roots)
-    // No bypass or permissive badCertificateCallback is allowed in production.
+    _securityContext = secContext;
+    _httpClient = HttpClient(context: _securityContext);
   }
 
   ClientSessionInfo? get currentSession => _currentSession;
+
+  SecurityContext? get securityContext => _securityContext;
 
   bool get isAuthenticated =>
       _currentSession != null && !_currentSession!.isExpired;
@@ -145,6 +186,7 @@ class MonitoringServiceClient {
   void clearSession() {
     _currentSession = null;
     _lastConnectionError = null;
+    disconnectWebSocket();
   }
 
   Stream<Map<String, dynamic>> get eventStream => _eventStreamController.stream;
@@ -159,8 +201,8 @@ class MonitoringServiceClient {
     String? tokenToVerify,
   ]) async {
     final token = tokenToVerify ?? _currentSession?.token;
-    if (token == null || token.isEmpty) {
-      _currentSession = null;
+    if (token == null || token.trim().isEmpty) {
+      clearSession();
       return const ServiceApiResponse.failure(
         'No session token available to verify.',
         statusCode: 401,
@@ -181,25 +223,8 @@ class MonitoringServiceClient {
         parsed = null;
       }
 
-      if (response.statusCode == 200 &&
-          parsed is Map &&
-          parsed['success'] == true &&
-          parsed['session'] is Map) {
-        final sessionData = parsed['session'] as Map<String, dynamic>;
-        _currentSession = ClientSessionInfo(
-          token: token,
-          username:
-              sessionData['username']?.toString() ??
-              'Local Administrator (No Interactive Login)',
-          role: sessionData['role']?.toString() ?? 'admin',
-          expiresAt:
-              DateTime.tryParse(sessionData['expiresAt']?.toString() ?? '') ??
-              DateTime.now().add(const Duration(hours: 24)),
-        );
-        _lastConnectionError = null;
-        return ServiceApiResponse.success(_currentSession!);
-      } else {
-        _currentSession = null;
+      if (response.statusCode != 200) {
+        clearSession();
         final errMsg = (parsed is Map && parsed.containsKey('error'))
             ? parsed['error']?.toString()
             : 'Session token rejected by service (Status: ${response.statusCode})';
@@ -209,8 +234,83 @@ class MonitoringServiceClient {
           statusCode: response.statusCode,
         );
       }
+
+      if (parsed is! Map ||
+          parsed['success'] != true ||
+          parsed['session'] is! Map) {
+        clearSession();
+        const errMsg =
+            'Malformed service response: success flag or session object missing.';
+        _lastConnectionError = errMsg;
+        return const ServiceApiResponse.failure(errMsg, statusCode: 401);
+      }
+
+      final sessionData = parsed['session'] as Map<String, dynamic>;
+
+      // 1. Strict username validation
+      final username = sessionData['username']?.toString().trim();
+      if (username == null || username.isEmpty) {
+        clearSession();
+        const errMsg =
+            'Malformed session contract: username is missing or empty.';
+        _lastConnectionError = errMsg;
+        return const ServiceApiResponse.failure(errMsg, statusCode: 401);
+      }
+
+      // 2. Strict role validation
+      final rawRole = sessionData['role']?.toString().trim();
+      if (rawRole == null || rawRole.isEmpty) {
+        clearSession();
+        const errMsg = 'Malformed session contract: role is missing or empty.';
+        _lastConnectionError = errMsg;
+        return const ServiceApiResponse.failure(errMsg, statusCode: 401);
+      }
+      final roleStr = rawRole.toLowerCase();
+      if (roleStr != 'admin' && roleStr != 'viewer') {
+        clearSession();
+        final errMsg =
+            'Malformed session contract: invalid or unrecognized role "$rawRole".';
+        _lastConnectionError = errMsg;
+        return ServiceApiResponse.failure(errMsg, statusCode: 401);
+      }
+
+      // 3. Strict expiration validation
+      final expiresRaw = sessionData['expiresAt']?.toString().trim();
+      if (expiresRaw == null || expiresRaw.isEmpty) {
+        clearSession();
+        const errMsg =
+            'Malformed session contract: missing session expiration timestamp.';
+        _lastConnectionError = errMsg;
+        return const ServiceApiResponse.failure(errMsg, statusCode: 401);
+      }
+
+      final parsedExpires = DateTime.tryParse(expiresRaw);
+      if (parsedExpires == null) {
+        clearSession();
+        final errMsg =
+            'Malformed session contract: unparseable expiration timestamp "$expiresRaw".';
+        _lastConnectionError = errMsg;
+        return ServiceApiResponse.failure(errMsg, statusCode: 401);
+      }
+
+      if (parsedExpires.isBefore(DateTime.now())) {
+        clearSession();
+        final errMsg =
+            'Session expired: expiration timestamp "$expiresRaw" is in the past.';
+        _lastConnectionError = errMsg;
+        return ServiceApiResponse.failure(errMsg, statusCode: 401);
+      }
+
+      _currentSession = ClientSessionInfo(
+        token: token,
+        username: username,
+        role: roleStr,
+        expiresAt: parsedExpires,
+      );
+      _lastConnectionError = null;
+      return ServiceApiResponse.success(_currentSession!);
     } catch (e) {
-      _currentSession = null;
+      clearSession();
       _lastConnectionError = 'Cannot reach authoritative service: $e';
       return ServiceApiResponse.failure(
         'Failed to connect to authoritative monitoring service: $e',
@@ -950,20 +1050,12 @@ class MonitoringServiceClient {
       baseUrl,
     ).replace(scheme: baseUrl.startsWith('https') ? 'wss' : 'ws', path: '/ws');
 
-    SecurityContext? secContext = customSecurityContext;
-    if (secContext == null &&
-        trustedCertPath != null &&
-        File(trustedCertPath!).existsSync()) {
-      secContext = SecurityContext(withTrustedRoots: false);
-      secContext.setTrustedCertificates(trustedCertPath!);
-    }
-
     _webSocket = await WebSocket.connect(
       wsUri.toString(),
       headers: {
         HttpHeaders.authorizationHeader: 'Bearer ${_currentSession!.token}',
       },
-      customClient: HttpClient(context: secContext),
+      customClient: HttpClient(context: _securityContext),
     );
 
     _webSocket!.listen(
@@ -983,8 +1075,11 @@ class MonitoringServiceClient {
   }
 
   Future<void> disconnectWebSocket() async {
-    await _webSocket?.close();
+    final ws = _webSocket;
     _webSocket = null;
+    try {
+      await ws?.close();
+    } catch (_) {}
   }
 
   Future<ServiceApiResponse<dynamic>> _sendRequest({

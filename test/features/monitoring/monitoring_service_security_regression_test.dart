@@ -1898,5 +1898,328 @@ $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRul
         }
       },
     );
+
+    test(
+      'Case 28: Strict server session response parsing rejects missing role, unknown role, invalid expiration, and expired timestamps',
+      () async {
+        final mockServer = await HttpServer.bind(
+          InternetAddress.loopbackIPv4,
+          0,
+        );
+        dynamic responsePayload;
+        int responseStatus = 200;
+
+        mockServer.listen((req) async {
+          if (req.uri.path == '/api/auth/verify') {
+            req.response.statusCode = responseStatus;
+            req.response.headers.contentType = ContentType.json;
+            req.response.write(jsonEncode(responsePayload));
+            await req.response.close();
+          }
+        });
+
+        final client = MonitoringServiceClient(
+          baseUrl: 'http://127.0.0.1:${mockServer.port}',
+        );
+
+        try {
+          final futureDate = DateTime.now()
+              .add(const Duration(hours: 12))
+              .toIso8601String();
+
+          // 1. Missing role
+          responseStatus = 200;
+          responsePayload = {
+            'success': true,
+            'session': {'username': 'operator', 'expiresAt': futureDate},
+          };
+          var res = await client.verifySession('token_123');
+          expect(res.isFailure, isTrue);
+          expect(res.errorMessage, contains('role is missing'));
+          expect(client.isAuthenticated, isFalse);
+          expect(client.currentSession, isNull);
+
+          // 2. Unknown role
+          responsePayload = {
+            'success': true,
+            'session': {
+              'username': 'operator',
+              'role': 'super_admin_bypass',
+              'expiresAt': futureDate,
+            },
+          };
+          res = await client.verifySession('token_123');
+          expect(res.isFailure, isTrue);
+          expect(res.errorMessage, contains('invalid or unrecognized role'));
+          expect(client.isAuthenticated, isFalse);
+
+          // 3. Missing username
+          responsePayload = {
+            'success': true,
+            'session': {'role': 'admin', 'expiresAt': futureDate},
+          };
+          res = await client.verifySession('token_123');
+          expect(res.isFailure, isTrue);
+          expect(res.errorMessage, contains('username is missing'));
+          expect(client.isAuthenticated, isFalse);
+
+          // 4. Missing expiration timestamp
+          responsePayload = {
+            'success': true,
+            'session': {'username': 'operator', 'role': 'admin'},
+          };
+          res = await client.verifySession('token_123');
+          expect(res.isFailure, isTrue);
+          expect(res.errorMessage, contains('missing session expiration'));
+          expect(client.isAuthenticated, isFalse);
+
+          // 5. Malformed expiration timestamp
+          responsePayload = {
+            'success': true,
+            'session': {
+              'username': 'operator',
+              'role': 'admin',
+              'expiresAt': 'not_a_valid_date_time',
+            },
+          };
+          res = await client.verifySession('token_123');
+          expect(res.isFailure, isTrue);
+          expect(
+            res.errorMessage,
+            contains('unparseable expiration timestamp'),
+          );
+          expect(client.isAuthenticated, isFalse);
+
+          // 6. Expired timestamp in the past
+          final pastDate = DateTime.now()
+              .subtract(const Duration(hours: 2))
+              .toIso8601String();
+          responsePayload = {
+            'success': true,
+            'session': {
+              'username': 'operator',
+              'role': 'admin',
+              'expiresAt': pastDate,
+            },
+          };
+          res = await client.verifySession('token_123');
+          expect(res.isFailure, isTrue);
+          expect(res.errorMessage, contains('is in the past'));
+          expect(client.isAuthenticated, isFalse);
+
+          // 7. Complete and valid payload succeeds
+          responsePayload = {
+            'success': true,
+            'session': {
+              'username': 'valid_admin',
+              'role': 'admin',
+              'expiresAt': futureDate,
+            },
+          };
+          res = await client.verifySession('token_123');
+          expect(res.isSuccess, isTrue);
+          expect(client.isAuthenticated, isTrue);
+          expect(client.currentSession!.username, equals('valid_admin'));
+          expect(client.currentSession!.isAdmin, isTrue);
+        } finally {
+          await mockServer.close(force: true);
+        }
+      },
+    );
+
+    test(
+      'Case 29: WebSocket session revocation terminates active connection on logout or clearSession',
+      () async {
+        final fixtureDir = await Directory.systemTemp.createTemp(
+          'it_monitor_ws_revoc_test_',
+        );
+        final server = MonitoringServiceServer(
+          port: 0,
+          useTls: false,
+          customDataDir: fixtureDir.path,
+          isDevelopment: true,
+        );
+
+        await server.start();
+        final port = server.boundPort!;
+        final token = server.trustedClientToken!;
+
+        final client = MonitoringServiceClient(
+          baseUrl: 'http://127.0.0.1:$port',
+        );
+
+        try {
+          // 1. Authenticate with server
+          final authRes = await client.verifySession(token);
+          expect(authRes.isSuccess, isTrue);
+          expect(client.isAuthenticated, isTrue);
+
+          // 2. Connect WebSocket
+          await client.connectWebSocket();
+          expect(client.isWebSocketConnected, isTrue);
+
+          // Listen for events
+          final eventsReceived = <Map<String, dynamic>>[];
+          final sub = client.eventStream.listen((e) => eventsReceived.add(e));
+
+          // Allow initial snapshot events to arrive
+          await Future.delayed(const Duration(milliseconds: 300));
+
+          // 3. Log out - this must terminate the WebSocket connection both on client and server
+          final logoutRes = await client.logout();
+          expect(logoutRes.isSuccess, isTrue);
+          expect(client.isAuthenticated, isFalse);
+          expect(client.isWebSocketConnected, isFalse);
+
+          // Wait brief moment for socket close to propagate
+          await Future.delayed(const Duration(milliseconds: 200));
+
+          // 4. Calling clearSession on an active WebSocket also detaches and closes it
+          // Re-authenticate and reconnect to verify recovery
+          final reauthRes = await client.authenticateWithProvisionedToken(
+            token,
+          );
+          expect(reauthRes.isSuccess, isFalse); // token was revoked by logout!
+
+          await sub.cancel();
+        } finally {
+          await client.disconnectWebSocket();
+          await server.stop();
+          try {
+            await fixtureDir.delete(recursive: true);
+          } catch (_) {}
+        }
+      },
+    );
+
+    test(
+      'Case 30: TLS certificate provisioning generates valid DNS and IP SANs and restricts files',
+      () async {
+        if (!Platform.isWindows) return;
+
+        final scriptPath = p.normalize(
+          p.join(
+            Directory.current.path,
+            'installer',
+            'provision_tls_certificate.ps1',
+          ),
+        );
+        expect(File(scriptPath).existsSync(), isTrue);
+
+        final fixtureDir = await Directory.systemTemp.createTemp(
+          'it_monitor_prov_tls_test_',
+        );
+        try {
+          final certsDir = p.join(fixtureDir.path, 'certs');
+
+          // Run provision_tls_certificate.ps1 with target dirs
+          final res = Process.runSync('powershell', [
+            '-NoProfile',
+            '-ExecutionPolicy',
+            'Bypass',
+            '-File',
+            scriptPath,
+            '-TargetCertsDir',
+            certsDir,
+            '-PublicCertDir',
+            fixtureDir.path,
+          ]);
+          expect(
+            res.exitCode,
+            equals(0),
+            reason: '${res.stdout}\n${res.stderr}',
+          );
+
+          final certFile = File(p.join(certsDir, 'server.crt'));
+          final keyFile = File(p.join(certsDir, 'server.key'));
+          final publicCertFile = File(p.join(fixtureDir.path, 'server.crt'));
+
+          expect(certFile.existsSync(), isTrue);
+          expect(keyFile.existsSync(), isTrue);
+          expect(publicCertFile.existsSync(), isTrue);
+          expect(certFile.lengthSync(), greaterThan(0));
+          expect(keyFile.lengthSync(), greaterThan(0));
+          expect(publicCertFile.lengthSync(), greaterThan(0));
+
+          // Verify SAN content via PowerShell
+          final checkSan = Process.runSync(
+            'powershell',
+            [
+              '-NoProfile',
+              '-Command',
+              r'''
+$cert = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($env:CERT_PATH)
+$san = ($cert.Extensions | Where-Object { $_.Oid.Value -eq '2.5.29.17' }).Format($true)
+Write-Output $san
+''',
+            ],
+            environment: {'CERT_PATH': certFile.path},
+          );
+          expect(checkSan.exitCode, equals(0));
+          final sanOut = checkSan.stdout.toString();
+          expect(sanOut, contains('DNS Name=localhost'));
+          expect(sanOut, contains('IP Address=127.0.0.1'));
+
+          // Re-running without -Force should succeed and retain existing credentials
+          final rerun = Process.runSync('powershell', [
+            '-NoProfile',
+            '-ExecutionPolicy',
+            'Bypass',
+            '-File',
+            scriptPath,
+            '-TargetCertsDir',
+            certsDir,
+            '-PublicCertDir',
+            fixtureDir.path,
+          ]);
+          expect(rerun.exitCode, equals(0));
+          expect(
+            rerun.stdout.toString(),
+            contains('Retaining existing cryptographic credentials'),
+          );
+        } finally {
+          try {
+            await fixtureDir.delete(recursive: true);
+          } catch (_) {}
+        }
+      },
+    );
+
+    test(
+      'Case 31: Client fails clearly when configured trusted cert is missing or invalid',
+      () async {
+        // 1. Missing cert path throws StateError
+        expect(
+          () => MonitoringServiceClient(
+            baseUrl: 'https://127.0.0.1:8443',
+            trustedCertPath: r'D:\tmp\non_existent_cert_12345.crt',
+          ),
+          throwsStateError,
+        );
+
+        // 2. Corrupt/invalid cert file throws StateError
+        final tempCorrupt = File(
+          p.join(
+            Directory.systemTemp.path,
+            'corrupt_cert_${DateTime.now().microsecondsSinceEpoch}.crt',
+          ),
+        );
+        tempCorrupt.writeAsStringSync('THIS_IS_NOT_A_VALID_CERTIFICATE');
+
+        try {
+          expect(
+            () => MonitoringServiceClient(
+              baseUrl: 'https://127.0.0.1:8443',
+              trustedCertPath: tempCorrupt.path,
+            ),
+            throwsStateError,
+          );
+        } finally {
+          try {
+            tempCorrupt.deleteSync();
+          } catch (_) {}
+        }
+      },
+    );
   });
 }

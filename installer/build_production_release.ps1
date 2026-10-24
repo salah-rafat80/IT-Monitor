@@ -19,6 +19,11 @@ Write-Host ""
 $ProjectDir = Resolve-Path "$PSScriptRoot\.."
 Set-Location $ProjectDir
 
+if (Test-Path "D:\tmp") {
+    $env:TEMP = "D:\tmp"
+    $env:TMP = "D:\tmp"
+}
+
 # Function to check command execution
 function Assert-CommandSuccess {
     param(
@@ -121,6 +126,20 @@ Copy-Item -Path "$PSScriptRoot\provision_tls_certificate.bat" -Destination $Stag
 Copy-Item -Path "$PSScriptRoot\provision_tls_certificate.ps1" -Destination $StageDir -Force
 Copy-Item -Path "$PSScriptRoot\service_config.json.default" -Destination $StageDir -Force
 
+# Copy it_network_monitor.exe as it_monitoring_service.exe if missing
+$headlessServiceExe = Join-Path $StageDir "it_monitoring_service.exe"
+if (-not (Test-Path $headlessServiceExe)) {
+    Copy-Item -Path "$ReleaseBuildDir\it_network_monitor.exe" -Destination $headlessServiceExe -Force
+}
+
+# Copy launcher and documentation
+if (Test-Path "$PSScriptRoot\START_MONITOR.bat") {
+    Copy-Item -Path "$PSScriptRoot\START_MONITOR.bat" -Destination $StageDir -Force
+}
+Get-ChildItem -Path $PSScriptRoot -Filter "*.txt" | ForEach-Object {
+    Copy-Item -Path $_.FullName -Destination $StageDir -Force
+}
+
 # Packaging validation: Assert all mandatory security and operational scripts exist in staging
 $RequiredPayloadFiles = @(
     "apply_production_acls.bat",
@@ -140,40 +159,6 @@ foreach ($reqFile in $RequiredPayloadFiles) {
     }
 }
 Write-Host "      Staging payload security validation passed (all ACL and TLS scripts verified)." -ForegroundColor Green
-
-# Copy Readme / Setup Guide
-$ReadmeContent = @"
-============================================================================
-IT NETWORK MONITOR - PRODUCTION RELEASE (Windows x64)
-============================================================================
-
-Requirements:
-- Windows 10 / 11 / Server 2016+ (64-bit)
-- NO Flutter, Dart, Visual Studio, or dev tools required.
-
-CONTENTS:
-1. it_network_monitor.exe          : IT Desktop Monitoring Dashboard GUI Client
-2. it_monitoring_service.exe       : Dedicated Headless Windows Monitoring Service Executable
-3. it_service_host.exe             : Native Windows Service Control Manager Host
-4. install_windows_service_scm.bat : Native Windows Service Installer (services.msc)
-5. uninstall_windows_service_scm.bat: Service Uninstaller Script
-6. service_config.json.default     : Production TLS and Configuration Template
-
-DEPLOYMENT INSTRUCTIONS:
-----------------------------------------------------------------------------
-A. Standard Desktop Client (IT Desktop Users):
-   - Double-click 'it_network_monitor.exe' to launch the GUI monitoring client.
-
-B. Always-On Monitoring Host (Dedicated Server):
-   - Right-click 'install_windows_service_scm.bat' -> "Run as Administrator".
-   - The monitoring service will start automatically in services.msc.
-   - Closing the GUI desktop app will NOT stop background monitoring.
-   - SCM automatically restarts the service on unexpected process failure.
-
-============================================================================
-"@
-
-Set-Content -Path "$StageDir\README_DEPLOYMENT.txt" -Value $ReadmeContent
 
 # Synchronize staging to DistDir with explicit error checking
 Write-Host "      Synchronizing staged files to distribution folder..." -ForegroundColor White

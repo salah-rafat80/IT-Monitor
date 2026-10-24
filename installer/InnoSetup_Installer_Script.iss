@@ -79,7 +79,7 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: de
 
 [Run]
 ; 1. Provision initial TLS certificates and private key if not present
-Filename: "{app}\provision_tls_certificate.bat"; StatusMsg: "Provisioning TLS certificates and secure key store..."; Flags: runhidden waituntilterminated
+Filename: "{app}\provision_tls_certificate.bat"; Parameters: "-AddToTrustedRoot"; StatusMsg: "Provisioning TLS certificates and secure key store..."; Flags: runhidden waituntilterminated
 
 ; 2. Enforce least-privilege ACLs on ProgramData directories and authoritative files
 Filename: "{app}\apply_production_acls.bat"; StatusMsg: "Configuring least-privilege security ACLs on data directories..."; Flags: runhidden waituntilterminated

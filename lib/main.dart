@@ -59,14 +59,21 @@ void main(List<String> args) async {
   // In Desktop Client mode, register authoritative MonitoringServiceClient in getIt before configureDependencies
   if (AppConfig.isProductionClient) {
     final programData = Platform.environment['ProgramData'];
-    final defaultCertPath = programData != null
+    final defaultPublicCertPath = programData != null
+        ? p.join(programData, 'ITNetworkMonitor', 'server.crt')
+        : null;
+    final defaultCertsDirCertPath = programData != null
         ? p.join(programData, 'ITNetworkMonitor', 'certs', 'server.crt')
         : null;
     final trustedCert =
         Platform.environment['IT_MONITOR_TRUSTED_CERT_PATH'] ??
-        (defaultCertPath != null && File(defaultCertPath).existsSync()
-            ? defaultCertPath
-            : null);
+        (defaultPublicCertPath != null &&
+                File(defaultPublicCertPath).existsSync()
+            ? defaultPublicCertPath
+            : (defaultCertsDirCertPath != null &&
+                      File(defaultCertsDirCertPath).existsSync()
+                  ? defaultCertsDirCertPath
+                  : null));
     final envToken = Platform.environment['IT_MONITOR_CLIENT_TOKEN']?.trim();
 
     final client = MonitoringServiceClient(

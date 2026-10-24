@@ -240,6 +240,7 @@ class MonitoringServiceServer {
 
   HttpServer? _server;
   final List<WebSocket> _wsClients = [];
+  final Map<WebSocket, String> _wsClientTokens = {};
   final DateTime _startTime = DateTime.now();
 
   final Map<String, ServiceSession> _activeSessions = {};
@@ -937,6 +938,7 @@ Write-Output 'OK'
         try {
           final socket = await WebSocketTransformer.upgrade(request);
           _wsClients.add(socket);
+          _wsClientTokens[socket] = session.token;
           _log(
             'Client [${session.username}] (${session.role}) connected to WebSocket. Total clients: ${_wsClients.length}',
           );
@@ -970,12 +972,14 @@ Write-Output 'OK'
             (data) {},
             onDone: () {
               _wsClients.remove(socket);
+              _wsClientTokens.remove(socket);
               _log(
                 'Client [${session.username}] disconnected from WebSocket. Total clients: ${_wsClients.length}',
               );
             },
             onError: (err) {
               _wsClients.remove(socket);
+              _wsClientTokens.remove(socket);
               _log('WebSocket client error: $err');
             },
           );
@@ -1069,10 +1073,11 @@ Write-Output 'OK'
           token = authHeader.substring(7).trim();
         }
 
-        if (token != null && _activeSessions.containsKey(token)) {
+        if (token != null) {
           final removed = _activeSessions.remove(token);
+          _terminateWebSocketSessions(token);
           _log(
-            'Session for user [${removed?.username}] invalidated successfully.',
+            'Session for user [${removed?.username}] invalidated successfully and active WebSockets terminated.',
           );
         }
 
@@ -2555,13 +2560,48 @@ Write-Output 'OK'
     }
   }
 
+  void _terminateWebSocketSessions(String token) {
+    for (final entry in List.of(_wsClientTokens.entries)) {
+      if (entry.value == token) {
+        final socket = entry.key;
+        _wsClients.remove(socket);
+        _wsClientTokens.remove(socket);
+        try {
+          socket.close(
+            WebSocketStatus.policyViolation,
+            'Session terminated or revoked',
+          );
+        } catch (_) {}
+      }
+    }
+  }
+
   void _broadcastEvent(String eventName, dynamic data) {
     final payload = jsonEncode({'event': eventName, 'data': data});
-    for (final client in List.of(_wsClients)) {
+    for (final entry in List.of(_wsClientTokens.entries)) {
+      final client = entry.key;
+      final token = entry.value;
+      final session = _activeSessions[token];
+
+      if (session == null || session.isExpired) {
+        // Session was revoked or expired: terminate connection immediately and do not deliver event!
+        _activeSessions.remove(token);
+        _wsClients.remove(client);
+        _wsClientTokens.remove(client);
+        try {
+          client.close(
+            WebSocketStatus.policyViolation,
+            'Session expired or revoked',
+          );
+        } catch (_) {}
+        continue;
+      }
+
       try {
         client.add(payload);
       } catch (_) {
         _wsClients.remove(client);
+        _wsClientTokens.remove(client);
       }
     }
   }
@@ -2645,9 +2685,16 @@ Write-Output 'OK'
     await _statusSub?.cancel();
     await _incidentSub?.cancel();
     await _discoveryProgressSub?.cancel();
-    for (final client in _wsClients) {
-      await client.close();
+    for (final client in List.of(_wsClients)) {
+      try {
+        await client.close(
+          WebSocketStatus.normalClosure,
+          'Service shutting down',
+        );
+      } catch (_) {}
     }
+    _wsClients.clear();
+    _wsClientTokens.clear();
     await _server?.close(force: true);
     _log('Monitoring Service stopped cleanly.');
   }

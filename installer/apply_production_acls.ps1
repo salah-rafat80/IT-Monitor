@@ -475,6 +475,21 @@ function Invoke-AclPolicyAudit {
         return @{ InspectedCount = $inspectedCount; Findings = @("[Logs] Access denied inspecting logs/ directory."); FatalError = $true; ExitCode = 2 }
     }
 
+    # 7. Operator Public TLS Certificate (if present in base dir)
+    $publicCertFile = Join-Path $DataDir "server.crt"
+    $pubCertStatus = Test-PathWithStatus $publicCertFile
+    if ($pubCertStatus -eq "Exists") {
+        if (-not $Quiet) { Write-Host "[AUDIT] Checking public server.crt ACLs..." -ForegroundColor Yellow }
+        $pubCertResult = Get-PathAclStrict $publicCertFile
+        if ($pubCertResult.Status -ne "Success") {
+            return @{ InspectedCount = $inspectedCount; Findings = @("[PublicCert] Could not inspect server.crt ACL: $($pubCertResult.Error)"); FatalError = $true; ExitCode = 2 }
+        }
+        $inspectedCount++
+        $auditFindings += Audit-DaclPolicy -Acl $pubCertResult.Acl -PathDescription "PublicCert" -IsToken $true
+    } elseif ($pubCertStatus -eq "AccessDenied") {
+        return @{ InspectedCount = $inspectedCount; Findings = @("[PublicCert] Access denied inspecting server.crt."); FatalError = $true; ExitCode = 2 }
+    }
+
     return @{ InspectedCount = $inspectedCount; Findings = $auditFindings; FatalError = $false; ExitCode = 0 }
 }
 
@@ -697,6 +712,13 @@ $tokenPath = Join-Path $DataDir "trusted_client.token"
 if (Test-Path -LiteralPath $tokenPath) {
     Set-HardenedDacl -Path $tokenPath -IsDirectory $false -AllowOperatorReadOnly
     Write-Host "  -> trusted_client.token secured with read-only access for '$OperatorGroup'." -ForegroundColor Green
+}
+
+# G. Public TLS Certificate (if currently on disk in base dir): Restrict to SYSTEM, Admins, and OperatorGroup Read-Only
+$publicCertPath = Join-Path $DataDir "server.crt"
+if (Test-Path -LiteralPath $publicCertPath) {
+    Set-HardenedDacl -Path $publicCertPath -IsDirectory $false -AllowOperatorReadOnly
+    Write-Host "  -> public server.crt secured with read-only access for '$OperatorGroup'." -ForegroundColor Green
 }
 
 # 5. Verification Probes

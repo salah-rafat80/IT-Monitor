@@ -1077,6 +1077,89 @@ class MonitoringServiceClient {
     );
   }
 
+  /// Fetch all configured network ranges from authoritative service.
+  Future<ServiceApiResponse<List<Map<String, dynamic>>>>
+  getNetworkRanges() async {
+    final response = await _sendRequest(
+      method: 'GET',
+      endpoint: '/api/discovery/ranges',
+      requireAuth: true,
+    );
+    if (response.isSuccess && response.data is Map) {
+      final json = response.data as Map<String, dynamic>;
+      final list =
+          (json['ranges'] as List<dynamic>?)
+              ?.map((e) => e as Map<String, dynamic>)
+              .toList() ??
+          [];
+      return ServiceApiResponse.success(list);
+    }
+    return ServiceApiResponse.failure(
+      response.errorMessage,
+      statusCode: response.statusCode,
+    );
+  }
+
+  /// Add a new authorized network range to the authoritative service.
+  Future<ServiceApiResponse<Map<String, dynamic>>> addNetworkRange(
+    Map<String, dynamic> rangeData,
+  ) async {
+    final response = await _sendRequest(
+      method: 'POST',
+      endpoint: '/api/discovery/ranges',
+      body: rangeData,
+      requireAuth: true,
+    );
+    if (response.isSuccess && response.data is Map) {
+      final json = response.data as Map<String, dynamic>;
+      return ServiceApiResponse.success(
+        json['range'] as Map<String, dynamic>? ?? rangeData,
+      );
+    }
+    return ServiceApiResponse.failure(
+      response.errorMessage,
+      statusCode: response.statusCode,
+    );
+  }
+
+  /// Update an existing network range on the authoritative service.
+  Future<ServiceApiResponse<Map<String, dynamic>>> updateNetworkRange(
+    Map<String, dynamic> rangeData,
+  ) async {
+    final response = await _sendRequest(
+      method: 'POST',
+      endpoint: '/api/discovery/ranges/update',
+      body: rangeData,
+      requireAuth: true,
+    );
+    if (response.isSuccess && response.data is Map) {
+      final json = response.data as Map<String, dynamic>;
+      return ServiceApiResponse.success(
+        json['range'] as Map<String, dynamic>? ?? rangeData,
+      );
+    }
+    return ServiceApiResponse.failure(
+      response.errorMessage,
+      statusCode: response.statusCode,
+    );
+  }
+
+  /// Delete a network range from the authoritative service.
+  Future<ServiceApiResponse<void>> deleteNetworkRange(String rangeId) async {
+    final response = await _sendRequest(
+      method: 'DELETE',
+      endpoint: '/api/discovery/ranges/$rangeId',
+      requireAuth: true,
+    );
+    if (response.isSuccess) {
+      return const ServiceApiResponse.success(null);
+    }
+    return ServiceApiResponse.failure(
+      response.errorMessage,
+      statusCode: response.statusCode,
+    );
+  }
+
   /// Fetch monitoring configuration from authoritative service.
   Future<ServiceApiResponse<Map<String, dynamic>>> getMonitoringConfig() async {
     final response = await _sendRequest(

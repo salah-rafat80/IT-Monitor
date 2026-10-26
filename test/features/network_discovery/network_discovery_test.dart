@@ -922,24 +922,31 @@ void main() {
     });
 
     group('7. Drift Persistence & Schema V5', () {
-      test('7.1 Configuration can be retrieved and updated', () async {
-        final initialConfigRes = await discoveryRepo.getConfig();
-        expect(initialConfigRes.isSuccess, isTrue);
-        final initial = initialConfigRes.dataOrNull!;
-        expect(initial.authorizedRanges, contains('192.168.27.0/24'));
-        expect(initial.authorizedRanges, contains('192.168.22.0/24'));
+      test(
+        '7.1 Configuration can be retrieved and updated dynamically',
+        () async {
+          final initialConfigRes = await discoveryRepo.getConfig();
+          expect(initialConfigRes.isSuccess, isTrue);
+          final initial = initialConfigRes.dataOrNull!;
+          expect(initial.authorizedRanges, isEmpty);
 
-        final updatedConfig = initial.copyWith(
-          maxConcurrency: 35,
-          timeoutSeconds: 3,
-        );
-        final saveRes = await discoveryRepo.saveConfig(updatedConfig);
-        expect(saveRes.isSuccess, isTrue);
+          final updatedConfig = initial.copyWith(
+            networkRanges: [NetworkRange.parse('10.10.20.0/24')!],
+            maxConcurrency: 35,
+            timeoutSeconds: 3,
+          );
+          final saveRes = await discoveryRepo.saveConfig(updatedConfig);
+          expect(saveRes.isSuccess, isTrue);
 
-        final reloadedRes = await discoveryRepo.getConfig();
-        expect(reloadedRes.dataOrNull!.maxConcurrency, equals(35));
-        expect(reloadedRes.dataOrNull!.timeoutSeconds, equals(3));
-      });
+          final reloadedRes = await discoveryRepo.getConfig();
+          expect(reloadedRes.dataOrNull!.maxConcurrency, equals(35));
+          expect(reloadedRes.dataOrNull!.timeoutSeconds, equals(3));
+          expect(
+            reloadedRes.dataOrNull!.authorizedRanges,
+            contains('10.10.20.0/24'),
+          );
+        },
+      );
 
       test(
         '7.2 Detailed evidence items are saved and retrievable by device ID',

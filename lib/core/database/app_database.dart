@@ -126,9 +126,8 @@ class Incidents extends Table {
 @DataClassName('DiscoveryConfigurationData')
 class DiscoveryConfigurations extends Table {
   IntColumn get id => integer().autoIncrement()();
-  TextColumn get authorizedRangesJson => text().withDefault(
-    const Constant('["192.168.27.0/24","192.168.22.0/24"]'),
-  )();
+  TextColumn get authorizedRangesJson =>
+      text().withDefault(const Constant('[]'))();
   TextColumn get enabledStrategiesJson => text().withDefault(
     const Constant('["icmp","arp","dns","tcp_probe","onvif","mdns"]'),
   )();

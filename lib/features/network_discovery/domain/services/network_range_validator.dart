@@ -5,14 +5,29 @@ import '../entities/reachability_status.dart';
 
 @lazySingleton
 class NetworkRangeValidator {
-  /// Default approved company network ranges
-  static const List<String> initialAuthorizedRanges = [
-    '192.168.27.0/24',
-    '192.168.22.0/24',
-  ];
+  /// Maximum suggested target count for a single discovery batch to avoid
+  /// socket exhaustion and prolonged scans without explicit operator confirmation.
+  static const int maxRecommendedScanTargets = 4096;
+  static const int maxTotalTargets = maxRecommendedScanTargets;
+
+  /// Parses and validates a single CIDR string against corporate security limits.
+  /// Bounded to prefix length between /16 and /32.
+  NetworkRange? validateSingleRange(
+    String cidrStr, {
+    String? id,
+    String? name,
+    bool isEnabled = true,
+  }) {
+    return NetworkRange.parse(
+      cidrStr,
+      id: id,
+      name: name,
+      isEnabled: isEnabled,
+    );
+  }
 
   /// Parses and validates a list of CIDR strings against corporate security limits.
-  /// Bounded to prefix length between /16 and /30.
+  /// Bounded to prefix length between /16 and /32.
   List<NetworkRange> validateRanges(List<String> cidrList) {
     final validRanges = <NetworkRange>[];
     for (final raw in cidrList) {
@@ -24,15 +39,30 @@ class NetworkRangeValidator {
     return validRanges;
   }
 
-  /// Calculates total candidate host target count across all provided ranges.
+  /// Calculates total candidate host target count across all provided ranges,
+  /// deduplicating hosts in case of overlapping ranges.
   int calculateTotalUsableHosts(List<NetworkRange> ranges) {
-    return ranges.fold<int>(0, (sum, r) => sum + r.usableHostsCount);
+    final uniqueHosts = <String>{};
+    for (final r in ranges) {
+      if (r.isEnabled) {
+        uniqueHosts.addAll(r.enumerateUsableHosts());
+      }
+    }
+    return uniqueHosts.length;
+  }
+
+  /// Evaluates whether the candidate target count is within safe execution limits.
+  bool isTargetCountAcceptable(
+    int hostCount, {
+    int maxLimit = maxRecommendedScanTargets,
+  }) {
+    return hostCount > 0 && hostCount <= maxLimit;
   }
 
   /// Returns true if the target IP falls within any of the authorized network ranges.
   bool isIpInScope(String ip, List<NetworkRange> authorizedRanges) {
     for (final range in authorizedRanges) {
-      if (range.containsIp(ip)) {
+      if (range.isEnabled && range.containsIp(ip)) {
         return true;
       }
     }

@@ -36,6 +36,7 @@ class NetworkDiscoveryLoaded extends NetworkDiscoveryState {
   final ReviewState? reviewFilter;
   final String? subnetFilter;
   final DiscoveryProgress? progress;
+  final String? errorMessage;
 
   const NetworkDiscoveryLoaded({
     required this.config,
@@ -50,6 +51,7 @@ class NetworkDiscoveryLoaded extends NetworkDiscoveryState {
     this.reviewFilter,
     this.subnetFilter,
     this.progress,
+    this.errorMessage,
   });
 
   // Derived Summary Counters from actual scan results
@@ -92,6 +94,8 @@ class NetworkDiscoveryLoaded extends NetworkDiscoveryState {
     String? subnetFilter,
     bool clearSubnetFilter = false,
     DiscoveryProgress? progress,
+    String? errorMessage,
+    bool clearErrorMessage = false,
   }) {
     return NetworkDiscoveryLoaded(
       config: config ?? this.config,
@@ -112,6 +116,9 @@ class NetworkDiscoveryLoaded extends NetworkDiscoveryState {
           ? null
           : (subnetFilter ?? this.subnetFilter),
       progress: progress ?? this.progress,
+      errorMessage: clearErrorMessage
+          ? null
+          : (errorMessage ?? this.errorMessage),
     );
   }
 
@@ -129,6 +136,7 @@ class NetworkDiscoveryLoaded extends NetworkDiscoveryState {
     reviewFilter,
     subnetFilter,
     progress,
+    errorMessage,
   ];
 }
 

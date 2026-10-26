@@ -34,7 +34,10 @@ class _DiscoveryStartDialogState extends State<DiscoveryStartDialog> {
   @override
   void initState() {
     super.initState();
-    _selectedRanges = widget.ranges.map((r) => r.cidr).toSet();
+    _selectedRanges = widget.ranges
+        .where((r) => r.isEnabled)
+        .map((r) => r.cidr)
+        .toSet();
     _selectedStrategies = widget.config.enabledStrategies.toSet();
     _concurrency = widget.config.maxConcurrency;
     _timeoutSeconds = widget.config.timeoutSeconds;
@@ -61,63 +64,133 @@ class _DiscoveryStartDialogState extends State<DiscoveryStartDialog> {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF0F62FE).withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: const Color(0xFF0F62FE).withValues(alpha: 0.2),
+              if (widget.ranges.isEmpty)
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: Colors.orange.withValues(alpha: 0.3),
+                    ),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(
+                        Icons.warning_amber_rounded,
+                        color: Colors.orange,
+                        size: 20,
+                      ),
+                      SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'No authorized network ranges configured. An administrator must add an authorized network scope before discovery can run.',
+                          style: TextStyle(fontSize: 12),
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              else
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0F62FE).withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: const Color(0xFF0F62FE).withValues(alpha: 0.2),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.info_outline,
+                        color: Color(0xFF0F62FE),
+                        size: 20,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Total of $totalTargets candidate host addresses will be scanned across ${_selectedRanges.length} authorized subnets using safe read-only probes.',
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.info_outline,
-                      color: Color(0xFF0F62FE),
-                      size: 20,
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        'Total of $totalTargets candidate host addresses will be scanned across ${_selectedRanges.length} authorized subnets using safe read-only probes.',
-                        style: const TextStyle(fontSize: 12),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
               const SizedBox(height: 16),
               const Text(
                 'Target Network Scopes:',
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
               ),
               const SizedBox(height: 8),
-              ...widget.ranges.map((r) {
-                final isChecked = _selectedRanges.contains(r.cidr);
-                return CheckboxListTile(
-                  dense: true,
-                  value: isChecked,
-                  title: Text(
-                    r.cidr,
-                    style: const TextStyle(fontWeight: FontWeight.bold),
+              if (widget.ranges.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 8),
+                  child: Text(
+                    'No network ranges configured.',
+                    style: TextStyle(
+                      fontStyle: FontStyle.italic,
+                      color: Colors.grey,
+                    ),
                   ),
-                  subtitle: Text(
-                    '${r.usableHostsCount} usable hosts (${r.baseIp} usable range)',
-                  ),
-                  onChanged: (val) {
-                    setState(() {
-                      if (val == true) {
-                        _selectedRanges.add(r.cidr);
-                      } else {
-                        if (_selectedRanges.length > 1) {
-                          _selectedRanges.remove(r.cidr);
-                        }
-                      }
-                    });
-                  },
-                );
-              }),
+                )
+              else
+                ...widget.ranges.map((r) {
+                  final isChecked = _selectedRanges.contains(r.cidr);
+                  return CheckboxListTile(
+                    dense: true,
+                    enabled: r.isEnabled,
+                    value: isChecked,
+                    title: Row(
+                      children: [
+                        Text(
+                          r.cidr,
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: r.isEnabled ? null : Colors.grey,
+                          ),
+                        ),
+                        if (r.name != null) ...[
+                          const SizedBox(width: 6),
+                          Text(
+                            '(${r.name})',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey,
+                            ),
+                          ),
+                        ],
+                        if (!r.isEnabled) ...[
+                          const SizedBox(width: 6),
+                          const Text(
+                            '(Disabled)',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.orange,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    subtitle: Text(
+                      '${r.usableHostsCount} usable hosts (${r.baseIp} usable range)',
+                    ),
+                    onChanged: !r.isEnabled
+                        ? null
+                        : (val) {
+                            setState(() {
+                              if (val == true) {
+                                _selectedRanges.add(r.cidr);
+                              } else {
+                                if (_selectedRanges.length > 1) {
+                                  _selectedRanges.remove(r.cidr);
+                                }
+                              }
+                            });
+                          },
+                  );
+                }),
               const Divider(height: 24),
               const Text(
                 'Enabled Discovery Strategies:',

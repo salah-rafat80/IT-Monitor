@@ -41,6 +41,8 @@ import '../../features/infrastructure/domain/repositories/infrastructure_reposit
     as _i114;
 import '../../features/infrastructure/presentation/bloc/infrastructure_cubit.dart'
     as _i236;
+import '../../features/monitoring/data/datasources/monitoring_service_client.dart'
+    as _i63;
 import '../../features/monitoring/data/datasources/platform_ping_checker.dart'
     as _i820;
 import '../../features/monitoring/data/repositories/monitoring_repository_impl.dart'
@@ -141,20 +143,29 @@ extension GetItInjectableX on _i174.GetIt {
     gh.lazySingleton<_i64.AuditLogRepository>(
       () => _i1011.AuditLogRepositoryImpl(gh<_i982.AppDatabase>()),
     );
+    gh.lazySingleton<_i379.DiscoveryRepository>(
+      () => _i670.DiscoveryRepositoryImpl(
+        gh<_i982.AppDatabase>(),
+        gh<_i63.MonitoringServiceClient>(),
+      ),
+    );
     gh.lazySingleton<_i575.ArpDiscoveryStrategy>(
       () => _i575.ArpDiscoveryStrategy(gh<_i547.MacVendorLookup>()),
     );
     gh.lazySingleton<_i547.DeviceClassificationEngine>(
       () => _i547.DeviceClassificationEngine(gh<_i547.MacVendorLookup>()),
     );
-    gh.lazySingleton<_i379.DiscoveryRepository>(
-      () => _i670.DiscoveryRepositoryImpl(gh<_i982.AppDatabase>()),
-    );
     gh.lazySingleton<_i939.ReportRepository>(
-      () => _i246.ReportRepositoryImpl(gh<_i982.AppDatabase>()),
+      () => _i246.ReportRepositoryImpl(
+        gh<_i982.AppDatabase>(),
+        gh<_i63.MonitoringServiceClient>(),
+      ),
     );
     gh.lazySingleton<_i365.MonitoringRepository>(
-      () => _i592.MonitoringRepositoryImpl(gh<_i982.AppDatabase>()),
+      () => _i592.MonitoringRepositoryImpl(
+        gh<_i982.AppDatabase>(),
+        gh<_i63.MonitoringServiceClient>(),
+      ),
     );
     gh.factory<_i833.ReportsCubit>(
       () => _i833.ReportsCubit(gh<_i939.ReportRepository>()),
@@ -163,6 +174,7 @@ extension GetItInjectableX on _i174.GetIt {
       () => _i723.IncidentRepositoryImpl(
         gh<_i982.AppDatabase>(),
         gh<_i64.AuditLogRepository>(),
+        gh<_i63.MonitoringServiceClient>(),
       ),
     );
     gh.lazySingleton<_i787.AuthRepository>(
@@ -179,6 +191,7 @@ extension GetItInjectableX on _i174.GetIt {
         gh<_i982.AppDatabase>(),
         gh<_i64.AuditLogRepository>(),
         gh<_i787.AuthRepository>(),
+        gh<_i63.MonitoringServiceClient>(),
       ),
     );
     gh.lazySingleton<_i658.UserRepository>(
@@ -196,6 +209,7 @@ extension GetItInjectableX on _i174.GetIt {
         gh<_i982.AppDatabase>(),
         gh<_i64.AuditLogRepository>(),
         gh<_i787.AuthRepository>(),
+        gh<_i63.MonitoringServiceClient>(),
       ),
     );
     gh.factory<_i184.UserManagementCubit>(
@@ -238,6 +252,9 @@ extension GetItInjectableX on _i174.GetIt {
         gh<_i524.EnterpriseTopologyBuilder>(),
       ),
     );
+    gh.factory<_i264.DevicesCubit>(
+      () => _i264.DevicesCubit(gh<_i1071.DeviceRepository>()),
+    );
     gh.lazySingleton<_i993.DiscoveryCoordinator>(
       () => _i993.DiscoveryCoordinator(
         gh<_i379.DiscoveryRepository>(),
@@ -253,9 +270,6 @@ extension GetItInjectableX on _i174.GetIt {
         gh<_i904.MdnsSsdpDiscoveryStrategy>(),
         gh<_i114.InfrastructureRepository>(),
       ),
-    );
-    gh.factory<_i264.DevicesCubit>(
-      () => _i264.DevicesCubit(gh<_i1071.DeviceRepository>()),
     );
     gh.factory<_i651.MonitoringCubit>(
       () => _i651.MonitoringCubit(

@@ -1,14 +1,17 @@
 import 'package:equatable/equatable.dart';
 
+import 'network_range.dart';
+
 class DiscoveryConfigEntity extends Equatable {
-  final List<String> authorizedRanges;
+  final List<NetworkRange> networkRanges;
   final List<String> enabledStrategies;
   final int maxConcurrency;
   final int timeoutSeconds;
   final DateTime updatedAt;
 
-  const DiscoveryConfigEntity({
-    this.authorizedRanges = const ['192.168.27.0/24', '192.168.22.0/24'],
+  DiscoveryConfigEntity({
+    List<NetworkRange>? networkRanges,
+    List<String>? authorizedRanges,
     this.enabledStrategies = const [
       'icmp',
       'arp',
@@ -20,21 +23,51 @@ class DiscoveryConfigEntity extends Equatable {
     this.maxConcurrency = 20,
     this.timeoutSeconds = 2,
     required this.updatedAt,
-  });
+  }) : networkRanges =
+           networkRanges ??
+           (authorizedRanges != null
+               ? authorizedRanges
+                     .map((c) => NetworkRange.parse(c))
+                     .whereType<NetworkRange>()
+                     .toList()
+               : const []);
 
+  /// Returns canonical CIDRs for all currently enabled network ranges.
+  /// Consumed by discovery scans, filters, and downstream scope checks.
+  List<String> get authorizedRanges =>
+      networkRanges.where((r) => r.isEnabled).map((r) => r.cidr).toList();
+
+  /// Returns all configured CIDRs regardless of enabled state.
+  List<String> get allConfiguredRanges =>
+      networkRanges.map((r) => r.cidr).toList();
+
+  /// Fresh installations initialize with zero hardcoded network ranges.
+  /// Administrators must configure authorized scopes explicitly.
   factory DiscoveryConfigEntity.initial() {
-    return DiscoveryConfigEntity(updatedAt: DateTime.now());
+    return DiscoveryConfigEntity(
+      networkRanges: const [],
+      updatedAt: DateTime.now(),
+    );
   }
 
   DiscoveryConfigEntity copyWith({
+    List<NetworkRange>? networkRanges,
     List<String>? authorizedRanges,
     List<String>? enabledStrategies,
     int? maxConcurrency,
     int? timeoutSeconds,
     DateTime? updatedAt,
   }) {
+    List<NetworkRange>? effectiveRanges = networkRanges;
+    if (effectiveRanges == null && authorizedRanges != null) {
+      effectiveRanges = authorizedRanges
+          .map((c) => NetworkRange.parse(c))
+          .whereType<NetworkRange>()
+          .toList();
+    }
+
     return DiscoveryConfigEntity(
-      authorizedRanges: authorizedRanges ?? this.authorizedRanges,
+      networkRanges: effectiveRanges ?? this.networkRanges,
       enabledStrategies: enabledStrategies ?? this.enabledStrategies,
       maxConcurrency: maxConcurrency ?? this.maxConcurrency,
       timeoutSeconds: timeoutSeconds ?? this.timeoutSeconds,
@@ -44,6 +77,7 @@ class DiscoveryConfigEntity extends Equatable {
 
   Map<String, dynamic> toJson() => {
     'authorizedRanges': authorizedRanges,
+    'networkRanges': networkRanges.map((r) => r.toJson()).toList(),
     'enabledStrategies': enabledStrategies,
     'maxConcurrency': maxConcurrency,
     'timeoutSeconds': timeoutSeconds,
@@ -51,12 +85,29 @@ class DiscoveryConfigEntity extends Equatable {
   };
 
   factory DiscoveryConfigEntity.fromJson(Map<String, dynamic> json) {
+    List<NetworkRange> ranges = const [];
+
+    if (json['networkRanges'] is List) {
+      ranges = (json['networkRanges'] as List)
+          .map((e) {
+            if (e is Map<String, dynamic>) {
+              return NetworkRange.fromJson(e);
+            } else if (e is String) {
+              return NetworkRange.parse(e);
+            }
+            return null;
+          })
+          .whereType<NetworkRange>()
+          .toList();
+    } else if (json['authorizedRanges'] is List) {
+      ranges = (json['authorizedRanges'] as List)
+          .map((e) => NetworkRange.parse(e.toString()))
+          .whereType<NetworkRange>()
+          .toList();
+    }
+
     return DiscoveryConfigEntity(
-      authorizedRanges:
-          (json['authorizedRanges'] as List<dynamic>?)
-              ?.map((e) => e.toString())
-              .toList() ??
-          const ['192.168.27.0/24', '192.168.22.0/24'],
+      networkRanges: ranges,
       enabledStrategies:
           (json['enabledStrategies'] as List<dynamic>?)
               ?.map((e) => e.toString())
@@ -72,7 +123,7 @@ class DiscoveryConfigEntity extends Equatable {
 
   @override
   List<Object?> get props => [
-    authorizedRanges,
+    networkRanges,
     enabledStrategies,
     maxConcurrency,
     timeoutSeconds,

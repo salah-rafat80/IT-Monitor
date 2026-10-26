@@ -15,6 +15,7 @@ import '../../domain/entities/discovered_device_entity.dart';
 import '../../domain/entities/discovery_config_entity.dart';
 import '../../domain/entities/discovery_evidence_item.dart';
 import '../../domain/entities/discovery_scan_job.dart';
+import '../../domain/entities/network_range.dart';
 import '../../domain/entities/review_state.dart';
 import '../../domain/repositories/discovery_repository.dart';
 
@@ -29,6 +30,8 @@ class DiscoveryRepositoryImpl implements DiscoveryRepository {
       StreamController<List<DiscoveredDeviceEntity>>.broadcast();
   final StreamController<DiscoveryScanJob?> _scanJobController =
       StreamController<DiscoveryScanJob?>.broadcast();
+  final StreamController<List<NetworkRange>> _rangesController =
+      StreamController<List<NetworkRange>>.broadcast();
 
   DiscoveryRepositoryImpl(this._db, [this._serviceClient]) {
     _initServiceEventSubscription();
@@ -61,6 +64,12 @@ class DiscoveryRepositoryImpl implements DiscoveryRepository {
               _scanJobController.add(res.dataOrNull);
             }
           });
+        } else if (ev == 'discovery_config_updated') {
+          getRanges().then((res) {
+            if (res.isSuccess && !_rangesController.isClosed) {
+              _rangesController.add(res.dataOrNull ?? []);
+            }
+          });
         }
       });
     }
@@ -79,7 +88,11 @@ class DiscoveryRepositoryImpl implements DiscoveryRepository {
       }
       final res = await client.getDiscoveryConfig();
       if (res.isSuccess && res.data != null) {
-        return Result.success(DiscoveryConfigEntity.fromJson(res.data!));
+        final config = DiscoveryConfigEntity.fromJson(res.data!);
+        if (!_rangesController.isClosed) {
+          _rangesController.add(config.networkRanges);
+        }
+        return Result.success(config);
       } else {
         return Result.failure(
           NetworkFailure(
@@ -99,23 +112,34 @@ class DiscoveryRepositoryImpl implements DiscoveryRepository {
         return Result.success(initial);
       }
 
-      final ranges = (jsonDecode(row.authorizedRangesJson) as List<dynamic>)
-          .map((e) => e.toString())
-          .toList();
+      final rawRanges = jsonDecode(row.authorizedRangesJson) as List<dynamic>;
+      final List<NetworkRange> networkRanges = [];
+      for (final item in rawRanges) {
+        if (item is Map<String, dynamic>) {
+          networkRanges.add(NetworkRange.fromJson(item));
+        } else if (item is String) {
+          final parsed = NetworkRange.tryParse(item);
+          if (parsed != null) {
+            networkRanges.add(parsed);
+          }
+        }
+      }
       final strategies =
           (jsonDecode(row.enabledStrategiesJson) as List<dynamic>)
               .map((e) => e.toString())
               .toList();
 
-      return Result.success(
-        DiscoveryConfigEntity(
-          authorizedRanges: ranges,
-          enabledStrategies: strategies,
-          maxConcurrency: row.maxConcurrency,
-          timeoutSeconds: row.timeoutSeconds,
-          updatedAt: row.updatedAt,
-        ),
+      final config = DiscoveryConfigEntity(
+        networkRanges: networkRanges,
+        enabledStrategies: strategies,
+        maxConcurrency: row.maxConcurrency,
+        timeoutSeconds: row.timeoutSeconds,
+        updatedAt: row.updatedAt,
       );
+      if (!_rangesController.isClosed) {
+        _rangesController.add(networkRanges);
+      }
+      return Result.success(config);
     } catch (e) {
       return Result.failure(
         DatabaseFailure('Failed to load discovery configuration: $e'),
@@ -136,6 +160,9 @@ class DiscoveryRepositoryImpl implements DiscoveryRepository {
       }
       final res = await client.saveDiscoveryConfig(config.toJson());
       if (res.isSuccess) {
+        if (!_rangesController.isClosed) {
+          _rangesController.add(config.networkRanges);
+        }
         return Result.success(null);
       } else {
         return Result.failure(
@@ -151,7 +178,9 @@ class DiscoveryRepositoryImpl implements DiscoveryRepository {
         _db.discoveryConfigurations,
       )..limit(1)).getSingleOrNull();
       final companion = DiscoveryConfigurationsCompanion(
-        authorizedRangesJson: Value(jsonEncode(config.authorizedRanges)),
+        authorizedRangesJson: Value(
+          jsonEncode(config.networkRanges.map((r) => r.toJson()).toList()),
+        ),
         enabledStrategiesJson: Value(jsonEncode(config.enabledStrategies)),
         maxConcurrency: Value(config.maxConcurrency),
         timeoutSeconds: Value(config.timeoutSeconds),
@@ -165,12 +194,89 @@ class DiscoveryRepositoryImpl implements DiscoveryRepository {
           _db.discoveryConfigurations,
         )..where((t) => t.id.equals(existing.id))).write(companion);
       }
+      if (!_rangesController.isClosed) {
+        _rangesController.add(config.networkRanges);
+      }
       return Result.success(null);
     } catch (e) {
       return Result.failure(
         DatabaseFailure('Failed to save discovery configuration: $e'),
       );
     }
+  }
+
+  @override
+  Future<Result<List<NetworkRange>>> getRanges() async {
+    final configRes = await getConfig();
+    if (configRes.isSuccess) {
+      return Result.success(configRes.dataOrNull?.networkRanges ?? []);
+    }
+    return Result.failure(configRes.failureOrNull!);
+  }
+
+  @override
+  Future<Result<void>> addRange(NetworkRange range) async {
+    final configRes = await getConfig();
+    if (configRes.isFailure) return Result.failure(configRes.failureOrNull!);
+    final config = configRes.dataOrNull!;
+
+    if (config.networkRanges.any(
+      (r) => r.cidr == range.cidr || r.id == range.id,
+    )) {
+      return Result.failure(
+        ValidationFailure(
+          'Network range ${range.cidr} already exists in configuration.',
+        ),
+      );
+    }
+    final updatedRanges = [...config.networkRanges, range];
+    return saveConfig(config.copyWith(networkRanges: updatedRanges));
+  }
+
+  @override
+  Future<Result<void>> updateRange(NetworkRange range) async {
+    final configRes = await getConfig();
+    if (configRes.isFailure) return Result.failure(configRes.failureOrNull!);
+    final config = configRes.dataOrNull!;
+
+    final index = config.networkRanges.indexWhere(
+      (r) => r.id == range.id || r.cidr == range.cidr,
+    );
+    if (index == -1) {
+      return Result.failure(
+        ValidationFailure('Network range ${range.cidr} was not found.'),
+      );
+    }
+    final updatedRanges = List<NetworkRange>.from(config.networkRanges);
+    updatedRanges[index] = range.copyWith(updatedAt: DateTime.now());
+    return saveConfig(config.copyWith(networkRanges: updatedRanges));
+  }
+
+  @override
+  Future<Result<void>> deleteRange(String rangeId) async {
+    final configRes = await getConfig();
+    if (configRes.isFailure) return Result.failure(configRes.failureOrNull!);
+    final config = configRes.dataOrNull!;
+
+    final updatedRanges = config.networkRanges
+        .where((r) => r.id != rangeId && r.cidr != rangeId)
+        .toList();
+    if (updatedRanges.length == config.networkRanges.length) {
+      return Result.failure(
+        ValidationFailure('Network range $rangeId was not found.'),
+      );
+    }
+    return saveConfig(config.copyWith(networkRanges: updatedRanges));
+  }
+
+  @override
+  Stream<List<NetworkRange>> watchRanges() {
+    getRanges().then((res) {
+      if (res.isSuccess && !_rangesController.isClosed) {
+        _rangesController.add(res.dataOrNull ?? []);
+      }
+    });
+    return _rangesController.stream;
   }
 
   @override

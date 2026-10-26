@@ -4,11 +4,19 @@ import '../entities/discovered_device_entity.dart';
 import '../entities/discovery_config_entity.dart';
 import '../entities/discovery_evidence_item.dart';
 import '../entities/discovery_scan_job.dart';
+import '../entities/network_range.dart';
 import '../entities/review_state.dart';
 
 abstract class DiscoveryRepository {
   Future<Result<DiscoveryConfigEntity>> getConfig();
   Future<Result<void>> saveConfig(DiscoveryConfigEntity config);
+
+  // Authoritative Network Range Management
+  Future<Result<List<NetworkRange>>> getRanges();
+  Future<Result<void>> addRange(NetworkRange range);
+  Future<Result<void>> updateRange(NetworkRange range);
+  Future<Result<void>> deleteRange(String rangeId);
+  Stream<List<NetworkRange>> watchRanges();
 
   Future<Result<int>> createScanJob(DiscoveryScanJob job);
   Future<Result<void>> updateScanJob(DiscoveryScanJob job);

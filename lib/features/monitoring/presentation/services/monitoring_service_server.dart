@@ -22,6 +22,7 @@ import '../../../network_discovery/domain/entities/device_category.dart';
 import '../../../network_discovery/domain/entities/discovery_config_entity.dart';
 import '../../../network_discovery/domain/entities/discovery_progress.dart';
 import '../../../network_discovery/domain/entities/discovery_scan_job.dart';
+import '../../../network_discovery/domain/entities/network_range.dart';
 import '../../../network_discovery/domain/entities/review_state.dart';
 import '../../../network_discovery/domain/repositories/discovery_repository.dart';
 import '../../../network_discovery/domain/services/discovery_coordinator.dart';
@@ -2223,10 +2224,20 @@ Write-Output 'OK'
         final currentConfig =
             currentConfigRes.dataOrNull ?? DiscoveryConfigEntity.initial();
 
+        List<NetworkRange>? newRanges;
+        if (body['networkRanges'] is List) {
+          newRanges = (body['networkRanges'] as List<dynamic>)
+              .map((e) => NetworkRange.fromJson(e as Map<String, dynamic>))
+              .toList();
+        } else if (body['authorizedRanges'] is List) {
+          newRanges = (body['authorizedRanges'] as List<dynamic>)
+              .map((e) => NetworkRange.parse(e.toString()))
+              .whereType<NetworkRange>()
+              .toList();
+        }
+
         final updated = currentConfig.copyWith(
-          authorizedRanges: (body['authorizedRanges'] as List<dynamic>?)
-              ?.map((e) => e.toString())
-              .toList(),
+          networkRanges: newRanges,
           enabledStrategies: (body['enabledStrategies'] as List<dynamic>?)
               ?.map((e) => e.toString())
               .toList(),
@@ -2236,12 +2247,240 @@ Write-Output 'OK'
         );
 
         final saveRes = await discoveryRepo.saveConfig(updated);
+        if (saveRes.isSuccess) {
+          _broadcastEvent('discovery_config_updated', {
+            'config': updated.toJson(),
+          });
+        }
         await _jsonResponse(request, {
           'success': saveRes.isSuccess,
           'message': saveRes.isSuccess
               ? 'Discovery config updated'
               : saveRes.failureOrNull?.message,
         });
+      } else if (path == '/api/discovery/ranges' && request.method == 'GET') {
+        final session = _authenticateRequest(request);
+        if (session == null) {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': 'Unauthorized: Valid session token required',
+          }, status: HttpStatus.unauthorized);
+          return;
+        }
+
+        final discoveryRepo = getIt<DiscoveryRepository>();
+        final rangesRes = await discoveryRepo.getRanges();
+        if (rangesRes.isSuccess) {
+          await _jsonResponse(request, {
+            'success': true,
+            'ranges':
+                rangesRes.dataOrNull?.map((r) => r.toJson()).toList() ?? [],
+          });
+        } else {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': rangesRes.failureOrNull?.message,
+          }, status: 500);
+        }
+      } else if (path == '/api/discovery/ranges' && request.method == 'POST') {
+        final session = _authenticateRequest(request);
+        if (session == null) {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': 'Unauthorized: Valid session token required',
+          }, status: HttpStatus.unauthorized);
+          return;
+        }
+        if (!_isAdmin(session)) {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': 'Forbidden: Admin role required to add discovery ranges',
+          }, status: HttpStatus.forbidden);
+          return;
+        }
+
+        final body = await _readJsonBody(request);
+        final rawCidr = body['cidr']?.toString();
+        if (rawCidr == null || rawCidr.trim().isEmpty) {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': 'CIDR range is required (e.g. 10.10.20.0/24)',
+          }, status: 400);
+          return;
+        }
+
+        final parsed = NetworkRange.tryParse(rawCidr.trim());
+        if (parsed == null) {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': 'Invalid CIDR format. Prefix must be between /16 and /32.',
+          }, status: 400);
+          return;
+        }
+
+        final name = body['name']?.toString().trim();
+        final isEnabled = body['isEnabled'] is bool
+            ? body['isEnabled'] as bool
+            : true;
+        final range = parsed.copyWith(
+          name: (name != null && name.isNotEmpty) ? name : null,
+          isEnabled: isEnabled,
+          createdAt: DateTime.now(),
+        );
+
+        final discoveryRepo = getIt<DiscoveryRepository>();
+        final addRes = await discoveryRepo.addRange(range);
+        if (addRes.isSuccess) {
+          final configRes = await discoveryRepo.getConfig();
+          if (configRes.isSuccess) {
+            _broadcastEvent('discovery_config_updated', {
+              'config': configRes.dataOrNull!.toJson(),
+              'range': range.toJson(),
+            });
+          }
+          await _jsonResponse(request, {
+            'success': true,
+            'range': range.toJson(),
+            'message': 'Range ${range.cidr} added successfully',
+          });
+        } else {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': addRes.failureOrNull?.message,
+          }, status: 400);
+        }
+      } else if ((path == '/api/discovery/ranges/update' &&
+              request.method == 'POST') ||
+          (path == '/api/discovery/ranges' && request.method == 'PUT')) {
+        final session = _authenticateRequest(request);
+        if (session == null) {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': 'Unauthorized: Valid session token required',
+          }, status: HttpStatus.unauthorized);
+          return;
+        }
+        if (!_isAdmin(session)) {
+          await _jsonResponse(request, {
+            'success': false,
+            'error':
+                'Forbidden: Admin role required to update discovery ranges',
+          }, status: HttpStatus.forbidden);
+          return;
+        }
+
+        final body = await _readJsonBody(request);
+        final rawCidr = body['cidr']?.toString();
+        if (rawCidr == null || rawCidr.trim().isEmpty) {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': 'CIDR range is required',
+          }, status: 400);
+          return;
+        }
+
+        final parsed = NetworkRange.tryParse(rawCidr.trim());
+        if (parsed == null) {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': 'Invalid CIDR format',
+          }, status: 400);
+          return;
+        }
+
+        final id = body['id']?.toString() ?? parsed.id;
+        final name = body['name']?.toString().trim();
+        final isEnabled = body['isEnabled'] is bool
+            ? body['isEnabled'] as bool
+            : true;
+        final range = parsed.copyWith(
+          id: id,
+          name: (name != null && name.isNotEmpty) ? name : null,
+          isEnabled: isEnabled,
+          updatedAt: DateTime.now(),
+        );
+
+        final discoveryRepo = getIt<DiscoveryRepository>();
+        final updateRes = await discoveryRepo.updateRange(range);
+        if (updateRes.isSuccess) {
+          final configRes = await discoveryRepo.getConfig();
+          if (configRes.isSuccess) {
+            _broadcastEvent('discovery_config_updated', {
+              'config': configRes.dataOrNull!.toJson(),
+              'range': range.toJson(),
+            });
+          }
+          await _jsonResponse(request, {
+            'success': true,
+            'range': range.toJson(),
+            'message': 'Range ${range.cidr} updated successfully',
+          });
+        } else {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': updateRes.failureOrNull?.message,
+          }, status: 400);
+        }
+      } else if (path.startsWith('/api/discovery/ranges') &&
+          request.method == 'DELETE') {
+        final session = _authenticateRequest(request);
+        if (session == null) {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': 'Unauthorized: Valid session token required',
+          }, status: HttpStatus.unauthorized);
+          return;
+        }
+        if (!_isAdmin(session)) {
+          await _jsonResponse(request, {
+            'success': false,
+            'error':
+                'Forbidden: Admin role required to delete discovery ranges',
+          }, status: HttpStatus.forbidden);
+          return;
+        }
+
+        String? rangeId;
+        final parts = path.split('/').where((p) => p.isNotEmpty).toList();
+        if (parts.length >= 4) {
+          rangeId = Uri.decodeComponent(parts[3]);
+        }
+        rangeId ??=
+            request.uri.queryParameters['id'] ??
+            request.uri.queryParameters['cidr'];
+        if (rangeId == null || rangeId.trim().isEmpty) {
+          final body = await _readJsonBody(request);
+          rangeId = body['id']?.toString() ?? body['cidr']?.toString();
+        }
+
+        if (rangeId == null || rangeId.trim().isEmpty) {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': 'Range ID or CIDR required to delete',
+          }, status: 400);
+          return;
+        }
+
+        final discoveryRepo = getIt<DiscoveryRepository>();
+        final delRes = await discoveryRepo.deleteRange(rangeId.trim());
+        if (delRes.isSuccess) {
+          final configRes = await discoveryRepo.getConfig();
+          if (configRes.isSuccess) {
+            _broadcastEvent('discovery_config_updated', {
+              'config': configRes.dataOrNull!.toJson(),
+              'deletedRangeId': rangeId,
+            });
+          }
+          await _jsonResponse(request, {
+            'success': true,
+            'message': 'Range deleted successfully',
+          });
+        } else {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': delRes.failureOrNull?.message,
+          }, status: 400);
+        }
       } else if (path == '/api/discovery/start' && request.method == 'POST') {
         final session = _authenticateRequest(request);
         if (session == null) {

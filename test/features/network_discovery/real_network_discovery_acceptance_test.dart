@@ -491,13 +491,26 @@ void main() {
         expect(discoveryCubit.state, isA<NetworkDiscoveryLoaded>());
 
         final loadedState = discoveryCubit.state as NetworkDiscoveryLoaded;
-        expect(loadedState.rangesWithStatus.length, equals(2));
+        expect(loadedState.rangesWithStatus, isEmpty);
+
+        // Administrator adds scopes dynamically without hardcoding
+        await discoveryCubit.addNetworkRange(
+          cidr: '192.168.27.0/24',
+          name: 'Primary Subnet',
+        );
+        await discoveryCubit.addNetworkRange(
+          cidr: '192.168.22.0/24',
+          name: 'Secondary Subnet',
+        );
+
+        final updatedState = discoveryCubit.state as NetworkDiscoveryLoaded;
+        expect(updatedState.rangesWithStatus.length, equals(2));
         expect(
-          loadedState.rangesWithStatus.any((r) => r.cidr == '192.168.27.0/24'),
+          updatedState.rangesWithStatus.any((r) => r.cidr == '192.168.27.0/24'),
           isTrue,
         );
         expect(
-          loadedState.rangesWithStatus.any((r) => r.cidr == '192.168.22.0/24'),
+          updatedState.rangesWithStatus.any((r) => r.cidr == '192.168.22.0/24'),
           isTrue,
         );
       },

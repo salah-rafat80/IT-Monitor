@@ -4491,7 +4491,7 @@ class $DiscoveryConfigurationsTable extends DiscoveryConfigurations
         false,
         type: DriftSqlType.string,
         requiredDuringInsert: false,
-        defaultValue: const Constant('["192.168.27.0/24","192.168.22.0/24"]'),
+        defaultValue: const Constant('[]'),
       );
   static const VerificationMeta _enabledStrategiesJsonMeta =
       const VerificationMeta('enabledStrategiesJson');

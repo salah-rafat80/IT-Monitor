@@ -14,6 +14,7 @@ import '../widgets/discovery_evidence_dialog.dart';
 import '../widgets/discovery_ranges_card.dart';
 import '../widgets/discovery_start_dialog.dart';
 import '../widgets/discovery_summary_cards.dart';
+import '../widgets/manage_network_ranges_dialog.dart';
 
 class NetworkDiscoveryPage extends StatelessWidget {
   const NetworkDiscoveryPage({super.key});
@@ -130,7 +131,19 @@ class NetworkDiscoveryPage extends StatelessWidget {
           ),
         ],
       ),
-      body: BlocBuilder<NetworkDiscoveryCubit, NetworkDiscoveryState>(
+      body: BlocConsumer<NetworkDiscoveryCubit, NetworkDiscoveryState>(
+        listener: (context, state) {
+          if (state is NetworkDiscoveryLoaded && state.errorMessage != null) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(state.errorMessage!),
+                backgroundColor: Colors.red,
+                duration: const Duration(seconds: 4),
+              ),
+            );
+            context.read<NetworkDiscoveryCubit>().clearErrorMessage();
+          }
+        },
         builder: (context, state) {
           if (state is NetworkDiscoveryLoading) {
             return const Center(
@@ -187,6 +200,9 @@ class NetworkDiscoveryPage extends StatelessWidget {
                     ranges: state.rangesWithStatus,
                     activeSubnetFilter: state.subnetFilter,
                     onSelectSubnet: (cidr) => cubit.setSubnetFilter(cidr),
+                    isAdmin: isAdmin,
+                    onManageScopes: () =>
+                        _showManageRangesDialog(context, isAdmin),
                   ),
                   const SizedBox(height: 24),
 
@@ -320,6 +336,16 @@ class NetworkDiscoveryPage extends StatelessWidget {
                 timeoutSeconds: timeoutSeconds,
               );
             },
+      ),
+    );
+  }
+
+  void _showManageRangesDialog(BuildContext context, bool isAdmin) {
+    showDialog(
+      context: context,
+      builder: (ctx) => BlocProvider.value(
+        value: context.read<NetworkDiscoveryCubit>(),
+        child: ManageNetworkRangesDialog(isAdmin: isAdmin),
       ),
     );
   }

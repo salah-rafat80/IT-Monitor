@@ -16,6 +16,8 @@ import '../../domain/repositories/discovery_repository.dart';
 import '../../domain/services/discovery_coordinator.dart';
 import '../../../infrastructure/domain/repositories/infrastructure_repository.dart';
 import '../../domain/services/network_range_validator.dart';
+import '../../../../core/errors/failures.dart';
+import '../../../../core/utils/result.dart';
 import 'network_discovery_state.dart';
 
 @injectable
@@ -29,6 +31,7 @@ class NetworkDiscoveryCubit extends Cubit<NetworkDiscoveryState> {
   StreamSubscription<DiscoveryProgress>? _progressSub;
   StreamSubscription<DiscoveryScanJob?>? _scanSub;
   StreamSubscription<List<DiscoveredDeviceEntity>>? _deviceSub;
+  StreamSubscription<List<NetworkRange>>? _rangesSub;
 
   NetworkDiscoveryCubit(
     this._discoveryRepo,
@@ -53,7 +56,7 @@ class NetworkDiscoveryCubit extends Cubit<NetworkDiscoveryState> {
       final devicesRes = await _discoveryRepo.getDiscoveredDevices();
       final devices = devicesRes.dataOrNull ?? [];
 
-      final ranges = _evaluateRanges(config.authorizedRanges, devices);
+      final ranges = _evaluateRanges(config.networkRanges, devices);
 
       _progressSub?.cancel();
       _progressSub = _coordinator.progressStream.listen(_handleProgress);
@@ -67,6 +70,9 @@ class NetworkDiscoveryCubit extends Cubit<NetworkDiscoveryState> {
       _deviceSub = _discoveryRepo.watchDiscoveredDevices().listen(
         _handleDevicesUpdate,
       );
+
+      _rangesSub?.cancel();
+      _rangesSub = _discoveryRepo.watchRanges().listen(_handleRangesUpdate);
 
       if (isClosed) return;
       emit(
@@ -87,17 +93,43 @@ class NetworkDiscoveryCubit extends Cubit<NetworkDiscoveryState> {
   }
 
   List<NetworkRange> _evaluateRanges(
-    List<String> rangeStrings,
+    List<dynamic> rangesOrStrings,
     List<DiscoveredDeviceEntity> devices,
   ) {
-    final valid = _rangeValidator.validateRanges(rangeStrings);
-    return valid.map((r) {
+    final List<NetworkRange> ranges = [];
+    for (final item in rangesOrStrings) {
+      if (item is NetworkRange) {
+        ranges.add(item);
+      } else if (item is String) {
+        final parsed = NetworkRange.tryParse(item);
+        if (parsed != null) ranges.add(parsed);
+      }
+    }
+    return ranges.map((r) {
       final hasDiscoveredInSubnet = devices.any((d) => r.containsIp(d.ip));
       final status = hasDiscoveredInSubnet
           ? ReachabilityStatus.reachable
           : ReachabilityStatus.reachabilityNotTested;
       return r.copyWith(reachability: status);
     }).toList();
+  }
+
+  void _handleRangesUpdate(List<NetworkRange> ranges) {
+    if (isClosed) return;
+    final current = state;
+    if (current is NetworkDiscoveryLoaded) {
+      final updatedConfig = current.config.copyWith(networkRanges: ranges);
+      final rangesWithStatus = _evaluateRanges(
+        ranges,
+        current.discoveredDevices,
+      );
+      emit(
+        current.copyWith(
+          config: updatedConfig,
+          rangesWithStatus: rangesWithStatus,
+        ),
+      );
+    }
   }
 
   void _handleProgress(DiscoveryProgress progress) {
@@ -127,7 +159,7 @@ class NetworkDiscoveryCubit extends Cubit<NetworkDiscoveryState> {
     if (isClosed) return;
     final current = state;
     if (current is NetworkDiscoveryLoaded) {
-      final ranges = _evaluateRanges(current.config.authorizedRanges, devices);
+      final ranges = _evaluateRanges(current.config.networkRanges, devices);
       final updated = current.copyWith(
         discoveredDevices: devices,
         rangesWithStatus: ranges,
@@ -154,6 +186,7 @@ class NetworkDiscoveryCubit extends Cubit<NetworkDiscoveryState> {
       if (current is NetworkDiscoveryLoaded) {
         emit(
           current.copyWith(
+            errorMessage: res.failureOrNull?.message,
             progress: DiscoveryProgress(
               scanId: 0,
               status: ScanJobStatus.failed,
@@ -175,15 +208,164 @@ class NetworkDiscoveryCubit extends Cubit<NetworkDiscoveryState> {
     await _coordinator.cancelScan();
   }
 
-  Future<void> updateConfig(DiscoveryConfigEntity newConfig) async {
-    await _discoveryRepo.saveConfig(newConfig);
+  Future<Result<void>> updateConfig(DiscoveryConfigEntity newConfig) async {
+    final saveRes = await _discoveryRepo.saveConfig(newConfig);
     final current = state;
+    if (saveRes.isFailure) {
+      if (current is NetworkDiscoveryLoaded) {
+        emit(
+          current.copyWith(
+            errorMessage:
+                saveRes.failureOrNull?.message ??
+                'Failed to persist discovery configuration',
+          ),
+        );
+      }
+      return saveRes;
+    }
     if (current is NetworkDiscoveryLoaded) {
       final ranges = _evaluateRanges(
-        newConfig.authorizedRanges,
+        newConfig.networkRanges,
         current.discoveredDevices,
       );
-      emit(current.copyWith(config: newConfig, rangesWithStatus: ranges));
+      emit(
+        current.copyWith(
+          config: newConfig,
+          rangesWithStatus: ranges,
+          clearErrorMessage: true,
+        ),
+      );
+    }
+    return Result.success(null);
+  }
+
+  Future<Result<void>> addNetworkRange({
+    required String cidr,
+    String? name,
+    bool isEnabled = true,
+  }) async {
+    final parsed = _rangeValidator.validateSingleRange(cidr.trim());
+    if (parsed == null) {
+      const msg =
+          'Invalid CIDR format. Prefix must be between /16 and /32 (e.g. 10.10.20.0/24).';
+      final current = state;
+      if (current is NetworkDiscoveryLoaded) {
+        emit(current.copyWith(errorMessage: msg));
+      }
+      return Result.failure(ValidationFailure(msg));
+    }
+
+    final range = parsed.copyWith(
+      name: (name != null && name.trim().isNotEmpty) ? name.trim() : null,
+      isEnabled: isEnabled,
+      createdAt: DateTime.now(),
+    );
+
+    final addRes = await _discoveryRepo.addRange(range);
+    final current = state;
+    if (addRes.isFailure) {
+      if (current is NetworkDiscoveryLoaded) {
+        emit(current.copyWith(errorMessage: addRes.failureOrNull?.message));
+      }
+      return addRes;
+    }
+
+    final configRes = await _discoveryRepo.getConfig();
+    if (configRes.isSuccess && current is NetworkDiscoveryLoaded) {
+      final newConfig = configRes.dataOrNull!;
+      emit(
+        current.copyWith(
+          config: newConfig,
+          rangesWithStatus: _evaluateRanges(
+            newConfig.networkRanges,
+            current.discoveredDevices,
+          ),
+          clearErrorMessage: true,
+        ),
+      );
+    }
+    return Result.success(null);
+  }
+
+  Future<Result<void>> updateNetworkRange(NetworkRange range) async {
+    final updateRes = await _discoveryRepo.updateRange(range);
+    final current = state;
+    if (updateRes.isFailure) {
+      if (current is NetworkDiscoveryLoaded) {
+        emit(current.copyWith(errorMessage: updateRes.failureOrNull?.message));
+      }
+      return updateRes;
+    }
+
+    final configRes = await _discoveryRepo.getConfig();
+    if (configRes.isSuccess && current is NetworkDiscoveryLoaded) {
+      final newConfig = configRes.dataOrNull!;
+      emit(
+        current.copyWith(
+          config: newConfig,
+          rangesWithStatus: _evaluateRanges(
+            newConfig.networkRanges,
+            current.discoveredDevices,
+          ),
+          clearErrorMessage: true,
+        ),
+      );
+    }
+    return Result.success(null);
+  }
+
+  Future<Result<void>> toggleRangeEnabled(
+    String rangeId,
+    bool isEnabled,
+  ) async {
+    final current = state;
+    if (current is! NetworkDiscoveryLoaded) {
+      return Result.failure(
+        const ValidationFailure('Discovery state not loaded'),
+      );
+    }
+
+    final range = current.config.networkRanges.firstWhere(
+      (r) => r.id == rangeId || r.cidr == rangeId,
+      orElse: () => throw StateError('Range $rangeId not found'),
+    );
+
+    return updateNetworkRange(
+      range.copyWith(isEnabled: isEnabled, updatedAt: DateTime.now()),
+    );
+  }
+
+  Future<Result<void>> deleteNetworkRange(String rangeId) async {
+    final delRes = await _discoveryRepo.deleteRange(rangeId);
+    final current = state;
+    if (delRes.isFailure) {
+      if (current is NetworkDiscoveryLoaded) {
+        emit(current.copyWith(errorMessage: delRes.failureOrNull?.message));
+      }
+      return delRes;
+    }
+
+    final configRes = await _discoveryRepo.getConfig();
+    if (configRes.isSuccess && current is NetworkDiscoveryLoaded) {
+      final newConfig = configRes.dataOrNull!;
+      emit(
+        current.copyWith(
+          config: newConfig,
+          rangesWithStatus: _evaluateRanges(
+            newConfig.networkRanges,
+            current.discoveredDevices,
+          ),
+          clearErrorMessage: true,
+        ),
+      );
+    }
+    return Result.success(null);
+  }
+
+  void clearErrorMessage() {
+    final current = state;
+    if (current is NetworkDiscoveryLoaded) {
+      emit(current.copyWith(clearErrorMessage: true));
     }
   }
 
@@ -470,6 +652,7 @@ class NetworkDiscoveryCubit extends Cubit<NetworkDiscoveryState> {
     _progressSub?.cancel();
     _scanSub?.cancel();
     _deviceSub?.cancel();
+    _rangesSub?.cancel();
     return super.close();
   }
 }

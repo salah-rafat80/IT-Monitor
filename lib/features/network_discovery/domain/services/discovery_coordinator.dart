@@ -97,10 +97,33 @@ class DiscoveryCoordinator {
       );
     }
 
-    // 2. Enumerate candidate targets
+    // 2. Enumerate candidate targets with deduplication across overlapping subnets
+    final seenHosts = <String>{};
     final candidateHosts = <String>[];
     for (final r in validRanges) {
-      candidateHosts.addAll(r.enumerateUsableHosts());
+      for (final host in r.enumerateUsableHosts()) {
+        if (seenHosts.add(host)) {
+          candidateHosts.add(host);
+        }
+      }
+    }
+
+    if (candidateHosts.isEmpty) {
+      _isScanning = false;
+      return Result.failure(
+        ValidationFailure(
+          'Target scopes yielded zero candidate hosts for discovery scan',
+        ),
+      );
+    }
+
+    if (candidateHosts.length > NetworkRangeValidator.maxTotalTargets) {
+      _isScanning = false;
+      return Result.failure(
+        ValidationFailure(
+          'Target count (${candidateHosts.length}) exceeds maximum allowable limit of ${NetworkRangeValidator.maxTotalTargets} hosts per scan. Please refine your CIDR scopes.',
+        ),
+      );
     }
 
     // 3. Create Scan Job record

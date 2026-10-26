@@ -126,6 +126,49 @@ class EnterpriseTopologyBuilder {
           status: gwSecondaryStatus,
         ),
       );
+
+      // Dynamically add gateways for any additional subnets discovered
+      final otherSubnets = <String, String>{};
+      for (final md in monitoredDevices) {
+        final ipParts = md.device.ip.split('.');
+        if (ipParts.length == 4) {
+          final prefix = '${ipParts[0]}.${ipParts[1]}.${ipParts[2]}';
+          if (prefix != '192.168.27' && prefix != '192.168.22') {
+            otherSubnets.putIfAbsent(prefix, () => '$prefix.1');
+          }
+        }
+      }
+
+      var gwIndex = 3;
+      for (final entry in otherSubnets.entries) {
+        final prefix = entry.key;
+        final gwIp = entry.value;
+        final gwId = 'gw_dynamic_${prefix.replaceAll('.', '_')}';
+        final gwStatus = infraStatuses?[gwIp] ?? DeviceStatusEnum.up;
+        nodes[gwId] = EnterpriseTopologyNode(
+          id: gwId,
+          title: 'Gateway ($gwIp)',
+          subtitle: gwIp,
+          category: TopologyDeviceCategory.gateway,
+          status: gwStatus,
+          level: 1,
+          location: 'Server Room',
+          vendor: 'Enterprise Gateway',
+          size: const Size(168, 60),
+        );
+        gatewayIds.add(gwId);
+        links.add(
+          EnterpriseTopologyLink(
+            id: 'link_wan_$gwId',
+            fromNodeId: wanId,
+            toNodeId: gwId,
+            fromPort: 'WAN$gwIndex',
+            toPort: 'Uplink',
+            status: gwStatus,
+          ),
+        );
+        gwIndex++;
+      }
     }
 
     // ── 3. Group Monitored Endpoints by Location / Switch ──────────────────
@@ -169,11 +212,21 @@ class EnterpriseTopologyBuilder {
 
       final childrenCount = locationGroups[loc]?.length ?? 0;
       // Determine upstream gateway
-      final upstreamGwId =
-          loc.toLowerCase().contains('22') ||
-              (locationGroups[loc]?.first.device.ip.contains('.22.') ?? false)
-          ? (gatewayIds.length > 1 ? gatewayIds[1] : gatewayIds.first)
-          : gatewayIds.first;
+      final firstDeviceIp = locationGroups[loc]?.first.device.ip;
+      String upstreamGwId = gatewayIds.first;
+      if (loc.toLowerCase().contains('22') ||
+          (firstDeviceIp?.contains('.22.') ?? false)) {
+        upstreamGwId = gatewayIds.length > 1 ? gatewayIds[1] : gatewayIds.first;
+      } else if (firstDeviceIp != null) {
+        final parts = firstDeviceIp.split('.');
+        if (parts.length == 4) {
+          final prefix = '${parts[0]}.${parts[1]}.${parts[2]}';
+          final targetGwId = 'gw_dynamic_${prefix.replaceAll('.', '_')}';
+          if (nodes.containsKey(targetGwId)) {
+            upstreamGwId = targetGwId;
+          }
+        }
+      }
 
       nodes[swId] = EnterpriseTopologyNode(
         id: swId,
@@ -459,6 +512,24 @@ class EnterpriseTopologyBuilder {
 
       positions[level1Gateways[0].id] = Offset(level1X, y1);
       positions[level1Gateways[1].id] = Offset(level1X, y2);
+
+      // Position any additional gateways (index >= 2) on level1X without overlapping
+      double lastY = y2;
+      for (int i = 2; i < level1Gateways.length; i++) {
+        final gwSwitches = links
+            .where((l) => l.fromNodeId == level1Gateways[i].id)
+            .map((l) => switchYPositions[l.toNodeId])
+            .whereType<double>()
+            .toList();
+        double gwY = gwSwitches.isNotEmpty
+            ? gwSwitches.reduce((a, b) => a + b) / gwSwitches.length
+            : lastY + cardHeight + cardGapY + 20.0;
+        if (gwY < lastY + cardHeight + cardGapY) {
+          gwY = lastY + cardHeight + cardGapY;
+        }
+        positions[level1Gateways[i].id] = Offset(level1X, gwY);
+        lastY = gwY;
+      }
     }
 
     // Position Level 0 WAN centered relative to all gateways

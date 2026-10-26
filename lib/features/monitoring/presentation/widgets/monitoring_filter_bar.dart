@@ -100,20 +100,26 @@ class MonitoringFilterBar extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: 8),
-                    Text(
-                      state.isEngineRunning
-                          ? 'Engine Active (${state.config.checkIntervalSeconds}s)'
-                          : 'Engine Stopped',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: (state.isEngineRunning && !state.isEnginePaused)
-                            ? const Color(0xFF10B981)
-                            : Colors.orange,
+                    Flexible(
+                      child: Text(
+                        state.isEngineRunning
+                            ? 'Engine Active (${state.config.checkIntervalSeconds}s)'
+                            : 'Engine Stopped',
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: (state.isEngineRunning && !state.isEnginePaused)
+                              ? const Color(0xFF10B981)
+                              : Colors.orange,
+                        ),
                       ),
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 6),
                     IconButton(
+                      visualDensity: VisualDensity.compact,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
                       icon: Icon(
                         state.isEngineRunning
                             ? Icons.pause_circle_outline_rounded
@@ -132,26 +138,29 @@ class MonitoringFilterBar extends StatelessWidget {
                 ),
               );
 
-              final wallDisplayBtn = ElevatedButton.icon(
-                onPressed: () => GoRouter.of(context).push('/wall-display'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(
-                    0xFF00E676,
-                  ).withValues(alpha: 0.15),
-                  foregroundColor: const Color(0xFF00E676),
-                  side: const BorderSide(color: Color(0xFF00E676), width: 1),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 12,
+              final wallDisplayBtn = FittedBox(
+                fit: BoxFit.scaleDown,
+                child: ElevatedButton.icon(
+                  onPressed: () => GoRouter.of(context).push('/wall-display'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(
+                      0xFF00E676,
+                    ).withValues(alpha: 0.15),
+                    foregroundColor: const Color(0xFF00E676),
+                    side: const BorderSide(color: Color(0xFF00E676), width: 1),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 12,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
                   ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
+                  icon: const Icon(Icons.tv_rounded, size: 18),
+                  label: const Text(
+                    'Wall Display',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                   ),
-                ),
-                icon: const Icon(Icons.tv_rounded, size: 18),
-                label: const Text(
-                  'Wall Display',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                 ),
               );
 

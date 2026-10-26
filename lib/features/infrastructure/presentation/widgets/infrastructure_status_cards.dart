@@ -55,10 +55,13 @@ class InfrastructureStatusCards extends StatelessWidget {
                           size: 22,
                         ),
                         const SizedBox(width: 8),
-                        Text(
-                          'Critical UniFi Infrastructure',
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
+                        Flexible(
+                          child: Text(
+                            'Critical UniFi Infrastructure',
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.bold,
+                            ),
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                       ],
@@ -91,34 +94,40 @@ class InfrastructureStatusCards extends StatelessWidget {
                   runSpacing: 8,
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
-                    ElevatedButton.icon(
-                      onPressed: state.isCheckingAll
-                          ? null
-                          : () => cubit.pingAllInfrastructure(),
-                      icon: state.isCheckingAll
-                          ? const SizedBox(
-                              width: 14,
-                              height: 14,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : const Icon(Icons.network_ping_rounded, size: 16),
-                      label: Text(
-                        state.isCheckingAll ? 'Testing All...' : 'Ping All',
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.primary,
-                        foregroundColor: Colors.white,
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: ElevatedButton.icon(
+                        onPressed: state.isCheckingAll
+                            ? null
+                            : () => cubit.pingAllInfrastructure(),
+                        icon: state.isCheckingAll
+                            ? const SizedBox(
+                                width: 14,
+                                height: 14,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Icon(Icons.network_ping_rounded, size: 16),
+                        label: Text(
+                          state.isCheckingAll ? 'Testing All...' : 'Ping All',
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          foregroundColor: Colors.white,
+                        ),
                       ),
                     ),
                     if (isAdmin)
-                      OutlinedButton.icon(
-                        icon: const Icon(Icons.settings_outlined, size: 16),
-                        label: const Text('Manage Infrastructure'),
-                        onPressed: () =>
-                            ManageInfrastructureDialog.show(context),
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: OutlinedButton.icon(
+                          icon: const Icon(Icons.settings_outlined, size: 16),
+                          label: const Text('Manage Infrastructure'),
+                          onPressed: () =>
+                              ManageInfrastructureDialog.show(context),
+                        ),
                       ),
                   ],
                 ),
@@ -267,34 +276,34 @@ class InfrastructureStatusCards extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 8,
+            runSpacing: 6,
             children: [
-              Flexible(
-                child: Row(
-                  children: [
-                    Icon(
-                      _getRoleIcon(device.role),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    _getRoleIcon(device.role),
+                    color: device.isCriticalInfrastructure
+                        ? AppColors.primary
+                        : textSecondary,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    device.role.displayName,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      fontWeight: FontWeight.bold,
                       color: device.isCriticalInfrastructure
                           ? AppColors.primary
-                          : textSecondary,
-                      size: 20,
+                          : null,
                     ),
-                    const SizedBox(width: 6),
-                    Flexible(
-                      child: Text(
-                        device.role.displayName,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: device.isCriticalInfrastructure
-                              ? AppColors.primary
-                              : null,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
               ),
               DeviceStatusChip(status: statusEnum),
             ],
@@ -339,10 +348,14 @@ class InfrastructureStatusCards extends StatelessWidget {
           ],
           const SizedBox(height: 8),
 
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 8,
+            runSpacing: 4,
             children: [
               Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   Icon(Icons.speed, size: 13, color: textSecondary),
                   const SizedBox(width: 4),
@@ -362,6 +375,7 @@ class InfrastructureStatusCards extends StatelessWidget {
                 ],
               ),
               Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   Icon(Icons.access_time, size: 13, color: textSecondary),
                   const SizedBox(width: 4),
@@ -422,12 +436,15 @@ class InfrastructureStatusCards extends StatelessWidget {
                         size: 14,
                       ),
                       const SizedBox(width: 4),
-                      Text(
-                        'Active Incident #${incident.id}',
-                        style: const TextStyle(
-                          color: AppColors.statusDown,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 11,
+                      Expanded(
+                        child: Text(
+                          'Active Incident #${incident.id}',
+                          style: const TextStyle(
+                            color: AppColors.statusDown,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 11,
+                          ),
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                     ],
@@ -484,8 +501,11 @@ class InfrastructureStatusCards extends StatelessWidget {
           const SizedBox(height: 10),
           const Divider(height: 1),
           const SizedBox(height: 6),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 8,
+            runSpacing: 4,
             children: [
               TextButton.icon(
                 icon: const Icon(Icons.info_outline, size: 14),

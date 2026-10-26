@@ -27,45 +27,53 @@ class DesktopShell extends StatelessWidget {
             duration: const Duration(milliseconds: 200),
             width: sidebarWidth,
             color: Theme.of(context).colorScheme.surface,
-            child: Column(
-              children: [
-                Container(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: isCompact ? 12 : 20,
-                    vertical: 24,
-                  ),
-                  alignment: isCompact
-                      ? Alignment.center
-                      : Alignment.centerLeft,
-                  child: isCompact
-                      ? const Tooltip(
-                          message: 'IT Network Monitor',
-                          child: Icon(
-                            Icons.monitor_heart,
-                            color: Color(0xFF0F62FE),
-                            size: 28,
-                          ),
-                        )
-                      : Row(
-                          children: [
-                            const Icon(
-                              Icons.monitor_heart,
-                              color: Color(0xFF0F62FE),
-                              size: 28,
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                'IT Monitor',
-                                style: Theme.of(context).textTheme.titleLarge
-                                    ?.copyWith(fontWeight: FontWeight.bold),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
+            child: ClipRect(
+              child: LayoutBuilder(
+                builder: (context, sidebarConstraints) {
+                  final isSidebarCompact = sidebarConstraints.maxWidth < 180;
+                  return Column(
+                    children: [
+                      Container(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: isSidebarCompact ? 12 : 20,
+                          vertical: 24,
                         ),
-                ),
-                const Divider(height: 1),
+                        alignment: isSidebarCompact
+                            ? Alignment.center
+                            : Alignment.centerLeft,
+                        child: isSidebarCompact
+                            ? const Tooltip(
+                                message: 'IT Network Monitor',
+                                child: Icon(
+                                  Icons.monitor_heart,
+                                  color: Color(0xFF0F62FE),
+                                  size: 28,
+                                ),
+                              )
+                            : Row(
+                                children: [
+                                  const Icon(
+                                    Icons.monitor_heart,
+                                    color: Color(0xFF0F62FE),
+                                    size: 28,
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Text(
+                                      'IT Monitor',
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .titleLarge
+                                          ?.copyWith(
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                      ),
+                      const Divider(height: 1),
                 Expanded(
                   child: ListView(
                     padding: const EdgeInsets.symmetric(
@@ -78,7 +86,7 @@ class DesktopShell extends StatelessWidget {
                         selectedIcon: Icons.dashboard,
                         label: 'Dashboard',
                         isSelected: location == '/' || location == '/dashboard',
-                        isCompact: isCompact,
+                        isCompact: isSidebarCompact,
                         onTap: () => context.go('/dashboard'),
                       ),
                       _NavTile(
@@ -86,7 +94,7 @@ class DesktopShell extends StatelessWidget {
                         selectedIcon: Icons.devices,
                         label: 'Devices',
                         isSelected: location.startsWith('/devices'),
-                        isCompact: isCompact,
+                        isCompact: isSidebarCompact,
                         onTap: () => context.go('/devices'),
                       ),
                       _NavTile(
@@ -94,7 +102,7 @@ class DesktopShell extends StatelessWidget {
                         selectedIcon: Icons.hub,
                         label: 'Infrastructure',
                         isSelected: location.startsWith('/infrastructure'),
-                        isCompact: isCompact,
+                        isCompact: isSidebarCompact,
                         onTap: () => context.go('/infrastructure'),
                       ),
                       _NavTile(
@@ -102,7 +110,7 @@ class DesktopShell extends StatelessWidget {
                         selectedIcon: Icons.warning,
                         label: 'Incidents',
                         isSelected: location.startsWith('/incidents'),
-                        isCompact: isCompact,
+                        isCompact: isSidebarCompact,
                         onTap: () => context.go('/incidents'),
                       ),
                       _NavTile(
@@ -110,7 +118,7 @@ class DesktopShell extends StatelessWidget {
                         selectedIcon: Icons.hub,
                         label: 'Topology',
                         isSelected: location.startsWith('/topology'),
-                        isCompact: isCompact,
+                        isCompact: isSidebarCompact,
                         onTap: () => context.go('/topology'),
                       ),
                       _NavTile(
@@ -118,7 +126,7 @@ class DesktopShell extends StatelessWidget {
                         selectedIcon: Icons.bar_chart,
                         label: 'Reports',
                         isSelected: location.startsWith('/reports'),
-                        isCompact: isCompact,
+                        isCompact: isSidebarCompact,
                         onTap: () => context.go('/reports'),
                       ),
                       _NavTile(
@@ -126,7 +134,7 @@ class DesktopShell extends StatelessWidget {
                         selectedIcon: Icons.people,
                         label: 'Users & Audit',
                         isSelected: location.startsWith('/users'),
-                        isCompact: isCompact,
+                        isCompact: isSidebarCompact,
                         onTap: () => context.go('/users'),
                       ),
                       _NavTile(
@@ -134,7 +142,7 @@ class DesktopShell extends StatelessWidget {
                         selectedIcon: Icons.radar,
                         label: 'Discovery',
                         isSelected: location.startsWith('/discovery'),
-                        isCompact: isCompact,
+                        isCompact: isSidebarCompact,
                         onTap: () => context.go('/discovery'),
                       ),
                       _NavTile(
@@ -142,7 +150,7 @@ class DesktopShell extends StatelessWidget {
                         selectedIcon: Icons.settings,
                         label: 'Settings',
                         isSelected: location.startsWith('/settings'),
-                        isCompact: isCompact,
+                        isCompact: isSidebarCompact,
                         onTap: () => context.go('/settings'),
                       ),
                     ],
@@ -150,8 +158,8 @@ class DesktopShell extends StatelessWidget {
                 ),
                 const Divider(height: 1),
                 Padding(
-                  padding: EdgeInsets.all(isCompact ? 12 : 16),
-                  child: isCompact
+                  padding: EdgeInsets.all(isSidebarCompact ? 12 : 16),
+                  child: isSidebarCompact
                       ? Tooltip(
                           message:
                               '${currentUser?.username ?? 'Administrator'} (ADMINISTRATOR)',
@@ -213,8 +221,11 @@ class DesktopShell extends StatelessWidget {
                         ),
                 ),
               ],
-            ),
-          ),
+            );
+          },
+        ),
+      ),
+    ),
           const VerticalDivider(width: 1),
           // Main Body
           Expanded(child: child),

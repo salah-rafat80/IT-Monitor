@@ -55,7 +55,7 @@ class MonitoringDashboardView extends StatelessWidget {
           children: [
             const Icon(Icons.monitor_heart_rounded, size: 24),
             const SizedBox(width: 10),
-            const Flexible(
+            const Expanded(
               child: Text(
                 'PC & Laptop Monitoring Dashboard',
                 overflow: TextOverflow.ellipsis,
@@ -178,8 +178,11 @@ class MonitoringDashboardView extends StatelessWidget {
                   const SizedBox(height: 24),
 
                   // Header title for table
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  Wrap(
+                    alignment: WrapAlignment.spaceBetween,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 8,
+                    runSpacing: 8,
                     children: [
                       Text(
                         'Monitored Devices (${state.filteredDevices.length} of ${state.totalCount})',

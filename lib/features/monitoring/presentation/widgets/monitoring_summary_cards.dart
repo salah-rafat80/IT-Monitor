@@ -24,8 +24,10 @@ class MonitoringSummaryCards extends StatelessWidget {
               cardWidth = (constraints.maxWidth - (5 * 12)) / 6;
             } else if (constraints.maxWidth >= 720) {
               cardWidth = (constraints.maxWidth - (2 * 12)) / 3;
-            } else {
+            } else if (constraints.maxWidth >= 420) {
               cardWidth = (constraints.maxWidth - 12) / 2;
+            } else {
+              cardWidth = constraints.maxWidth;
             }
             return Wrap(
               spacing: 12,
@@ -108,23 +110,32 @@ class MonitoringSummaryCards extends StatelessWidget {
                 color: const Color(0xFFEF4444).withValues(alpha: 0.3),
               ),
             ),
-            child: Row(
+            child: Wrap(
+              spacing: 12,
+              runSpacing: 8,
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                const Icon(
-                  Icons.error_outline_rounded,
-                  color: Color(0xFFEF4444),
-                  size: 22,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'Active Monitoring Incidents: ${state.activeIncidents.length} device(s) requiring attention (${state.downCount} Down, ${state.degradedCount} Degraded)',
-                    style: const TextStyle(
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.error_outline_rounded,
                       color: Color(0xFFEF4444),
-                      fontWeight: FontWeight.w600,
-                      fontSize: 13,
+                      size: 22,
                     ),
-                  ),
+                    const SizedBox(width: 10),
+                    Flexible(
+                      child: Text(
+                        'Active Monitoring Incidents: ${state.activeIncidents.length} device(s) requiring attention (${state.downCount} Down, ${state.degradedCount} Degraded)',
+                        style: const TextStyle(
+                          color: Color(0xFFEF4444),
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
                 TextButton.icon(
                   onPressed: () => onStatusCardTap?.call('down'),
@@ -161,10 +172,10 @@ class MonitoringSummaryCards extends StatelessWidget {
     required bool isSelected,
   }) {
     final theme = Theme.of(context);
-    final minW = width < 150 ? 150.0 : width;
+    final safeWidth = width <= 0 ? 150.0 : width;
 
     return SizedBox(
-      width: minW,
+      width: safeWidth,
       child: InkWell(
         onTap: () => onStatusCardTap?.call(filterValue),
         borderRadius: BorderRadius.circular(12),

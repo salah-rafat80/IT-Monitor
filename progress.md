@@ -29,3 +29,10 @@
     - *Monitoring Diagnostics*: Unswallowed errors, structured logs, and error counters for persistence/repository failures.
     - *Test Isolation*: Live physical subnet scans safely gated behind `IT_MONITOR_RUN_LIVE_NETWORK_TESTS=1`.
     - *Release Build Hardening*: Hardened `installer/build_production_release.ps1` with `$LASTEXITCODE` checks, stale binary deletion, configurable Inno Setup discovery, and artifact size verification.
+15. **Final Production Acceptance Fixes (P1 & P2)**:
+    - *P1 Production Standalone Removal*: Enforced release mode security (`AppConfig.isReleaseEnforced`); blocked `--standalone` and `IT_MONITOR_STANDALONE=true` in Release mode, failing closed to `productionClient`. Removed standalone bypasses from UI and launchers.
+    - *P1 PowerShell 5.1 LAN Provisioning*: Replaced ternary `? :` operator in `configure_lan_client.ps1`; synchronized parameter names (`-ServerHost`, `-ServiceUrl`, `-Port`, `-ServerCertPath`, `-ClientToken`); ensured exit code propagation in `configure_lan_client.bat`.
+    - *P1 Credential Separation & ACL Auditing*: Separated bearer token into `client.token` with pre-provisioned hardened DACL; non-secret configuration retained in `client_config.json`; updated `apply_production_acls.ps1` to explicitly audit both files without granting broad rights to standard users.
+    - *P1 Fail-Closed Configuration*: Prohibited silent fallback to localhost on unreadable or malformed LAN configuration files; strictly validated ports, hosts, certificates, and tokens.
+    - *P2 Bounded Worker Queue Scheduler*: Replaced single-cycle break on `_inFlightDeviceIds.length >= maxConcurrentChecks` with bounded worker queue covering all eligible inventory and UniFi infrastructure devices; implemented `_AsyncSemaphore` guaranteeing maximum concurrency is strictly bounded across periodic and forced checks; prevented race conditions and overlapping cycles.
+    - *Verification & Quality*: 346/346 automated tests passing; 0 analyzer warnings; Windows x64 release executable successfully compiled.

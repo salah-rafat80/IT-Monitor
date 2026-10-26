@@ -51,7 +51,9 @@ class MonitoringServiceClient {
   final String? trustedCertPath;
   final SecurityContext? customSecurityContext;
   final String? provisionedToken;
-  final String? configurationError;
+  String? _configurationError;
+  String? get configurationError => _configurationError;
+  bool get hasConfigurationError => _configurationError != null;
 
   HttpClient? _httpClient;
   WebSocket? _webSocket;
@@ -66,18 +68,34 @@ class MonitoringServiceClient {
   final StreamController<Map<String, dynamic>> _eventStreamController =
       StreamController<Map<String, dynamic>>.broadcast();
 
+  static bool isLoopbackUrl(String url) {
+    final uri = Uri.tryParse(url);
+    if (uri == null) return false;
+    final host = uri.host.toLowerCase();
+    return host == '127.0.0.1' ||
+        host == 'localhost' ||
+        host == '::1' ||
+        host == '[::1]';
+  }
+
   MonitoringServiceClient({
     required this.baseUrl,
     this.trustedCertPath,
     this.customSecurityContext,
     this.provisionedToken,
-    this.configurationError,
-  }) {
+    String? configurationError,
+  }) : _configurationError = configurationError {
     if (provisionedToken != null && provisionedToken!.trim().isNotEmpty) {
       _isRemoteTokenMode = true;
       _effectiveProvisionedToken = provisionedToken!.trim();
     }
-    if (configurationError == null) {
+    // Reject unencrypted HTTP for remote connections before creating HTTP client or sending tokens
+    if (!isLoopbackUrl(baseUrl) &&
+        baseUrl.toLowerCase().startsWith('http://')) {
+      _configurationError =
+          'Insecure transport: Service endpoint ($baseUrl) must use HTTPS. Plain HTTP is forbidden for remote connections.';
+    }
+    if (_configurationError == null) {
       _initHttpClient();
     }
   }
@@ -97,6 +115,12 @@ class MonitoringServiceClient {
           );
         }
         try {
+          final certBytes = certFile.readAsBytesSync();
+          if (certBytes.isEmpty) {
+            throw StateError(
+              'Configured trusted TLS certificate file is empty: "$certPath".',
+            );
+          }
           final testSec = SecurityContext(withTrustedRoots: false);
           testSec.setTrustedCertificates(certPath);
           secContext = testSec;
@@ -254,6 +278,15 @@ class MonitoringServiceClient {
       return ServiceApiResponse.failure(configurationError!, statusCode: 400);
     }
 
+    if (!isLoopbackUrl(baseUrl) &&
+        baseUrl.toLowerCase().startsWith('http://')) {
+      clearSession();
+      const errMsg =
+          'Insecure transport: Bearer tokens cannot be sent over unencrypted remote HTTP connections.';
+      _lastConnectionError = errMsg;
+      return const ServiceApiResponse.failure(errMsg, statusCode: 400);
+    }
+
     final token = tokenToVerify ?? _currentSession?.token;
     if (token == null || token.trim().isEmpty) {
       clearSession();
@@ -388,6 +421,14 @@ class MonitoringServiceClient {
       _lastConnectionError = configurationError;
       return ServiceApiResponse.failure(configurationError!, statusCode: 400);
     }
+    if (!isLoopbackUrl(baseUrl) &&
+        baseUrl.toLowerCase().startsWith('http://')) {
+      _currentSession = null;
+      const errMsg =
+          'Insecure transport: Bearer tokens cannot be sent over unencrypted remote HTTP connections.';
+      _lastConnectionError = errMsg;
+      return const ServiceApiResponse.failure(errMsg, statusCode: 400);
+    }
     try {
       final programData = Platform.environment['ProgramData'];
       final tokenPath =
@@ -441,6 +482,14 @@ class MonitoringServiceClient {
       _currentSession = null;
       _lastConnectionError = configurationError;
       return ServiceApiResponse.failure(configurationError!, statusCode: 400);
+    }
+    if (!isLoopbackUrl(baseUrl) &&
+        baseUrl.toLowerCase().startsWith('http://')) {
+      _currentSession = null;
+      const errMsg =
+          'Insecure transport: Bearer tokens cannot be sent over unencrypted remote HTTP connections.';
+      _lastConnectionError = errMsg;
+      return const ServiceApiResponse.failure(errMsg, statusCode: 400);
     }
     final cleanToken = token.trim();
     if (cleanToken.isEmpty) {
@@ -1127,6 +1176,12 @@ class MonitoringServiceClient {
       );
     }
 
+    if (!isLoopbackUrl(baseUrl) && !baseUrl.toLowerCase().startsWith('https')) {
+      throw StateError(
+        'Cannot establish unencrypted WebSocket connection to remote host ($baseUrl). WSS is required.',
+      );
+    }
+
     _wsReconnectTimer?.cancel();
     _wsReconnectTimer = null;
 
@@ -1208,6 +1263,22 @@ class MonitoringServiceClient {
     bool requireAuth = false,
   }) async {
     try {
+      if (configurationError != null) {
+        return ServiceApiResponse.failure(configurationError!, statusCode: 400);
+      }
+      if (!isLoopbackUrl(baseUrl) &&
+          baseUrl.toLowerCase().startsWith('http://')) {
+        return const ServiceApiResponse.failure(
+          'Insecure transport: Remote service requests must use HTTPS.',
+          statusCode: 400,
+        );
+      }
+      if (_httpClient == null) {
+        return const ServiceApiResponse.failure(
+          'HTTP client is not initialized.',
+          statusCode: 500,
+        );
+      }
       if (requireAuth &&
           (_currentSession == null || _currentSession!.isExpired)) {
         return const ServiceApiResponse.failure(

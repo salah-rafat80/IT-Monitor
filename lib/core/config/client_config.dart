@@ -3,6 +3,8 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 
+import 'app_run_mode.dart';
+
 /// Configuration for Desktop Clients connecting to the authoritative Windows Service.
 ///
 /// Supports two explicit operational modes:
@@ -26,10 +28,10 @@ class MonitoringClientConfig {
 
   const MonitoringClientConfig.error({
     required String this.errorMessage,
-    this.serviceUrl = 'https://127.0.0.1:8443',
+    this.serviceUrl = '',
     this.trustedCertPath,
     this.clientToken,
-    this.mode = 'local',
+    this.mode = 'error',
   });
 
   bool get hasError => errorMessage != null;
@@ -37,13 +39,20 @@ class MonitoringClientConfig {
   bool get isLanClient =>
       mode.toLowerCase() == 'lanclient' ||
       mode.toLowerCase() == 'remote' ||
-      !_isLoopbackUrl(serviceUrl);
+      !isLoopbackUrl(serviceUrl);
 
-  static bool _isLoopbackUrl(String url) {
+  static bool isLoopbackUrl(String url) {
     final uri = Uri.tryParse(url);
     if (uri == null) return false;
-    final host = uri.host.toLowerCase();
-    return host == '127.0.0.1' || host == 'localhost' || host == '::1';
+    return isLoopbackHost(uri.host);
+  }
+
+  static bool isLoopbackHost(String host) {
+    var clean = host.trim().toLowerCase();
+    if (clean.startsWith('[') && clean.endsWith(']')) {
+      clean = clean.substring(1, clean.length - 1);
+    }
+    return clean == '127.0.0.1' || clean == 'localhost' || clean == '::1';
   }
 
   /// Construct and validate an HTTPS or HTTP URL from host and port.
@@ -81,6 +90,17 @@ class MonitoringClientConfig {
       );
     }
 
+    if (!useTls && !isLoopbackHost(cleanHost)) {
+      throw FormatException(
+        'Production remote endpoint must use HTTPS. Plain HTTP is forbidden for non-loopback host: "$host".',
+      );
+    }
+    if (!useTls && AppConfig.isReleaseEnforced) {
+      throw const FormatException(
+        'Unencrypted HTTP connections are strictly forbidden in Release mode.',
+      );
+    }
+
     final scheme = useTls ? 'https' : 'http';
     return '$scheme://$cleanHost:$port';
   }
@@ -99,7 +119,18 @@ class MonitoringClientConfig {
           'Unsupported URL scheme in "$rawUrl". Only HTTP and HTTPS are permitted.',
         );
       }
-      final defaultScheme = defaultTls ? 'https://' : 'http://';
+      // Infer host from string to check if remote
+      var hostCandidate = trimmed;
+      if (hostCandidate.contains('/')) {
+        hostCandidate = hostCandidate.split('/').first;
+      }
+      if (hostCandidate.contains(':') && !hostCandidate.contains(']')) {
+        hostCandidate = hostCandidate.split(':').first;
+      }
+      final isRemoteCandidate = !isLoopbackHost(hostCandidate);
+      final defaultScheme = (isRemoteCandidate || defaultTls)
+          ? 'https://'
+          : 'http://';
       trimmed = '$defaultScheme$trimmed';
     }
 
@@ -112,6 +143,20 @@ class MonitoringClientConfig {
     if (uri.hasPort && (uri.port < 1 || uri.port > 65535)) {
       throw FormatException(
         'Invalid port in service URL: "$rawUrl". Port must be between 1 and 65535.',
+      );
+    }
+
+    final isRemote = !isLoopbackHost(uri.host);
+    final isHttp = trimmed.toLowerCase().startsWith('http://');
+
+    if (isHttp && isRemote) {
+      throw FormatException(
+        'Production remote endpoint must use HTTPS. Plain HTTP is forbidden for non-loopback host: "${uri.host}".',
+      );
+    }
+    if (isHttp && AppConfig.isReleaseEnforced) {
+      throw FormatException(
+        'Unencrypted HTTP connections are strictly forbidden in Release mode: "$rawUrl".',
       );
     }
 
@@ -310,20 +355,36 @@ class MonitoringClientConfig {
           : 'http://127.0.0.1:8080';
     }
 
-    // Respect explicit mode if specified; otherwise infer LAN mode if host is non-loopback
-    String resolvedMode =
-        rawMode ??
-        (!_isLoopbackUrl(resolvedServiceUrl) ? 'lanClient' : 'local');
+    // Respect explicit mode if specified; otherwise infer LAN mode if host is non-loopback.
+    // If the effective endpoint is remote (non-loopback), mode: local is NEVER allowed to bypass remote validation!
+    final isRemoteEndpoint = !isLoopbackUrl(resolvedServiceUrl);
+    String resolvedMode;
+    if (isRemoteEndpoint) {
+      resolvedMode = 'lanClient';
+    } else if (rawMode != null &&
+        (rawMode.toLowerCase() == 'lanclient' ||
+            rawMode.toLowerCase() == 'remote')) {
+      resolvedMode = 'lanClient';
+    } else {
+      resolvedMode = 'local';
+    }
 
     final isLan =
         resolvedMode.toLowerCase() == 'lanclient' ||
-        resolvedMode.toLowerCase() == 'remote';
+        resolvedMode.toLowerCase() == 'remote' ||
+        isRemoteEndpoint;
 
-    // If config file was present and specified LAN mode or remote host, fail closed if invalid
-    if (isLan &&
-        _isLoopbackUrl(resolvedServiceUrl) &&
-        (rawMode == 'lanClient' || rawMode == 'remote')) {
-      // Explicit lanClient mode configured with loopback URL is allowed only if explicitly intended
+    // Enforce HTTPS on remote endpoints and in Release mode
+    final isHttp = resolvedServiceUrl.toLowerCase().startsWith('http://');
+    if (isHttp && isRemoteEndpoint) {
+      throw FormatException(
+        'Insecure remote endpoint rejected: Service endpoint ($resolvedServiceUrl) must use HTTPS. Plain HTTP is forbidden for remote connections.',
+      );
+    }
+    if (isHttp && AppConfig.isReleaseEnforced) {
+      throw FormatException(
+        'Insecure endpoint rejected: Unencrypted HTTP connections ($resolvedServiceUrl) are strictly forbidden in Release mode.',
+      );
     }
 
     // 7. Resolve Dedicated Client Token File (client.token)
@@ -384,8 +445,8 @@ class MonitoringClientConfig {
       final candidate1 = p.join(configDir, 'server.crt');
       if (File(candidate1).existsSync()) {
         resolvedCertPath = candidate1;
-      } else if (cliConfigPath == null) {
-        // Only inspect global system directories if no custom --config was specified
+      } else if (!isLan && cliConfigPath == null) {
+        // Only inspect global service directories if local service and no custom --config was specified
         final candidate2 = programData != null
             ? p.join(programData, 'ITNetworkMonitor', 'server.crt')
             : null;
@@ -410,14 +471,18 @@ class MonitoringClientConfig {
         );
       }
 
+      // LAN client must use HTTPS
+      if (!resolvedServiceUrl.toLowerCase().startsWith('https://')) {
+        throw StateError(
+          'LAN Client Configuration Error: Connecting to remote service ($resolvedServiceUrl) requires HTTPS. Plain HTTP is forbidden.',
+        );
+      }
+
       // LAN client over HTTPS must have a configured trusted certificate path
-      final isHttps = resolvedServiceUrl.toLowerCase().startsWith('https://');
-      if (isHttps) {
-        if (resolvedCertPath == null || resolvedCertPath.trim().isEmpty) {
-          throw StateError(
-            'LAN Client Configuration Error: Missing trusted TLS certificate path. Connecting to remote service ($resolvedServiceUrl) requires a trusted public certificate in client_config.json, --cert, or IT_MONITOR_TRUSTED_CERT_PATH.',
-          );
-        }
+      if (resolvedCertPath == null || resolvedCertPath.trim().isEmpty) {
+        throw StateError(
+          'LAN Client Configuration Error: Missing trusted TLS certificate path. Connecting to remote service ($resolvedServiceUrl) requires a trusted public certificate in client_config.json, --cert, or IT_MONITOR_TRUSTED_CERT_PATH.',
+        );
       }
     }
 

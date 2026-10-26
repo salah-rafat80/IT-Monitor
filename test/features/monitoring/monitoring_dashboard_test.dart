@@ -114,7 +114,7 @@ void main() {
     when(() => mockScheduler.stopMonitoring()).thenAnswer((_) {});
     when(
       () => mockScheduler.triggerAllChecks(force: any(named: 'force')),
-    ).thenAnswer((_) async {});
+    ).thenAnswer((_) async => true);
   });
 
   tearDown(() {

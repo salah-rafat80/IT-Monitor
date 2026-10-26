@@ -30,6 +30,10 @@ param(
     [Alias("Token")]
     [string]$ClientToken,
 
+    [Parameter(Mandatory=$false)]
+    [Alias("Group", "OperatorGroupName")]
+    [string]$OperatorGroup = "ITNetworkMonitorAdministrators",
+
     [switch]$AddToTrustedRoot
 )
 
@@ -45,7 +49,7 @@ Write-Host "====================================================" -ForegroundCol
 function Set-HardenedFileDacl {
     param(
         [string]$Path,
-        [string]$OperatorGroupName = "ITNetworkMonitorAdministrators"
+        [System.Security.Principal.SecurityIdentifier]$OperatorSid
     )
 
     $acl = [System.IO.File]::GetAccessControl($Path)
@@ -79,19 +83,13 @@ function Set-HardenedFileDacl {
     )))
 
     # 3. ITNetworkMonitorAdministrators: Read-only (non-inheriting, no write/delete/execute)
-    try {
-        $opAccount = New-Object System.Security.Principal.NTAccount($OperatorGroupName)
-        $opSid = $opAccount.Translate([System.Security.Principal.SecurityIdentifier])
-        $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule(
-            $opSid,
-            [System.Security.AccessControl.FileSystemRights]::Read,
-            [System.Security.AccessControl.InheritanceFlags]::None,
-            [System.Security.AccessControl.PropagationFlags]::None,
-            [System.Security.AccessControl.AccessControlType]::Allow
-        )))
-    } catch {
-        # Group may not exist on machine yet; will be created during full installer run
-    }
+    $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule(
+        $OperatorSid,
+        [System.Security.AccessControl.FileSystemRights]::Read,
+        [System.Security.AccessControl.InheritanceFlags]::None,
+        [System.Security.AccessControl.PropagationFlags]::None,
+        [System.Security.AccessControl.AccessControlType]::Allow
+    )))
 
     [System.IO.File]::SetAccessControl($Path, $acl)
 
@@ -101,42 +99,153 @@ function Set-HardenedFileDacl {
 
 function Verify-HardenedFileDacl {
     param(
-        [string]$Path
+        [string]$Path,
+        [System.Security.Principal.SecurityIdentifier]$OperatorSid,
+        [string]$OperatorGroupName = "ITNetworkMonitorAdministrators"
     )
 
     $acl = [System.IO.File]::GetAccessControl($Path)
     if (-not $acl.AreAccessRulesProtected) {
-        Write-Error "Security verification failed: DACL on '$Path' inherits unapproved permissions."
+        Write-Error "Security verification failed: DACL on '$Path' inherits unapproved permissions (/inheritance:r required)."
         exit 1
     }
 
-    $prohibitedSids = @("S-1-5-32-545", "S-1-1-0", "S-1-5-11")
+    $prohibitedSids = @("S-1-5-32-545", "S-1-1-0", "S-1-5-11") # Users, Everyone, Authenticated Users
+    $prohibitedRights = [int][System.Security.AccessControl.FileSystemRights]::Write -bor
+                        [int][System.Security.AccessControl.FileSystemRights]::Delete -bor
+                        [int][System.Security.AccessControl.FileSystemRights]::DeleteSubdirectoriesAndFiles -bor
+                        [int][System.Security.AccessControl.FileSystemRights]::ChangePermissions -bor
+                        [int][System.Security.AccessControl.FileSystemRights]::TakeOwnership
+
     $hasSystem = $false
     $hasAdmins = $false
+    $hasOperator = $false
 
     foreach ($rule in $acl.Access) {
+        if ($rule.AccessControlType -ne [System.Security.AccessControl.AccessControlType]::Allow) {
+            Write-Error "Security violation: Non-Allow ACE found on '$Path' for '$($rule.IdentityReference.Value)'."
+            exit 1
+        }
+
+        if ($rule.IsInherited) {
+            Write-Error "Security violation: Inherited ACE found on '$Path' for '$($rule.IdentityReference.Value)'."
+            exit 1
+        }
+
         $sid = $rule.IdentityReference.Value
         try {
             $sid = $rule.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value
         } catch {}
 
         if ($prohibitedSids -contains $sid) {
-            Write-Error "Security violation: Prohibited principal '$($rule.IdentityReference.Value)' has access to '$Path'."
+            Write-Error "Security violation: Prohibited principal '$($rule.IdentityReference.Value)' (SID: $sid) has access to '$Path'."
             exit 1
         }
-        if ($sid -eq "S-1-5-18" -and $rule.FileSystemRights.HasFlag([System.Security.AccessControl.FileSystemRights]::FullControl)) {
-            $hasSystem = $true
+
+        if ($sid -eq "S-1-5-18") {
+            if ($rule.FileSystemRights.HasFlag([System.Security.AccessControl.FileSystemRights]::FullControl)) {
+                $hasSystem = $true
+            } else {
+                Write-Error "Security verification failed: SYSTEM has insufficient rights on '$Path' (FullControl required, found: $($rule.FileSystemRights))."
+                exit 1
+            }
+            continue
         }
-        if ($sid -eq "S-1-5-32-544" -and $rule.FileSystemRights.HasFlag([System.Security.AccessControl.FileSystemRights]::FullControl)) {
-            $hasAdmins = $true
+
+        if ($sid -eq "S-1-5-32-544") {
+            if ($rule.FileSystemRights.HasFlag([System.Security.AccessControl.FileSystemRights]::FullControl)) {
+                $hasAdmins = $true
+            } else {
+                Write-Error "Security verification failed: BUILTIN\Administrators has insufficient rights on '$Path' (FullControl required, found: $($rule.FileSystemRights))."
+                exit 1
+            }
+            continue
         }
+
+        if ($OperatorSid -and $sid -eq $OperatorSid.Value) {
+            $hasOperator = $true
+            $rights = [int]$rule.FileSystemRights
+
+            # Reject Write, Modify, Delete, DeleteSubdirectoriesAndFiles, ChangePermissions, TakeOwnership
+            if (($rights -band $prohibitedRights) -ne 0) {
+                Write-Error "Security violation: Operator group '$OperatorGroupName' has unauthorized write/modify/delete rights on '$Path' (found: $($rule.FileSystemRights))."
+                exit 1
+            }
+
+            # Must have Read
+            if (-not $rule.FileSystemRights.HasFlag([System.Security.AccessControl.FileSystemRights]::Read)) {
+                Write-Error "Security verification failed: Operator group '$OperatorGroupName' is missing Read rights on '$Path'."
+                exit 1
+            }
+
+            # Reject inheritance into children
+            if ($rule.InheritanceFlags -ne [System.Security.AccessControl.InheritanceFlags]::None -or
+                $rule.PropagationFlags -ne [System.Security.AccessControl.PropagationFlags]::None) {
+                Write-Error "Security violation: Operator group '$OperatorGroupName' has non-zero inheritance/propagation flags on '$Path'."
+                exit 1
+            }
+            continue
+        }
+
+        # Any unexpected allow rule is strictly rejected
+        Write-Error "Security violation: Unexpected principal '$($rule.IdentityReference.Value)' (SID: $sid) has access to '$Path'."
+        exit 1
     }
 
-    if (-not $hasSystem -or -not $hasAdmins) {
-        Write-Error "Security verification failed: SYSTEM or Administrators missing FullControl on '$Path'."
+    if (-not $hasSystem) {
+        Write-Error "Security verification failed: SYSTEM missing FullControl on '$Path'."
+        exit 1
+    }
+    if (-not $hasAdmins) {
+        Write-Error "Security verification failed: BUILTIN\Administrators missing FullControl on '$Path'."
+        exit 1
+    }
+    if (-not $hasOperator) {
+        Write-Error "Security verification failed: Authorized operator group '$OperatorGroupName' missing required Read permissions on '$Path'."
         exit 1
     }
 }
+
+# ---------------------------------------------------------------------------
+# 0. Operator Group Resolution & Fail-Closed Enforcement
+# ---------------------------------------------------------------------------
+$resolvedOperatorSid = $null
+$isElevated = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+
+try {
+    $opAccount = New-Object System.Security.Principal.NTAccount($OperatorGroup)
+    $resolvedOperatorSid = $opAccount.Translate([System.Security.Principal.SecurityIdentifier])
+} catch {
+    # Group could not be resolved
+}
+
+if (-not $resolvedOperatorSid) {
+    if ($isElevated) {
+        Write-Host "Operator group '$OperatorGroup' not found. Creating local group..." -ForegroundColor Yellow
+        $prevEAP = $ErrorActionPreference
+        $ErrorActionPreference = 'SilentlyContinue'
+        $createOut = net.exe localgroup $OperatorGroup /add /comment:"Authorized operators permitted to access IT Network Monitor client configuration and credentials" 2>&1
+        $createExitCode = $LASTEXITCODE
+        $ErrorActionPreference = $prevEAP
+
+        if ($createExitCode -eq 0) {
+            try {
+                $opAccount = New-Object System.Security.Principal.NTAccount($OperatorGroup)
+                $resolvedOperatorSid = $opAccount.Translate([System.Security.Principal.SecurityIdentifier])
+                Write-Host "Created and resolved operator group '$OperatorGroup' (SID: $($resolvedOperatorSid.Value))." -ForegroundColor Green
+            } catch {
+                $resolvedOperatorSid = $null
+            }
+        }
+    }
+
+    if (-not $resolvedOperatorSid) {
+        Write-Error "Security configuration error: The required operator security group '$OperatorGroup' does not exist on this machine. Create the group using an elevated prompt ('net localgroup $OperatorGroup /add') or run this provisioning script with Administrator privileges."
+        exit 1
+    }
+}
+
+Write-Host "Operator group '$OperatorGroup' verified (SID: $($resolvedOperatorSid.Value))." -ForegroundColor Green
 
 # ---------------------------------------------------------------------------
 # 1. Parameter Validation
@@ -237,11 +346,10 @@ if ($ServerCertPath) {
 }
 
 # Secure server.crt permissions
-Set-HardenedFileDacl -Path $targetCertPath
-Verify-HardenedFileDacl -Path $targetCertPath
+Set-HardenedFileDacl -Path $targetCertPath -OperatorSid $resolvedOperatorSid
+Verify-HardenedFileDacl -Path $targetCertPath -OperatorSid $resolvedOperatorSid -OperatorGroupName $OperatorGroup
 
 if ($AddToTrustedRoot) {
-    $isElevated = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
     if ($isElevated) {
         Write-Host "Installing certificate to Cert:\LocalMachine\Root..." -ForegroundColor Yellow
         $cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($targetCertPath)
@@ -264,13 +372,13 @@ if (-not (Test-Path -LiteralPath $tokenFile)) {
 }
 
 # Apply restrictive ACL first
-Set-HardenedFileDacl -Path $tokenFile
+Set-HardenedFileDacl -Path $tokenFile -OperatorSid $resolvedOperatorSid
 
 # Write the secret token content
 [System.IO.File]::WriteAllText($tokenFile, $ClientToken, [System.Text.Encoding]::UTF8)
 
 # Verify permissions after writing
-Verify-HardenedFileDacl -Path $tokenFile
+Verify-HardenedFileDacl -Path $tokenFile -OperatorSid $resolvedOperatorSid -OperatorGroupName $OperatorGroup
 Write-Host "Client bearer token securely provisioned in: $tokenFile" -ForegroundColor Green
 
 # 6. Write client_config.json (stores non-secret endpoint, mode, and cert path)
@@ -285,8 +393,8 @@ $configFile = Join-Path $dataDir "client_config.json"
 [System.IO.File]::WriteAllText($configFile, $configJson, [System.Text.Encoding]::UTF8)
 
 # Secure client_config.json DACL
-Set-HardenedFileDacl -Path $configFile
-Verify-HardenedFileDacl -Path $configFile
+Set-HardenedFileDacl -Path $configFile -OperatorSid $resolvedOperatorSid
+Verify-HardenedFileDacl -Path $configFile -OperatorSid $resolvedOperatorSid -OperatorGroupName $OperatorGroup
 Write-Host "Persistent LAN client configuration written to: $configFile" -ForegroundColor Green
 
 # 7. Print Sanitized Configuration Summary (NEVER PRINT THE SECRET TOKEN)
@@ -294,7 +402,7 @@ Write-Host "`nConfiguration summary:" -ForegroundColor White
 Write-Host "  Service URL: $finalServiceUrl" -ForegroundColor White
 Write-Host "  Mode:        lanClient" -ForegroundColor White
 Write-Host "  Certificate: $targetCertPath" -ForegroundColor White
-Write-Host "  Token File:  $tokenFile (Protected: SYSTEM, Admins, ITNetworkMonitorAdministrators:R)" -ForegroundColor White
+Write-Host "  Token File:  $tokenFile (Protected: SYSTEM, Admins, ${OperatorGroup}:R)" -ForegroundColor White
 Write-Host "  Token State: *** Provisioned ($($ClientToken.Length) characters) ***" -ForegroundColor Green
 Write-Host "`nLAN Client configuration completed successfully." -ForegroundColor Green
 exit 0

@@ -69,12 +69,23 @@ void main(List<String> args) async {
       clientConfig = MonitoringClientConfig.error(errorMessage: e.toString());
     }
 
-    final client = MonitoringServiceClient(
-      baseUrl: clientConfig.serviceUrl,
-      trustedCertPath: clientConfig.trustedCertPath,
-      provisionedToken: clientConfig.clientToken,
-      configurationError: clientConfig.errorMessage,
-    );
+    MonitoringServiceClient client;
+    try {
+      client = MonitoringServiceClient(
+        baseUrl: clientConfig.serviceUrl,
+        trustedCertPath: clientConfig.trustedCertPath,
+        provisionedToken: clientConfig.clientToken,
+        configurationError: clientConfig.errorMessage,
+      );
+    } catch (e) {
+      debugPrint('[MonitoringServiceClient init error]: $e');
+      client = MonitoringServiceClient(
+        baseUrl: clientConfig.serviceUrl,
+        trustedCertPath: clientConfig.trustedCertPath,
+        provisionedToken: clientConfig.clientToken,
+        configurationError: e.toString(),
+      );
+    }
     if (!getIt.isRegistered<MonitoringServiceClient>()) {
       getIt.registerSingleton<MonitoringServiceClient>(client);
     }
@@ -90,27 +101,33 @@ void main(List<String> args) async {
   if (AppConfig.isProductionClient &&
       getIt.isRegistered<MonitoringServiceClient>()) {
     final client = getIt<MonitoringServiceClient>();
-    try {
-      final authRes =
-          client.isRemoteTokenMode && client.currentProvisionedToken != null
-          ? await client.authenticateWithProvisionedToken(
-              client.currentProvisionedToken!,
-            )
-          : await client.authenticateWithTrustedLocalToken();
+    if (client.hasConfigurationError) {
+      debugPrint(
+        '[MonitoringServiceClient startup auth skipped due to config error]: ${client.configurationError}',
+      );
+    } else {
+      try {
+        final authRes =
+            client.isRemoteTokenMode && client.currentProvisionedToken != null
+            ? await client.authenticateWithProvisionedToken(
+                client.currentProvisionedToken!,
+              )
+            : await client.authenticateWithTrustedLocalToken();
 
-      if (authRes.isSuccess && client.isAuthenticated) {
-        client.connectWebSocket().catchError((error) {
-          debugPrint('[MonitoringServiceClient WebSocket error]: $error');
-        });
-      } else {
+        if (authRes.isSuccess && client.isAuthenticated) {
+          client.connectWebSocket().catchError((error) {
+            debugPrint('[MonitoringServiceClient WebSocket error]: $error');
+          });
+        } else {
+          debugPrint(
+            '[MonitoringServiceClient startup auth notice]: ${authRes.errorMessage}',
+          );
+        }
+      } catch (e, stack) {
         debugPrint(
-          '[MonitoringServiceClient startup auth notice]: ${authRes.errorMessage}',
+          '[MonitoringServiceClient startup connection error]: $e\n$stack',
         );
       }
-    } catch (e, stack) {
-      debugPrint(
-        '[MonitoringServiceClient startup connection error]: $e\n$stack',
-      );
     }
   }
 

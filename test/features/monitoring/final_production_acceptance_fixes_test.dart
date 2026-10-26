@@ -216,6 +216,8 @@ class FakeMonitoringRepository implements MonitoringRepository {
 
 class TrackingPingChecker implements PingChecker {
   final Duration checkDelay;
+  final Map<int, Duration> deviceDelays = {};
+  void Function(int deviceId)? onCheckStarted;
   int currentActiveChecks = 0;
   int peakObservedParallelism = 0;
   final List<int> checkedDeviceIds = [];
@@ -233,8 +235,10 @@ class TrackingPingChecker implements PingChecker {
       peakObservedParallelism = currentActiveChecks;
     }
     checkedDeviceIds.add(deviceId);
+    onCheckStarted?.call(deviceId);
 
-    await Future.delayed(checkDelay);
+    final delay = deviceDelays[deviceId] ?? checkDelay;
+    await Future.delayed(delay);
 
     currentActiveChecks--;
     return CheckResult(
@@ -313,34 +317,60 @@ void main() {
     });
 
     test(
-      '3. Formats --service-host and --service-port into valid HTTPS URL',
+      '3. Formats --service-host and --service-port into valid HTTPS URL and enforces LAN mode',
       () {
+        final certFile = File(p.join(tempDir.path, 'server.crt'));
+        certFile.writeAsStringSync(
+          File('test/fixtures/certs/server.crt').readAsStringSync(),
+        );
+
+        final formatted = MonitoringClientConfig.formatServiceUrl(
+          host: '192.168.1.150',
+          port: 9443,
+        );
+        expect(formatted, equals('https://192.168.1.150:9443'));
+
         final config = MonitoringClientConfig.loadFromEnvironmentOrFile([
           '--service-host=192.168.1.150',
           '--service-port=9443',
+          '--cert=${certFile.path}',
           '--token=test_token_1234567890abcdef',
-          '--mode=local', // local mode bypasses cert requirement for format test
         ]);
 
         expect(config.serviceUrl, equals('https://192.168.1.150:9443'));
         expect(config.clientToken, equals('test_token_1234567890abcdef'));
+        expect(config.isLanClient, isTrue);
       },
     );
 
     test(
-      '4. Normalizes --service-url without prepending duplicate schemes',
+      '4. Normalizes --service-url without prepending duplicate schemes and strictly enforces HTTPS outside loopback',
       () {
         expect(
           MonitoringClientConfig.normalizeServiceUrl('https://10.0.0.1:8443'),
           equals('https://10.0.0.1:8443'),
         );
+        // Remote endpoint outside loopback with HTTP is strictly rejected
         expect(
-          MonitoringClientConfig.normalizeServiceUrl('http://10.0.0.1:8080'),
-          equals('http://10.0.0.1:8080'),
+          () => MonitoringClientConfig.normalizeServiceUrl(
+            'http://10.0.0.1:8080',
+          ),
+          throwsA(
+            isA<FormatException>().having(
+              (e) => e.message,
+              'message',
+              contains('Plain HTTP is forbidden for non-loopback host'),
+            ),
+          ),
         );
         expect(
           MonitoringClientConfig.normalizeServiceUrl('10.0.0.1:8443'),
           equals('https://10.0.0.1:8443'),
+        );
+        // Loopback endpoint with HTTP is permitted only in local development
+        expect(
+          MonitoringClientConfig.normalizeServiceUrl('http://127.0.0.1:8080'),
+          equals('http://127.0.0.1:8080'),
         );
       },
     );
@@ -381,7 +411,7 @@ void main() {
         final configFile = File(p.join(tempDir.path, 'client_config.json'));
         configFile.writeAsStringSync(
           jsonEncode({
-            'serviceUrl': 'https://file-host:8443',
+            'serviceUrl': 'https://127.0.0.1:8443',
             'mode': 'local',
             'clientToken': 'file_token',
           }),
@@ -389,12 +419,12 @@ void main() {
 
         final config = MonitoringClientConfig.loadFromEnvironmentOrFile([
           '--config=${configFile.path}',
-          '--service-url=https://cli-host:8443',
+          '--service-url=https://127.0.0.1:9443',
           '--token=cli_token_override',
           '--mode=local',
         ]);
 
-        expect(config.serviceUrl, equals('https://cli-host:8443'));
+        expect(config.serviceUrl, equals('https://127.0.0.1:9443'));
         expect(config.clientToken, equals('cli_token_override'));
       },
     );
@@ -438,46 +468,68 @@ void main() {
       );
     });
 
-    test('10. LAN client mode missing certificate throws StateError', () {
-      final configFile = File(p.join(tempDir.path, 'client_config.json'));
-      configFile.writeAsStringSync(
-        jsonEncode({
-          'serviceUrl': 'https://192.168.1.100:8443',
-          'trustedCertPath': '',
-          'clientToken': 'valid_token_1234567890abcdef',
-          'mode': 'lanClient',
-        }),
-      );
+    test(
+      '10. LAN client mode missing certificate produces actionable error state without uncaught crash',
+      () {
+        final configFile = File(p.join(tempDir.path, 'client_config.json'));
+        configFile.writeAsStringSync(
+          jsonEncode({
+            'serviceUrl': 'https://192.168.1.100:8443',
+            'trustedCertPath': '',
+            'clientToken': 'valid_token_1234567890abcdef',
+            'mode': 'lanClient',
+          }),
+        );
 
-      // 1. Missing certificate in configuration throws StateError
-      expect(
-        () => MonitoringClientConfig.loadFromEnvironmentOrFile([
-          '--config=${configFile.path}',
-        ]),
-        throwsA(
-          isA<StateError>().having(
-            (e) => e.message,
-            'message',
-            contains('Missing trusted TLS certificate path'),
+        // 1. Missing certificate path in configuration throws StateError
+        expect(
+          () => MonitoringClientConfig.loadFromEnvironmentOrFile([
+            '--config=${configFile.path}',
+          ]),
+          throwsA(
+            isA<StateError>().having(
+              (e) => e.message,
+              'message',
+              contains('Missing trusted TLS certificate path'),
+            ),
           ),
-        ),
-      );
+        );
 
-      // 2. Non-existent certificate file on disk throws StateError during client initialization
-      expect(
-        () => MonitoringServiceClient(
-          baseUrl: 'https://192.168.1.100:8443',
-          trustedCertPath: p.join(tempDir.path, 'missing_server.crt'),
-        ),
-        throwsA(
-          isA<StateError>().having(
-            (e) => e.message,
-            'message',
-            contains('Configured trusted TLS certificate file not found'),
+        // 2. Non-existent certificate file on disk throws StateError during client initialization
+        expect(
+          () => MonitoringServiceClient(
+            baseUrl: 'https://192.168.1.100:8443',
+            trustedCertPath: p.join(tempDir.path, 'missing_server.crt'),
           ),
-        ),
-      );
-    });
+          throwsA(
+            isA<StateError>().having(
+              (e) => e.message,
+              'message',
+              contains('Configured trusted TLS certificate file not found'),
+            ),
+          ),
+        );
+
+        // 3. Unreadable/malformed certificate file throws StateError during client initialization
+        final malformedCertFile = File(
+          p.join(tempDir.path, 'malformed_server.crt'),
+        );
+        malformedCertFile.writeAsStringSync('MALFORMED_NON_PEM_DATA');
+        expect(
+          () => MonitoringServiceClient(
+            baseUrl: 'https://192.168.1.100:8443',
+            trustedCertPath: malformedCertFile.path,
+          ),
+          throwsA(
+            isA<StateError>().having(
+              (e) => e.message,
+              'message',
+              contains('Failed to load configured trusted TLS certificate'),
+            ),
+          ),
+        );
+      },
+    );
 
     test('11. Prohibition on silent LAN-to-localhost fallback', () {
       final configFile = File(p.join(tempDir.path, 'client_config.json'));
@@ -504,7 +556,9 @@ void main() {
 
     test('12. Reads client bearer token from dedicated client.token file', () {
       final certFile = File(p.join(tempDir.path, 'server.crt'));
-      certFile.writeAsStringSync('dummy certificate content');
+      certFile.writeAsStringSync(
+        File('test/fixtures/certs/server.crt').readAsStringSync(),
+      );
 
       final tokenFile = File(p.join(tempDir.path, 'client.token'));
       tokenFile.writeAsStringSync('token_from_separate_file_1234567890');
@@ -787,6 +841,441 @@ void main() {
 
         scheduler.stopMonitoring();
         expect(scheduler.isRunning, isFalse);
+      },
+    );
+
+    test(
+      '19. triggerAllChecks() returns false when inventory or infrastructure queries fail',
+      () async {
+        final devices = [
+          DeviceEntity(
+            id: 1,
+            name: 'Device #1',
+            ip: '192.168.1.50',
+            type: DeviceType.pc,
+            ownerName: 'Test Owner',
+            department: 'IT',
+            isEnabled: true,
+            isMonitored: true,
+            createdAt: DateTime.now(),
+          ),
+        ];
+        deviceRepo.devices = devices;
+
+        // 1. Device repository failure produces explicit false (failed/incomplete cycle)
+        deviceRepo.shouldFail = true;
+        final deviceFailResult = await scheduler.triggerAllChecks(force: true);
+        expect(
+          deviceFailResult,
+          isFalse,
+          reason: 'Failed device query must report incomplete execution',
+        );
+
+        // 2. Infrastructure repository failure produces explicit false
+        deviceRepo.shouldFail = false;
+        infraRepo.shouldFail = true;
+        final infraFailResult = await scheduler.triggerAllChecks(force: true);
+        expect(
+          infraFailResult,
+          isFalse,
+          reason:
+              'Failed infrastructure query must report incomplete execution',
+        );
+      },
+    );
+
+    test(
+      '20. Pausing monitoring during a forced run reports incomplete execution (returns false)',
+      () async {
+        final devices = List.generate(
+          10,
+          (i) => DeviceEntity(
+            id: i + 1,
+            name: 'Device #${i + 1}',
+            ip: '192.168.1.${i + 50}',
+            type: DeviceType.pc,
+            ownerName: 'Test Owner',
+            department: 'IT',
+            isEnabled: true,
+            isMonitored: true,
+            createdAt: DateTime.now(),
+          ),
+        );
+        deviceRepo.devices = devices;
+
+        // Trigger forced checks and pause while queue is in progress
+        final checkFuture = scheduler.triggerAllChecks(force: true);
+        await Future.delayed(const Duration(milliseconds: 30));
+        scheduler.pauseMonitoring();
+
+        final result = await checkFuture;
+        expect(
+          result,
+          isFalse,
+          reason:
+              'Pausing during a forced queue must report incomplete execution',
+        );
+      },
+    );
+
+    test(
+      '21. Forced checks account for targets in-flight during an overlapping periodic check without omitting them',
+      () async {
+        final devices = [
+          DeviceEntity(
+            id: 1,
+            name: 'Device #1 (Slow)',
+            ip: '192.168.1.51',
+            type: DeviceType.pc,
+            ownerName: 'Test Owner',
+            department: 'IT',
+            isEnabled: true,
+            isMonitored: true,
+            createdAt: DateTime.now(),
+          ),
+          DeviceEntity(
+            id: 2,
+            name: 'Device #2 (Fast)',
+            ip: '192.168.1.52',
+            type: DeviceType.pc,
+            ownerName: 'Test Owner',
+            department: 'IT',
+            isEnabled: true,
+            isMonitored: true,
+            createdAt: DateTime.now(),
+          ),
+        ];
+        deviceRepo.devices = devices;
+
+        // Configure device #1 with a longer delay to simulate in-flight periodic check
+        pingChecker.deviceDelays[1] = const Duration(milliseconds: 80);
+        pingChecker.deviceDelays[2] = const Duration(milliseconds: 20);
+
+        final device1StartedCompleter = Completer<void>();
+        pingChecker.onCheckStarted = (id) {
+          if (id == 1 && !device1StartedCompleter.isCompleted) {
+            device1StartedCompleter.complete();
+          }
+        };
+
+        // Start periodic monitoring
+        scheduler.startMonitoring();
+        await device1StartedCompleter.future;
+
+        // Device #1 is now actively in-flight in the periodic cycle.
+        // Launch forced check concurrently
+        final forcedSuccess = await scheduler.triggerAllChecks(force: true);
+
+        expect(forcedSuccess, isTrue);
+        expect(
+          pingChecker.checkedDeviceIds.contains(1),
+          isTrue,
+          reason: 'Device #1 was omitted during overlap!',
+        );
+        expect(
+          pingChecker.checkedDeviceIds.contains(2),
+          isTrue,
+          reason: 'Device #2 was omitted during overlap!',
+        );
+      },
+    );
+
+    test(
+      '22. Lowering concurrency limit via updatePermits() while checks are active does not grant extra permits',
+      () async {
+        final sem = AsyncSemaphore(4);
+
+        // 4 permits acquired (all active)
+        await sem.acquire();
+        await sem.acquire();
+        await sem.acquire();
+        await sem.acquire();
+
+        expect(sem.activeCount, equals(4));
+        expect(sem.maxPermits, equals(4));
+
+        var waiterAcquired = false;
+        unawaited(
+          sem.acquire().then((_) {
+            waiterAcquired = true;
+          }),
+        );
+
+        await Future.delayed(Duration.zero);
+        expect(waiterAcquired, isFalse);
+        expect(sem.waitingCount, equals(1));
+
+        // Lower concurrency limit from 4 to 2 while 4 checks are active
+        sem.updatePermits(2);
+
+        expect(sem.maxPermits, equals(2));
+        expect(sem.activeCount, equals(4));
+        await Future.delayed(Duration.zero);
+        expect(
+          waiterAcquired,
+          isFalse,
+          reason:
+              'Lowering permits must NEVER drain waiters when active count exceeds new limit!',
+        );
+
+        // First release: activeCount drops to 3 (still > 2)
+        sem.release();
+        expect(sem.activeCount, equals(3));
+        await Future.delayed(Duration.zero);
+        expect(waiterAcquired, isFalse);
+
+        // Second release: activeCount drops to 2 (equal to limit, not < 2)
+        sem.release();
+        expect(sem.activeCount, equals(2));
+        await Future.delayed(Duration.zero);
+        expect(waiterAcquired, isFalse);
+
+        // Third release: activeCount drops to 1 (< 2!), waiter acquires
+        sem.release();
+        await Future.delayed(Duration.zero);
+        expect(waiterAcquired, isTrue);
+        expect(sem.activeCount, equals(2));
+
+        sem.dispose();
+      },
+    );
+  });
+
+  group('P1 — Remote Transport Security & Fail-Closed Transport Enforcement', () {
+    late Directory tempDir;
+
+    setUp(() {
+      tempDir = Directory.systemTemp.createTempSync('it_monitor_sec_test_');
+    });
+
+    tearDown(() {
+      if (tempDir.existsSync()) {
+        tempDir.deleteSync(recursive: true);
+      }
+    });
+
+    test(
+      '23. Remote HTTP endpoints are rejected across formatting, normalization, and configuration loading',
+      () {
+        // 1. formatServiceUrl rejects plain HTTP for remote host
+        expect(
+          () => MonitoringClientConfig.formatServiceUrl(
+            host: '192.168.1.100',
+            useTls: false,
+          ),
+          throwsA(
+            isA<FormatException>().having(
+              (e) => e.message,
+              'message',
+              contains('Plain HTTP is forbidden for non-loopback host'),
+            ),
+          ),
+        );
+
+        // 2. normalizeServiceUrl rejects plain HTTP for remote URL
+        expect(
+          () => MonitoringClientConfig.normalizeServiceUrl(
+            'http://192.168.1.100:8080',
+          ),
+          throwsA(
+            isA<FormatException>().having(
+              (e) => e.message,
+              'message',
+              contains('Plain HTTP is forbidden for non-loopback host'),
+            ),
+          ),
+        );
+
+        // 3. loadFromEnvironmentOrFile rejects plain HTTP for remote service URL
+        expect(
+          () => MonitoringClientConfig.loadFromEnvironmentOrFile([
+            '--service-url=http://192.168.1.100:8080',
+            '--token=test_token_1234567890abcdef',
+          ]),
+          throwsA(
+            isA<FormatException>().having(
+              (e) => e.message,
+              'message',
+              contains('Plain HTTP is forbidden for non-loopback host'),
+            ),
+          ),
+        );
+      },
+    );
+
+    test(
+      '24. Remote endpoint mislabeled as mode: local is inferred and enforced as LAN mode',
+      () {
+        // mode: local cannot bypass remote endpoint validation
+        expect(
+          () => MonitoringClientConfig.loadFromEnvironmentOrFile([
+            '--service-url=https://192.168.1.100:8443',
+            '--mode=local',
+            '--token=test_token_1234567890abcdef',
+          ]),
+          throwsA(
+            isA<StateError>().having(
+              (e) => e.message,
+              'message',
+              contains('Missing trusted TLS certificate path'),
+            ),
+          ),
+        );
+
+        final certFile = File(p.join(tempDir.path, 'server.crt'));
+        certFile.writeAsStringSync(
+          File('test/fixtures/certs/server.crt').readAsStringSync(),
+        );
+
+        final config = MonitoringClientConfig.loadFromEnvironmentOrFile([
+          '--service-url=https://192.168.1.100:8443',
+          '--mode=local',
+          '--cert=${certFile.path}',
+          '--token=test_token_1234567890abcdef',
+        ]);
+
+        expect(config.isLanClient, isTrue);
+        expect(config.mode, equals('lanClient'));
+      },
+    );
+
+    test(
+      '25. Bearer tokens are never transmitted over unencrypted remote HTTP connections',
+      () async {
+        final insecureClient = MonitoringServiceClient(
+          baseUrl: 'http://192.168.1.100:8080',
+        );
+
+        expect(insecureClient.hasConfigurationError, isTrue);
+        expect(
+          insecureClient.configurationError,
+          contains('Plain HTTP is forbidden for remote connections'),
+        );
+
+        // Token transmission methods fail immediately without network transport
+        final resProv = await insecureClient.authenticateWithProvisionedToken(
+          'secret_token_1234567890abcdef',
+        );
+        expect(resProv.isFailure, isTrue);
+        expect(resProv.statusCode, equals(400));
+        expect(resProv.errorMessage, contains('Insecure transport'));
+
+        final resLocal = await insecureClient
+            .authenticateWithTrustedLocalToken();
+        expect(resLocal.isFailure, isTrue);
+        expect(resLocal.statusCode, equals(400));
+        expect(resLocal.errorMessage, contains('Insecure transport'));
+
+        final resVerify = await insecureClient.verifySession(
+          'secret_token_1234567890abcdef',
+        );
+        expect(resVerify.isFailure, isTrue);
+        expect(resVerify.statusCode, equals(400));
+        expect(resVerify.errorMessage, contains('Insecure transport'));
+
+        expect(
+          () => insecureClient.connectWebSocket(),
+          throwsA(isA<StateError>()),
+        );
+      },
+    );
+
+    test(
+      '26. Nonexistent and unreadable certificate paths produce visible GUI error state without uncaught crash',
+      () async {
+        AppConfig.resetForTesting(mode: AppRunMode.productionClient);
+
+        // 1. Nonexistent certificate file
+        if (getIt.isRegistered<MonitoringServiceClient>()) {
+          getIt.unregister<MonitoringServiceClient>();
+        }
+
+        MonitoringServiceClient missingCertClient;
+        try {
+          missingCertClient = MonitoringServiceClient(
+            baseUrl: 'https://192.168.1.100:8443',
+            trustedCertPath: p.join(tempDir.path, 'nonexistent_cert.crt'),
+          );
+        } catch (e) {
+          missingCertClient = MonitoringServiceClient(
+            baseUrl: 'https://192.168.1.100:8443',
+            configurationError: e.toString(),
+          );
+        }
+        expect(missingCertClient.hasConfigurationError, isTrue);
+        expect(
+          missingCertClient.configurationError,
+          contains('Configured trusted TLS certificate file not found'),
+        );
+
+        getIt.registerSingleton<MonitoringServiceClient>(missingCertClient);
+
+        final authRepo = StubAuthRepository();
+        final cubit = AuthCubit(authRepo);
+        final states = <AuthState>[];
+        final sub = cubit.stream.listen(states.add);
+
+        await cubit.checkAuthStatus();
+        await Future.delayed(const Duration(milliseconds: 50));
+
+        expect(states, contains(isA<AuthError>()));
+        final errorState =
+            states.firstWhere((s) => s is AuthError) as AuthError;
+        expect(
+          errorState.message,
+          contains('Configured trusted TLS certificate file not found'),
+        );
+        expect(
+          states.last,
+          isA<AuthUnauthenticated>(),
+        ); // GUI displays LoginPage with Retry button
+
+        await sub.cancel();
+        await cubit.close();
+        getIt.unregister<MonitoringServiceClient>();
+
+        // 2. Unreadable / Corrupted certificate file
+        final malformedFile = File(p.join(tempDir.path, 'corrupted.crt'));
+        malformedFile.writeAsStringSync('CORRUPTED_CERTIFICATE_CONTENT');
+
+        MonitoringServiceClient malformedCertClient;
+        try {
+          malformedCertClient = MonitoringServiceClient(
+            baseUrl: 'https://192.168.1.100:8443',
+            trustedCertPath: malformedFile.path,
+          );
+        } catch (e) {
+          malformedCertClient = MonitoringServiceClient(
+            baseUrl: 'https://192.168.1.100:8443',
+            configurationError: e.toString(),
+          );
+        }
+        expect(malformedCertClient.hasConfigurationError, isTrue);
+        expect(
+          malformedCertClient.configurationError,
+          contains('Failed to load configured trusted TLS certificate'),
+        );
+
+        getIt.registerSingleton<MonitoringServiceClient>(malformedCertClient);
+        final cubit2 = AuthCubit(authRepo);
+        final states2 = <AuthState>[];
+        final sub2 = cubit2.stream.listen(states2.add);
+
+        await cubit2.checkAuthStatus();
+        await Future.delayed(const Duration(milliseconds: 50));
+
+        expect(states2, contains(isA<AuthError>()));
+        final errorState2 =
+            states2.firstWhere((s) => s is AuthError) as AuthError;
+        expect(
+          errorState2.message,
+          contains('Failed to load configured trusted TLS certificate'),
+        );
+        expect(states2.last, isA<AuthUnauthenticated>());
+
+        await sub2.cancel();
+        await cubit2.close();
+        getIt.unregister<MonitoringServiceClient>();
       },
     );
   });

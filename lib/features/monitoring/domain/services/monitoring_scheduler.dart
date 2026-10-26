@@ -28,11 +28,12 @@ class MonitoringScheduler {
   bool _isRunning = false;
   bool _isPaused = false;
   bool _isPeriodicCycleRunning = false;
-  Completer<void>? _activeForcedCheckCompleter;
+  Completer<bool>? _activeForcedCheckCompleter;
 
   final Set<int> _inFlightDeviceIds = {};
+  final Map<int, Completer<void>> _inFlightCheckCompleters = {};
   final Map<int, DateTime> _lastCheckTimestamps = {};
-  late final _AsyncSemaphore _concurrencyLimiter;
+  late final AsyncSemaphore _concurrencyLimiter;
 
   final StreamController<CheckResult> _checkResultController =
       StreamController<CheckResult>.broadcast();
@@ -54,7 +55,7 @@ class MonitoringScheduler {
     this._incidentEngine,
     this._infrastructureRepo,
   ]) {
-    _concurrencyLimiter = _AsyncSemaphore(_config.maxConcurrentChecks);
+    _concurrencyLimiter = AsyncSemaphore(_config.maxConcurrentChecks);
   }
 
   bool get isRunning => _isRunning;
@@ -69,6 +70,8 @@ class MonitoringScheduler {
   int get persistenceFailureCount => _persistenceFailureCount;
   int get repositoryFailureCount => _repositoryFailureCount;
   int get unexpectedExceptionCount => _unexpectedExceptionCount;
+  int get currentActiveChecks => _concurrencyLimiter.activeCount;
+  int get maxPermits => _concurrencyLimiter.maxPermits;
   List<String> get diagnosticLogs => List.unmodifiable(_diagnosticLogs);
 
   void updateConfig(MonitoringConfig newConfig) {
@@ -145,20 +148,24 @@ class MonitoringScheduler {
     await _runCheckForDevice(device);
   }
 
-  Future<void> triggerAllChecks({bool force = true}) async {
+  Future<bool> triggerAllChecks({bool force = true}) async {
     if (_activeForcedCheckCompleter != null) {
       return _activeForcedCheckCompleter!.future;
     }
 
-    final completer = Completer<void>();
+    final completer = Completer<bool>();
     _activeForcedCheckCompleter = completer;
 
     try {
       if (force) {
         _lastCheckTimestamps.clear();
       }
-      await _executeMonitoringCycle(force: force, waitForCompletion: true);
-      completer.complete();
+      final success = await _executeMonitoringCycle(
+        force: force,
+        waitForCompletion: true,
+      );
+      completer.complete(success);
+      return success;
     } catch (e, st) {
       completer.completeError(e, st);
       rethrow;
@@ -169,23 +176,24 @@ class MonitoringScheduler {
     }
   }
 
-  Future<void> _executeMonitoringCycle({
+  Future<bool> _executeMonitoringCycle({
     bool force = false,
     bool waitForCompletion = false,
   }) async {
-    if ((!_isRunning && !force) || _isPaused) return;
+    if ((!_isRunning && !force) || _isPaused) return false;
 
     if (!force) {
       if (_isPeriodicCycleRunning) {
         _logDiagnostic(
           'Periodic monitoring cycle skipped: previous cycle still in flight.',
         );
-        return;
+        return false;
       }
       _isPeriodicCycleRunning = true;
     }
 
     _cycleCount++;
+    var repositorySuccess = true;
 
     final targets = <_MonitoringTarget>[];
     final now = DateTime.now();
@@ -193,6 +201,7 @@ class MonitoringScheduler {
     final devicesRes = await _deviceRepo.getDevices();
     if (devicesRes.isFailure) {
       _repositoryFailureCount++;
+      repositorySuccess = false;
       _logDiagnostic(
         'Failed to retrieve inventory devices for monitoring cycle: ${devicesRes.failureOrNull?.message}',
       );
@@ -223,6 +232,7 @@ class MonitoringScheduler {
       final infraRes = await _infrastructureRepo.getInfrastructureDevices();
       if (infraRes.isFailure) {
         _repositoryFailureCount++;
+        repositorySuccess = false;
         _logDiagnostic(
           'Failed to retrieve infrastructure devices for monitoring cycle: ${infraRes.failureOrNull?.message}',
         );
@@ -248,7 +258,11 @@ class MonitoringScheduler {
 
     if (waitForCompletion) {
       try {
-        await _processTargetsQueue(targets, force: force);
+        return await _processTargetsQueue(
+          targets,
+          force: force,
+          repositorySuccess: repositorySuccess,
+        );
       } finally {
         if (!force) {
           _isPeriodicCycleRunning = false;
@@ -256,31 +270,39 @@ class MonitoringScheduler {
       }
     } else {
       unawaited(
-        _processTargetsQueue(targets, force: force).whenComplete(() {
+        _processTargetsQueue(
+          targets,
+          force: force,
+          repositorySuccess: repositorySuccess,
+        ).whenComplete(() {
           if (!force) {
             _isPeriodicCycleRunning = false;
           }
         }),
       );
+      return repositorySuccess;
     }
   }
 
   /// Worker queue with bounded concurrency limit.
   /// Considers every eligible device & infrastructure asset and never exceeds maxConcurrentChecks.
-  Future<void> _processTargetsQueue(
+  Future<bool> _processTargetsQueue(
     List<_MonitoringTarget> targets, {
     required bool force,
+    required bool repositorySuccess,
   }) async {
-    if (targets.isEmpty) return;
+    if (targets.isEmpty) return repositorySuccess;
 
     final maxConcurrency = _config.maxConcurrentChecks > 0
         ? _config.maxConcurrentChecks
         : 1;
     var nextIndex = 0;
+    var allCompletedSuccessfully = repositorySuccess;
 
     Future<void> worker() async {
       while (true) {
         if ((!_isRunning && !force) || _isPaused) {
+          allCompletedSuccessfully = false;
           break;
         }
         if (nextIndex >= targets.length) {
@@ -288,8 +310,13 @@ class MonitoringScheduler {
         }
         final target = targets[nextIndex++];
 
-        // Do not schedule the same device concurrently twice
+        // Account for targets already in flight (e.g. from an overlapping periodic cycle).
+        // Wait for the active check to finish rather than silently omitting the target!
         if (_inFlightDeviceIds.contains(target.id)) {
+          final inFlightCompleter = _inFlightCheckCompleters[target.id];
+          if (inFlightCompleter != null) {
+            await inFlightCompleter.future;
+          }
           continue;
         }
 
@@ -306,10 +333,18 @@ class MonitoringScheduler {
         : maxConcurrency;
     final workers = List.generate(workerCount, (_) => worker());
     await Future.wait(workers);
+
+    if (_isPaused || (!_isRunning && !force)) {
+      allCompletedSuccessfully = false;
+    }
+
+    return allCompletedSuccessfully;
   }
 
   Future<void> _runCheckForInfraDevice(UniFiDeviceEntity infra) async {
     final virtualId = 10000 + infra.id;
+    final checkCompleter = Completer<void>();
+    _inFlightCheckCompleters[virtualId] = checkCompleter;
     await _concurrencyLimiter.acquire();
     try {
       _inFlightDeviceIds.add(virtualId);
@@ -385,11 +420,17 @@ class MonitoringScheduler {
       );
     } finally {
       _inFlightDeviceIds.remove(virtualId);
+      if (!checkCompleter.isCompleted) {
+        checkCompleter.complete();
+      }
+      _inFlightCheckCompleters.remove(virtualId);
       _concurrencyLimiter.release();
     }
   }
 
   Future<void> _runCheckForDevice(DeviceEntity device) async {
+    final checkCompleter = Completer<void>();
+    _inFlightCheckCompleters[device.id] = checkCompleter;
     await _concurrencyLimiter.acquire();
     try {
       _inFlightDeviceIds.add(device.id);
@@ -463,6 +504,10 @@ class MonitoringScheduler {
       );
     } finally {
       _inFlightDeviceIds.remove(device.id);
+      if (!checkCompleter.isCompleted) {
+        checkCompleter.complete();
+      }
+      _inFlightCheckCompleters.remove(device.id);
       _concurrencyLimiter.release();
     }
   }
@@ -486,30 +531,33 @@ class _MonitoringTarget {
 
   _MonitoringTarget.device(this.device) : id = device!.id, infra = null;
 
-  _MonitoringTarget.infra(this.infra)
-    : id = 10000 + infra!.id,
-      device = null;
+  _MonitoringTarget.infra(this.infra) : id = 10000 + infra!.id, device = null;
 
   bool get isInfra => infra != null;
 }
 
 /// Asynchronous counting semaphore to strictly bound concurrent checks
 /// across all cycles, forced executions, and asset types.
-class _AsyncSemaphore {
-  int _permits;
+class AsyncSemaphore {
+  int _maxPermits;
+  int _activeCount = 0;
   final List<Completer<void>> _waiters = [];
 
-  _AsyncSemaphore(int initialPermits)
-    : _permits = initialPermits > 0 ? initialPermits : 1;
+  AsyncSemaphore(int initialPermits)
+    : _maxPermits = initialPermits > 0 ? initialPermits : 1;
+
+  int get maxPermits => _maxPermits;
+  int get activeCount => _activeCount;
+  int get waitingCount => _waiters.length;
 
   void updatePermits(int newPermits) {
-    _permits = newPermits > 0 ? newPermits : 1;
+    _maxPermits = newPermits > 0 ? newPermits : 1;
     _drain();
   }
 
   Future<void> acquire() {
-    if (_permits > 0) {
-      _permits--;
+    if (_activeCount < _maxPermits) {
+      _activeCount++;
       return Future.value();
     }
     final completer = Completer<void>();
@@ -518,13 +566,16 @@ class _AsyncSemaphore {
   }
 
   void release() {
-    _permits++;
+    _activeCount--;
+    if (_activeCount < 0) {
+      _activeCount = 0;
+    }
     _drain();
   }
 
   void _drain() {
-    while (_permits > 0 && _waiters.isNotEmpty) {
-      _permits--;
+    while (_activeCount < _maxPermits && _waiters.isNotEmpty) {
+      _activeCount++;
       final waiter = _waiters.removeAt(0);
       if (!waiter.isCompleted) {
         waiter.complete();

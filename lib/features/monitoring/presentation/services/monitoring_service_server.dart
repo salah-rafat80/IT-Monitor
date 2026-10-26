@@ -369,9 +369,11 @@ class MonitoringServiceServer {
     if (getIt.isRegistered<AppDatabase>()) {
       try {
         final db = getIt<AppDatabase>();
-        final uninitializedRows = await db.customSelect(
-          'SELECT d.id FROM devices d LEFT JOIN device_statuses s ON d.id = s.device_id WHERE s.device_id IS NULL',
-        ).get();
+        final uninitializedRows = await db
+            .customSelect(
+              'SELECT d.id FROM devices d LEFT JOIN device_statuses s ON d.id = s.device_id WHERE s.device_id IS NULL',
+            )
+            .get();
         if (uninitializedRows.isNotEmpty) {
           final now = DateTime.now();
           await db.batch((batch) {

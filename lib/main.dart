@@ -27,11 +27,15 @@ void main(List<String> args) async {
     return;
   }
 
-  if (args.contains('--standalone') ||
-      Platform.environment['IT_MONITOR_STANDALONE'] == 'true' ||
-      (kDebugMode &&
-          !args.contains('--client') &&
-          Platform.environment['FLUTTER_TEST'] != 'true')) {
+  // Standalone mode is strictly forbidden in Release mode (and when release security is enforced).
+  // In production Release clients, it fails closed to productionClient.
+  final isRelease = AppConfig.isReleaseEnforced;
+  if (!isRelease &&
+      (args.contains('--standalone') ||
+          Platform.environment['IT_MONITOR_STANDALONE'] == 'true' ||
+          (kDebugMode &&
+              !args.contains('--client') &&
+              Platform.environment['FLUTTER_TEST'] != 'true'))) {
     AppConfig.runMode = AppRunMode.standaloneDevelopment;
   } else {
     AppConfig.runMode = AppRunMode.productionClient;
@@ -57,12 +61,19 @@ void main(List<String> args) async {
 
   // In Desktop Client mode, register authoritative MonitoringServiceClient in getIt before configureDependencies
   if (AppConfig.isProductionClient) {
-    final clientConfig = MonitoringClientConfig.loadFromEnvironmentOrFile(args);
+    MonitoringClientConfig clientConfig;
+    try {
+      clientConfig = MonitoringClientConfig.loadFromEnvironmentOrFile(args);
+    } catch (e) {
+      debugPrint('[MonitoringClientConfig error]: $e');
+      clientConfig = MonitoringClientConfig.error(errorMessage: e.toString());
+    }
 
     final client = MonitoringServiceClient(
       baseUrl: clientConfig.serviceUrl,
       trustedCertPath: clientConfig.trustedCertPath,
       provisionedToken: clientConfig.clientToken,
+      configurationError: clientConfig.errorMessage,
     );
     if (!getIt.isRegistered<MonitoringServiceClient>()) {
       getIt.registerSingleton<MonitoringServiceClient>(client);

@@ -30,7 +30,16 @@ IT Network Monitor - دليل تشغيل وتثبيت التطبيق على أي
    - واختر "Run as Administrator" (تشغيل كمسؤول).
    - سيتم تثبيت الخدمة باسم ITNetworkMonitorService في خدمات الويندوز (services.msc) لتعمل تلقائياً عند إقلاع النظام وتستأنف عملها عند أي إعادة تشغيل.
 
-4. إيقاف وإزالة الخدمة (في حال الرغبة):
+4. إعداد جهاز طرفي للاتصال بالسيرفر المركزي عبر الشبكة المحلية (LAN Client):
+   - لربط جهاز مشغل/مهندس IT بالسيرفر المركزي لمراقبة الشبكة من جهازه الخاص:
+   - احصل على شهادة السيرفر العامة (server.crt) من مسار %ProgramData%\ITNetworkMonitor\server.crt على السيرفر.
+   - شغّل أمر الإعداد عبر ملف configure_lan_client.bat كمسؤول:
+     configure_lan_client.bat -ServerHost <IP_السيرفر> -Port 8443 -ServerCertPath server.crt -ClientToken <رمز_التوكن_المعتمد>
+     مثال:
+     configure_lan_client.bat -ServerHost 192.168.1.50 -Port 8443 -ServerCertPath server.crt -ClientToken a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6
+   - بعد الإعداد، افتح it_network_monitor.exe وسيقوم بالاتصال المشفر والموثق بالسيرفر المركزي فوراً ودون طلب كلمة مرور.
+
+5. إيقاف وإزالة الخدمة (في حال الرغبة):
    - اضغط كليك يمين على:
      uninstall_windows_service_scm.bat
    - واختر "Run as Administrator".

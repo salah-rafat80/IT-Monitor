@@ -27,9 +27,12 @@ class MonitoringScheduler {
   Timer? _schedulerLoopTimer;
   bool _isRunning = false;
   bool _isPaused = false;
+  bool _isPeriodicCycleRunning = false;
+  Completer<void>? _activeForcedCheckCompleter;
 
   final Set<int> _inFlightDeviceIds = {};
   final Map<int, DateTime> _lastCheckTimestamps = {};
+  late final _AsyncSemaphore _concurrencyLimiter;
 
   final StreamController<CheckResult> _checkResultController =
       StreamController<CheckResult>.broadcast();
@@ -50,7 +53,9 @@ class MonitoringScheduler {
     this._pingChecker, [
     this._incidentEngine,
     this._infrastructureRepo,
-  ]);
+  ]) {
+    _concurrencyLimiter = _AsyncSemaphore(_config.maxConcurrentChecks);
+  }
 
   bool get isRunning => _isRunning;
   bool get isPaused => _isPaused;
@@ -68,6 +73,7 @@ class MonitoringScheduler {
 
   void updateConfig(MonitoringConfig newConfig) {
     _config = newConfig;
+    _concurrencyLimiter.updatePermits(newConfig.maxConcurrentChecks);
   }
 
   void _logDiagnostic(String message, {Object? error, StackTrace? stackTrace}) {
@@ -116,6 +122,7 @@ class MonitoringScheduler {
     _schedulerLoopTimer = null;
     _isRunning = false;
     _isPaused = false;
+    _isPeriodicCycleRunning = false;
     _inFlightDeviceIds.clear();
   }
 
@@ -139,10 +146,27 @@ class MonitoringScheduler {
   }
 
   Future<void> triggerAllChecks({bool force = true}) async {
-    if (force) {
-      _lastCheckTimestamps.clear();
+    if (_activeForcedCheckCompleter != null) {
+      return _activeForcedCheckCompleter!.future;
     }
-    await _executeMonitoringCycle(force: force, waitForCompletion: true);
+
+    final completer = Completer<void>();
+    _activeForcedCheckCompleter = completer;
+
+    try {
+      if (force) {
+        _lastCheckTimestamps.clear();
+      }
+      await _executeMonitoringCycle(force: force, waitForCompletion: true);
+      completer.complete();
+    } catch (e, st) {
+      completer.completeError(e, st);
+      rethrow;
+    } finally {
+      if (_activeForcedCheckCompleter == completer) {
+        _activeForcedCheckCompleter = null;
+      }
+    }
   }
 
   Future<void> _executeMonitoringCycle({
@@ -150,9 +174,21 @@ class MonitoringScheduler {
     bool waitForCompletion = false,
   }) async {
     if ((!_isRunning && !force) || _isPaused) return;
+
+    if (!force) {
+      if (_isPeriodicCycleRunning) {
+        _logDiagnostic(
+          'Periodic monitoring cycle skipped: previous cycle still in flight.',
+        );
+        return;
+      }
+      _isPeriodicCycleRunning = true;
+    }
+
     _cycleCount++;
 
-    final futures = <Future<void>>[];
+    final targets = <_MonitoringTarget>[];
+    final now = DateTime.now();
 
     final devicesRes = await _deviceRepo.getDevices();
     if (devicesRes.isFailure) {
@@ -164,43 +200,22 @@ class MonitoringScheduler {
     final devices = devicesRes.dataOrNull ?? [];
 
     for (final device in devices) {
-      if ((!_isRunning && !force) || _isPaused) {
-        break;
-      }
-
-      // Enforce bounded global concurrency limit
-      if (_inFlightDeviceIds.length >= _config.maxConcurrentChecks) {
-        break;
-      }
-
-      // Ignore disabled devices, unmonitored assets, or devices with invalid/empty IP
       if (!device.isEnabled ||
           !device.isMonitored ||
           device.ip.trim().isEmpty) {
         continue;
       }
 
-      // Prevent duplicate concurrent check for the exact same device
-      if (_inFlightDeviceIds.contains(device.id)) {
-        continue;
+      if (!force) {
+        final lastCheck = _lastCheckTimestamps[device.id];
+        if (lastCheck != null &&
+            now.difference(lastCheck).inSeconds <
+                _config.checkIntervalSeconds) {
+          continue;
+        }
       }
 
-      final lastCheck = _lastCheckTimestamps[device.id];
-      final now = DateTime.now();
-
-      // Check interval elapsed check (bypassed if force is true)
-      if (!force &&
-          lastCheck != null &&
-          now.difference(lastCheck).inSeconds < _config.checkIntervalSeconds) {
-        continue;
-      }
-
-      // Dispatch async check without blocking loop or UI thread
-      if (waitForCompletion) {
-        futures.add(_runCheckForDevice(device));
-      } else {
-        unawaited(_runCheckForDevice(device));
-      }
+      targets.add(_MonitoringTarget.device(device));
     }
 
     // Monitor critical infrastructure assets (UniFi Gateways, Controllers, Switches)
@@ -215,43 +230,92 @@ class MonitoringScheduler {
       final infraDevices = infraRes.dataOrNull ?? [];
 
       for (final infra in infraDevices) {
-        if ((!_isRunning && !force) || _isPaused) break;
-        if (_inFlightDeviceIds.length >= _config.maxConcurrentChecks) break;
         if (!infra.isEnabled || infra.ip.trim().isEmpty) continue;
 
         final virtualId = 10000 + infra.id;
-        if (_inFlightDeviceIds.contains(virtualId)) continue;
+        if (!force) {
+          final lastCheck = _lastCheckTimestamps[virtualId];
+          if (lastCheck != null &&
+              now.difference(lastCheck).inSeconds <
+                  _config.checkIntervalSeconds) {
+            continue;
+          }
+        }
 
-        final lastCheck = _lastCheckTimestamps[virtualId];
-        final now = DateTime.now();
+        targets.add(_MonitoringTarget.infra(infra));
+      }
+    }
 
-        if (!force &&
-            lastCheck != null &&
-            now.difference(lastCheck).inSeconds <
-                _config.checkIntervalSeconds) {
+    if (waitForCompletion) {
+      try {
+        await _processTargetsQueue(targets, force: force);
+      } finally {
+        if (!force) {
+          _isPeriodicCycleRunning = false;
+        }
+      }
+    } else {
+      unawaited(
+        _processTargetsQueue(targets, force: force).whenComplete(() {
+          if (!force) {
+            _isPeriodicCycleRunning = false;
+          }
+        }),
+      );
+    }
+  }
+
+  /// Worker queue with bounded concurrency limit.
+  /// Considers every eligible device & infrastructure asset and never exceeds maxConcurrentChecks.
+  Future<void> _processTargetsQueue(
+    List<_MonitoringTarget> targets, {
+    required bool force,
+  }) async {
+    if (targets.isEmpty) return;
+
+    final maxConcurrency = _config.maxConcurrentChecks > 0
+        ? _config.maxConcurrentChecks
+        : 1;
+    var nextIndex = 0;
+
+    Future<void> worker() async {
+      while (true) {
+        if ((!_isRunning && !force) || _isPaused) {
+          break;
+        }
+        if (nextIndex >= targets.length) {
+          break;
+        }
+        final target = targets[nextIndex++];
+
+        // Do not schedule the same device concurrently twice
+        if (_inFlightDeviceIds.contains(target.id)) {
           continue;
         }
 
-        if (waitForCompletion) {
-          futures.add(_runCheckForInfraDevice(infra));
+        if (target.isInfra) {
+          await _runCheckForInfraDevice(target.infra!);
         } else {
-          unawaited(_runCheckForInfraDevice(infra));
+          await _runCheckForDevice(target.device!);
         }
       }
     }
 
-    if (waitForCompletion && futures.isNotEmpty) {
-      await Future.wait(futures);
-    }
+    final workerCount = targets.length < maxConcurrency
+        ? targets.length
+        : maxConcurrency;
+    final workers = List.generate(workerCount, (_) => worker());
+    await Future.wait(workers);
   }
 
   Future<void> _runCheckForInfraDevice(UniFiDeviceEntity infra) async {
     final virtualId = 10000 + infra.id;
-    _inFlightDeviceIds.add(virtualId);
-    _lastCheckTimestamps[virtualId] = DateTime.now();
-    _totalChecksExecuted++;
-
+    await _concurrencyLimiter.acquire();
     try {
+      _inFlightDeviceIds.add(virtualId);
+      _lastCheckTimestamps[virtualId] = DateTime.now();
+      _totalChecksExecuted++;
+
       final checkResult = await _pingChecker.checkPing(
         deviceId: virtualId,
         targetIp: infra.ip,
@@ -321,15 +385,17 @@ class MonitoringScheduler {
       );
     } finally {
       _inFlightDeviceIds.remove(virtualId);
+      _concurrencyLimiter.release();
     }
   }
 
   Future<void> _runCheckForDevice(DeviceEntity device) async {
-    _inFlightDeviceIds.add(device.id);
-    _lastCheckTimestamps[device.id] = DateTime.now();
-    _totalChecksExecuted++;
-
+    await _concurrencyLimiter.acquire();
     try {
+      _inFlightDeviceIds.add(device.id);
+      _lastCheckTimestamps[device.id] = DateTime.now();
+      _totalChecksExecuted++;
+
       final checkResult = await _pingChecker.checkPing(
         deviceId: device.id,
         targetIp: device.ip,
@@ -397,16 +463,81 @@ class MonitoringScheduler {
       );
     } finally {
       _inFlightDeviceIds.remove(device.id);
+      _concurrencyLimiter.release();
     }
   }
 
   void dispose() {
     stopMonitoring();
+    _concurrencyLimiter.dispose();
     if (!_checkResultController.isClosed) {
       _checkResultController.close();
     }
     if (!_statusUpdateController.isClosed) {
       _statusUpdateController.close();
+    }
+  }
+}
+
+class _MonitoringTarget {
+  final int id;
+  final DeviceEntity? device;
+  final UniFiDeviceEntity? infra;
+
+  _MonitoringTarget.device(this.device) : id = device!.id, infra = null;
+
+  _MonitoringTarget.infra(this.infra)
+    : id = 10000 + infra!.id,
+      device = null;
+
+  bool get isInfra => infra != null;
+}
+
+/// Asynchronous counting semaphore to strictly bound concurrent checks
+/// across all cycles, forced executions, and asset types.
+class _AsyncSemaphore {
+  int _permits;
+  final List<Completer<void>> _waiters = [];
+
+  _AsyncSemaphore(int initialPermits)
+    : _permits = initialPermits > 0 ? initialPermits : 1;
+
+  void updatePermits(int newPermits) {
+    _permits = newPermits > 0 ? newPermits : 1;
+    _drain();
+  }
+
+  Future<void> acquire() {
+    if (_permits > 0) {
+      _permits--;
+      return Future.value();
+    }
+    final completer = Completer<void>();
+    _waiters.add(completer);
+    return completer.future;
+  }
+
+  void release() {
+    _permits++;
+    _drain();
+  }
+
+  void _drain() {
+    while (_permits > 0 && _waiters.isNotEmpty) {
+      _permits--;
+      final waiter = _waiters.removeAt(0);
+      if (!waiter.isCompleted) {
+        waiter.complete();
+      }
+    }
+  }
+
+  void dispose() {
+    while (_waiters.isNotEmpty) {
+      final waiter = _waiters.removeAt(0);
+      if (!waiter.isCompleted) {
+        waiter.complete();
+      }
     }
   }
 }

@@ -77,6 +77,12 @@ class AuthCubit extends Cubit<AuthState> {
         return;
       }
 
+      if (client.configurationError != null) {
+        emit(AuthError(client.configurationError!));
+        emit(const AuthUnauthenticated(hasAdminAccount: true));
+        return;
+      }
+
       ServiceApiResponse<ClientSessionInfo> authRes;
 
       if (customTokenPath != null) {

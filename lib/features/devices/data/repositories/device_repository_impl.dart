@@ -252,14 +252,16 @@ class DeviceRepositoryImpl implements DeviceRepository {
             ),
           );
 
-      await _db.into(_db.deviceStatuses).insert(
-        DeviceStatusesCompanion.insert(
-          deviceId: Value(id),
-          status: const Value('unknown'),
-          statusChangedAt: Value(now),
-        ),
-        mode: InsertMode.insertOrIgnore,
-      );
+      await _db
+          .into(_db.deviceStatuses)
+          .insert(
+            DeviceStatusesCompanion.insert(
+              deviceId: Value(id),
+              status: const Value('unknown'),
+              statusChangedAt: Value(now),
+            ),
+            mode: InsertMode.insertOrIgnore,
+          );
 
       final added = device.copyWith(id: id, ip: canonicalIp, createdAt: now);
       final username = await _getActiveUsername();
@@ -677,9 +679,11 @@ class DeviceRepositoryImpl implements DeviceRepository {
       });
 
       // Ensure every device has a corresponding initial status record in device_statuses
-      final uninitializedRows = await _db.customSelect(
-        'SELECT d.id FROM devices d LEFT JOIN device_statuses s ON d.id = s.device_id WHERE s.device_id IS NULL',
-      ).get();
+      final uninitializedRows = await _db
+          .customSelect(
+            'SELECT d.id FROM devices d LEFT JOIN device_statuses s ON d.id = s.device_id WHERE s.device_id IS NULL',
+          )
+          .get();
       if (uninitializedRows.isNotEmpty) {
         await _db.batch((batch) {
           for (final row in uninitializedRows) {

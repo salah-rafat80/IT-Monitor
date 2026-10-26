@@ -51,6 +51,7 @@ class MonitoringServiceClient {
   final String? trustedCertPath;
   final SecurityContext? customSecurityContext;
   final String? provisionedToken;
+  final String? configurationError;
 
   HttpClient? _httpClient;
   WebSocket? _webSocket;
@@ -70,12 +71,15 @@ class MonitoringServiceClient {
     this.trustedCertPath,
     this.customSecurityContext,
     this.provisionedToken,
+    this.configurationError,
   }) {
     if (provisionedToken != null && provisionedToken!.trim().isNotEmpty) {
       _isRemoteTokenMode = true;
       _effectiveProvisionedToken = provisionedToken!.trim();
     }
-    _initHttpClient();
+    if (configurationError == null) {
+      _initHttpClient();
+    }
   }
 
   void _initHttpClient() {
@@ -244,6 +248,12 @@ class MonitoringServiceClient {
   Future<ServiceApiResponse<ClientSessionInfo>> verifySession([
     String? tokenToVerify,
   ]) async {
+    if (configurationError != null) {
+      clearSession();
+      _lastConnectionError = configurationError;
+      return ServiceApiResponse.failure(configurationError!, statusCode: 400);
+    }
+
     final token = tokenToVerify ?? _currentSession?.token;
     if (token == null || token.trim().isEmpty) {
       clearSession();
@@ -373,6 +383,11 @@ class MonitoringServiceClient {
   Future<ServiceApiResponse<ClientSessionInfo>>
   authenticateWithTrustedLocalToken([String? customTokenPath]) async {
     _isRemoteTokenMode = false;
+    if (configurationError != null) {
+      _currentSession = null;
+      _lastConnectionError = configurationError;
+      return ServiceApiResponse.failure(configurationError!, statusCode: 400);
+    }
     try {
       final programData = Platform.environment['ProgramData'];
       final tokenPath =
@@ -422,6 +437,11 @@ class MonitoringServiceClient {
   /// Obtains role, username, and expiration directly from the authoritative server response.
   Future<ServiceApiResponse<ClientSessionInfo>>
   authenticateWithProvisionedToken(String token) async {
+    if (configurationError != null) {
+      _currentSession = null;
+      _lastConnectionError = configurationError;
+      return ServiceApiResponse.failure(configurationError!, statusCode: 400);
+    }
     final cleanToken = token.trim();
     if (cleanToken.isEmpty) {
       _currentSession = null;

@@ -22,14 +22,33 @@ enum AppRunMode {
 
 /// Global application configuration defining operational runtime mode and boundaries.
 class AppConfig {
+  /// Security enforcement: when true (or when kReleaseMode is true), standalone mode is strictly forbidden.
+  static bool enforceReleaseModeSecurity = kReleaseMode;
+
+  static bool get isReleaseEnforced =>
+      kReleaseMode || enforceReleaseModeSecurity;
+
   static AppRunMode _detectDefaultRunMode() {
+    if (isReleaseEnforced) {
+      return AppRunMode.productionClient;
+    }
     if (Platform.environment.containsKey('FLUTTER_TEST') || kDebugMode) {
       return AppRunMode.standaloneDevelopment;
     }
     return AppRunMode.productionClient;
   }
 
-  static AppRunMode runMode = _detectDefaultRunMode();
+  static AppRunMode _runMode = _detectDefaultRunMode();
+
+  static AppRunMode get runMode => _runMode;
+  static set runMode(AppRunMode mode) {
+    if (isReleaseEnforced && mode == AppRunMode.standaloneDevelopment) {
+      // In production release builds, standalone mode is strictly forbidden.
+      _runMode = AppRunMode.productionClient;
+      return;
+    }
+    _runMode = mode;
+  }
 
   static bool get isProductionClient => runMode == AppRunMode.productionClient;
   static bool get isServiceDaemon => runMode == AppRunMode.serviceDaemon;
@@ -39,6 +58,10 @@ class AppConfig {
   static void resetForTesting({
     AppRunMode mode = AppRunMode.standaloneDevelopment,
   }) {
-    runMode = mode;
+    if (isReleaseEnforced && mode == AppRunMode.standaloneDevelopment) {
+      _runMode = AppRunMode.productionClient;
+      return;
+    }
+    _runMode = mode;
   }
 }

@@ -164,13 +164,22 @@ class _LoginPageState extends State<LoginPage> {
                               const SizedBox(height: 8),
                               Builder(
                                 builder: (context) {
-                                  final client = getIt.isRegistered<MonitoringServiceClient>()
+                                  final client =
+                                      getIt
+                                          .isRegistered<
+                                            MonitoringServiceClient
+                                          >()
                                       ? getIt<MonitoringServiceClient>()
                                       : null;
-                                  final isRemote = client?.isRemoteTokenMode == true ||
+                                  final isRemote =
+                                      client?.isRemoteTokenMode == true ||
                                       (client != null &&
-                                          !client.baseUrl.contains('127.0.0.1') &&
-                                          !client.baseUrl.contains('localhost'));
+                                          !client.baseUrl.contains(
+                                            '127.0.0.1',
+                                          ) &&
+                                          !client.baseUrl.contains(
+                                            'localhost',
+                                          ));
 
                                   if (isRemote) {
                                     return Text(

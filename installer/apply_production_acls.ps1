@@ -490,6 +490,36 @@ function Invoke-AclPolicyAudit {
         return @{ InspectedCount = $inspectedCount; Findings = @("[PublicCert] Access denied inspecting server.crt."); FatalError = $true; ExitCode = 2 }
     }
 
+    # 8. Client Configuration File (if present in base dir)
+    $clientConfigFile = Join-Path $DataDir "client_config.json"
+    $clientConfigStatus = Test-PathWithStatus $clientConfigFile
+    if ($clientConfigStatus -eq "Exists") {
+        if (-not $Quiet) { Write-Host "[AUDIT] Checking client_config.json ACLs..." -ForegroundColor Yellow }
+        $clientConfigResult = Get-PathAclStrict $clientConfigFile
+        if ($clientConfigResult.Status -ne "Success") {
+            return @{ InspectedCount = $inspectedCount; Findings = @("[ClientConfig] Could not inspect client_config.json ACL: $($clientConfigResult.Error)"); FatalError = $true; ExitCode = 2 }
+        }
+        $inspectedCount++
+        $auditFindings += Audit-DaclPolicy -Acl $clientConfigResult.Acl -PathDescription "ClientConfig" -IsToken $true
+    } elseif ($clientConfigStatus -eq "AccessDenied") {
+        return @{ InspectedCount = $inspectedCount; Findings = @("[ClientConfig] Access denied inspecting client_config.json."); FatalError = $true; ExitCode = 2 }
+    }
+
+    # 9. Client Provisioned Bearer Token (if present in base dir)
+    $clientTokenFile = Join-Path $DataDir "client.token"
+    $clientTokenStatus = Test-PathWithStatus $clientTokenFile
+    if ($clientTokenStatus -eq "Exists") {
+        if (-not $Quiet) { Write-Host "[AUDIT] Checking client.token ACLs..." -ForegroundColor Yellow }
+        $clientTokenResult = Get-PathAclStrict $clientTokenFile
+        if ($clientTokenResult.Status -ne "Success") {
+            return @{ InspectedCount = $inspectedCount; Findings = @("[ClientToken] Could not inspect client.token ACL: $($clientTokenResult.Error)"); FatalError = $true; ExitCode = 2 }
+        }
+        $inspectedCount++
+        $auditFindings += Audit-DaclPolicy -Acl $clientTokenResult.Acl -PathDescription "ClientToken" -IsToken $true
+    } elseif ($clientTokenStatus -eq "AccessDenied") {
+        return @{ InspectedCount = $inspectedCount; Findings = @("[ClientToken] Access denied inspecting client.token."); FatalError = $true; ExitCode = 2 }
+    }
+
     return @{ InspectedCount = $inspectedCount; Findings = $auditFindings; FatalError = $false; ExitCode = 0 }
 }
 
@@ -719,6 +749,20 @@ $publicCertPath = Join-Path $DataDir "server.crt"
 if (Test-Path -LiteralPath $publicCertPath) {
     Set-HardenedDacl -Path $publicCertPath -IsDirectory $false -AllowOperatorReadOnly
     Write-Host "  -> public server.crt secured with read-only access for '$OperatorGroup'." -ForegroundColor Green
+}
+
+# H. Client Configuration (if currently on disk in base dir): Restrict to SYSTEM, Admins, and OperatorGroup Read-Only
+$clientConfigPath = Join-Path $DataDir "client_config.json"
+if (Test-Path -LiteralPath $clientConfigPath) {
+    Set-HardenedDacl -Path $clientConfigPath -IsDirectory $false -AllowOperatorReadOnly
+    Write-Host "  -> client_config.json secured with read-only access for '$OperatorGroup'." -ForegroundColor Green
+}
+
+# I. Client Token (if currently on disk in base dir): Restrict to SYSTEM, Admins, and OperatorGroup Read-Only
+$clientTokenPath = Join-Path $DataDir "client.token"
+if (Test-Path -LiteralPath $clientTokenPath) {
+    Set-HardenedDacl -Path $clientTokenPath -IsDirectory $false -AllowOperatorReadOnly
+    Write-Host "  -> client.token secured with read-only access for '$OperatorGroup'." -ForegroundColor Green
 }
 
 # 5. Verification Probes

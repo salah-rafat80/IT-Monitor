@@ -1,7 +1,3 @@
-# Set toolset for Visual Studio 2026 / v145
-set(CMAKE_GENERATOR_TOOLSET "v145" CACHE STRING "" FORCE)
-set(CMAKE_VS_PLATFORM_TOOLSET "v145" CACHE STRING "" FORCE)
-
 cmake_minimum_required(VERSION 3.14)
 project(it_network_monitor LANGUAGES CXX)
 

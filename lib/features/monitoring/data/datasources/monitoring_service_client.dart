@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 
 /// Client session state for authenticating with the background Monitoring Service.
@@ -124,10 +125,31 @@ class MonitoringServiceClient {
           final testSec = SecurityContext(withTrustedRoots: false);
           testSec.setTrustedCertificates(certPath);
           secContext = testSec;
+        } on PathAccessException catch (e) {
+          if (isLoopbackUrl(baseUrl)) {
+            debugPrint(
+              '[MonitoringServiceClient] Access denied reading cert file "$certPath" on loopback: $e. Falling back to public cert / system root trust.',
+            );
+            secContext = _tryResolveLoopbackSecurityContext();
+          } else {
+            throw StateError(
+              'Failed to load configured trusted TLS certificate from "$certPath": $e',
+            );
+          }
         } catch (e) {
-          throw StateError(
-            'Failed to load configured trusted TLS certificate from "$certPath": $e',
-          );
+          if (isLoopbackUrl(baseUrl) &&
+              (e is PathAccessException ||
+                  e.toString().contains('Access is denied') ||
+                  e.toString().contains('errno = 5'))) {
+            debugPrint(
+              '[MonitoringServiceClient] Access denied reading cert file "$certPath" on loopback: $e. Falling back to public cert / system root trust.',
+            );
+            secContext = _tryResolveLoopbackSecurityContext();
+          } else {
+            throw StateError(
+              'Failed to load configured trusted TLS certificate from "$certPath": $e',
+            );
+          }
         }
       } else {
         final envCert = Platform.environment['IT_MONITOR_TRUSTED_CERT_PATH'];
@@ -148,43 +170,47 @@ class MonitoringServiceClient {
               'Failed to load environment trusted TLS certificate from "$envCert": $e',
             );
           }
-        } else {
-          final programData = Platform.environment['ProgramData'];
-          if (programData != null) {
-            final publicCert = p.join(
-              programData,
-              'ITNetworkMonitor',
-              'server.crt',
-            );
-            final certsDirCert = p.join(
-              programData,
-              'ITNetworkMonitor',
-              'certs',
-              'server.crt',
-            );
-
-            if (File(publicCert).existsSync()) {
-              try {
-                final testSec = SecurityContext(withTrustedRoots: false);
-                testSec.setTrustedCertificates(publicCert);
-                secContext = testSec;
-                certPath = publicCert;
-              } catch (_) {}
-            } else if (File(certsDirCert).existsSync()) {
-              try {
-                final testSec = SecurityContext(withTrustedRoots: false);
-                testSec.setTrustedCertificates(certsDirCert);
-                secContext = testSec;
-                certPath = certsDirCert;
-              } catch (_) {}
-            }
-          }
         }
       }
     }
 
     _securityContext = secContext;
     _httpClient = HttpClient(context: _securityContext);
+  }
+
+  SecurityContext? _tryResolveLoopbackSecurityContext() {
+    final programData = Platform.environment['ProgramData'];
+    if (programData != null) {
+      final publicCert = p.join(
+        programData,
+        'ITNetworkMonitor',
+        'server.crt',
+      );
+      if (File(publicCert).existsSync()) {
+        try {
+          final testSec = SecurityContext(withTrustedRoots: false);
+          testSec.setTrustedCertificates(publicCert);
+          return testSec;
+        } catch (_) {}
+      }
+      final certsDirCert = p.join(
+        programData,
+        'ITNetworkMonitor',
+        'certs',
+        'server.crt',
+      );
+      if (File(certsDirCert).existsSync()) {
+        try {
+          final testSec = SecurityContext(withTrustedRoots: false);
+          testSec.setTrustedCertificates(certsDirCert);
+          return testSec;
+        } catch (_) {}
+      }
+    }
+    if (isLoopbackUrl(baseUrl)) {
+      return SecurityContext(withTrustedRoots: true);
+    }
+    return null;
   }
 
   ClientSessionInfo? get currentSession => _currentSession;

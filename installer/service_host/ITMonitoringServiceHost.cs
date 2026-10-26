@@ -86,6 +86,8 @@ namespace ITNetworkMonitor.ServiceHost
         private void SupervisorLoop()
         {
             string baseDir = AppDomain.CurrentDomain.BaseDirectory;
+            EnsureTlsCredentials(baseDir);
+
             string exePath = Path.Combine(baseDir, "it_monitoring_service.exe");
 
             if (!File.Exists(exePath))
@@ -206,6 +208,45 @@ namespace ITNetworkMonitor.ServiceHost
                         Thread.Sleep(5000);
                     }
                 }
+            }
+        }
+
+        private void EnsureTlsCredentials(string baseDir)
+        {
+            try
+            {
+                string scriptPath = Path.Combine(baseDir, "provision_tls_certificate.ps1");
+                if (!File.Exists(scriptPath))
+                {
+                    string parentScript = Path.GetFullPath(Path.Combine(baseDir, "..", "installer", "provision_tls_certificate.ps1"));
+                    if (File.Exists(parentScript))
+                    {
+                        scriptPath = parentScript;
+                    }
+                }
+
+                if (File.Exists(scriptPath))
+                {
+                    Log(string.Format("Validating TLS credentials with: {0}", scriptPath));
+                    ProcessStartInfo psi = new ProcessStartInfo();
+                    psi.FileName = "powershell.exe";
+                    psi.Arguments = string.Format("-NoProfile -ExecutionPolicy Bypass -File \"{0}\" -AddToTrustedRoot", scriptPath);
+                    psi.WorkingDirectory = Path.GetDirectoryName(scriptPath);
+                    psi.UseShellExecute = false;
+                    psi.CreateNoWindow = true;
+                    psi.RedirectStandardOutput = true;
+                    psi.RedirectStandardError = true;
+
+                    using (Process p = Process.Start(psi))
+                    {
+                        p.WaitForExit(30000);
+                        Log(string.Format("TLS credentials verification script exited with code {0}", p.ExitCode));
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Log(string.Format("Notice: Could not run TLS credentials check: {0}", ex.Message));
             }
         }
 

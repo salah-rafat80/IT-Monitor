@@ -443,7 +443,7 @@ class MonitoringClientConfig {
     } else {
       // Default locations: check config directory first
       final candidate1 = p.join(configDir, 'server.crt');
-      if (File(candidate1).existsSync()) {
+      if (_isReadableNonEmptyFile(candidate1)) {
         resolvedCertPath = candidate1;
       } else if (!isLan && cliConfigPath == null) {
         // Only inspect global service directories if local service and no custom --config was specified
@@ -454,9 +454,9 @@ class MonitoringClientConfig {
             ? p.join(programData, 'ITNetworkMonitor', 'certs', 'server.crt')
             : null;
 
-        if (candidate2 != null && File(candidate2).existsSync()) {
+        if (_isReadableNonEmptyFile(candidate2)) {
           resolvedCertPath = candidate2;
-        } else if (candidate3 != null && File(candidate3).existsSync()) {
+        } else if (_isReadableNonEmptyFile(candidate3)) {
           resolvedCertPath = candidate3;
         }
       }
@@ -494,5 +494,18 @@ class MonitoringClientConfig {
       clientToken: (tokenContent?.isNotEmpty ?? false) ? tokenContent : null,
       mode: resolvedMode,
     );
+  }
+
+  static bool _isReadableNonEmptyFile(String? path) {
+    if (path == null || path.trim().isEmpty) return false;
+    try {
+      final file = File(path);
+      if (!file.existsSync() || file.lengthSync() == 0) return false;
+      final raf = file.openSync(mode: FileMode.read);
+      raf.closeSync();
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 }

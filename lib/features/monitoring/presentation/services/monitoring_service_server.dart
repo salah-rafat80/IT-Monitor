@@ -400,14 +400,7 @@ class MonitoringServiceServer {
       }
     }
 
-    // 2. Start Monitoring Engine if registered
-    if (getIt.isRegistered<MonitoringScheduler>()) {
-      final scheduler = getIt<MonitoringScheduler>();
-      scheduler.startMonitoring();
-      _log('Monitoring Engine Scheduler active.');
-    }
-
-    // 3. Bind HTTP / HTTPS Server
+    // 2. Bind HTTP / HTTPS Server
     if (useTls) {
       if (certPath == null || !File(certPath!).existsSync()) {
         throw StateError(
@@ -425,10 +418,33 @@ class MonitoringServiceServer {
         securityContext.useCertificateChain(certPath!);
         securityContext.usePrivateKey(keyPath!, password: keyPassword);
       } catch (e) {
-        final err =
-            'Production security violation: Failed to load TLS certificate chain or private key: $e';
-        _log('FATAL: $err');
-        throw StateError(err);
+        if (Platform.isWindows && !isDevelopment) {
+          _log(
+            'Warning: Initial TLS credentials load failed ($e). Attempting self-healing...',
+          );
+          final healed = _trySelfHealTlsCredentials();
+          if (healed) {
+            try {
+              securityContext.useCertificateChain(certPath!);
+              securityContext.usePrivateKey(keyPath!, password: keyPassword);
+            } catch (e2) {
+              final err =
+                  'Production security violation: Failed to load TLS certificate chain or private key after self-healing: $e2';
+              _log('FATAL: $err');
+              throw StateError(err);
+            }
+          } else {
+            final err =
+                'Production security violation: Failed to load TLS certificate chain or private key: $e';
+            _log('FATAL: $err');
+            throw StateError(err);
+          }
+        } else {
+          final err =
+              'Production security violation: Failed to load TLS certificate chain or private key: $e';
+          _log('FATAL: $err');
+          throw StateError(err);
+        }
       }
 
       _server = await HttpServer.bindSecure(
@@ -439,6 +455,7 @@ class MonitoringServiceServer {
       _log(
         'SECURE TRANSPORT ACTIVE: Authoritative Monitoring Service listening on https://0.0.0.0:$port (WSS enabled). TLS enforced.',
       );
+      _publishPublicCertificate();
     } else {
       // Development-only mode: MUST bind strictly to 127.0.0.1 (loopback), NEVER 0.0.0.0
       _server = await HttpServer.bind(InternetAddress.loopbackIPv4, port);
@@ -446,6 +463,13 @@ class MonitoringServiceServer {
         '*** [WARNING] DEVELOPMENT MODE ACTIVE: Bound strictly to localhost (http://127.0.0.1:$port, ws://127.0.0.1:$port). NEVER USE IN PRODUCTION. ***',
       );
       _log('Monitoring Service listening on http://127.0.0.1:$port');
+    }
+
+    // 3. Start Monitoring Engine if registered
+    if (getIt.isRegistered<MonitoringScheduler>()) {
+      final scheduler = getIt<MonitoringScheduler>();
+      scheduler.startMonitoring();
+      _log('Monitoring Engine Scheduler active.');
     }
 
     // 4. Setup Broadcast Event Subscriptions
@@ -687,6 +711,105 @@ class MonitoringServiceServer {
       if (File(candidate).existsSync()) return candidate;
     }
     return null;
+  }
+
+  static String? _findProvisionScriptPath() {
+    final candidates = [
+      p.join(
+        Directory.current.path,
+        'installer',
+        'provision_tls_certificate.ps1',
+      ),
+      p.join(
+        p.dirname(Platform.resolvedExecutable),
+        'provision_tls_certificate.ps1',
+      ),
+      p.join(
+        p.dirname(Platform.resolvedExecutable),
+        'installer',
+        'provision_tls_certificate.ps1',
+      ),
+      p.join(
+        Platform.environment['ProgramData'] ?? r'C:\ProgramData',
+        'ITNetworkMonitor',
+        'provision_tls_certificate.ps1',
+      ),
+    ];
+    for (final candidate in candidates) {
+      if (File(candidate).existsSync()) return candidate;
+    }
+    return null;
+  }
+
+  void _publishPublicCertificate() {
+    try {
+      if (certPath == null || !File(certPath!).existsSync()) return;
+      if (isDevelopment) return;
+
+      final normCert = p.normalize(certPath!).toLowerCase();
+      // Only publish for production service deployments rooted in ProgramData
+      if (!normCert.contains('programdata') && customDataDir == null) return;
+
+      final programData = Platform.environment['ProgramData'];
+      final baseDir =
+          customDataDir ??
+          (programData != null
+              ? p.join(programData, 'ITNetworkMonitor')
+              : Directory.current.path);
+      final publicCertPath = p.join(baseDir, 'server.crt');
+
+      if (p.equals(p.normalize(certPath!), p.normalize(publicCertPath))) return;
+
+      final certFile = File(certPath!);
+      final certBytes = certFile.readAsBytesSync();
+      if (certBytes.isEmpty) return;
+
+      final publicFile = File(publicCertPath);
+      publicFile.writeAsBytesSync(certBytes, flush: true);
+
+      if (Platform.isWindows && !isDevelopment) {
+        try {
+          Process.runSync('icacls', [
+            publicCertPath,
+            '/grant',
+            'ITNetworkMonitorAdministrators:(R)',
+            '/c',
+            '/q',
+          ]);
+        } catch (_) {}
+      }
+      _log('Published operator public certificate to: $publicCertPath');
+    } catch (e) {
+      _log('Notice: Could not publish public certificate: $e');
+    }
+  }
+
+  bool _trySelfHealTlsCredentials() {
+    try {
+      final scriptPath = _findProvisionScriptPath();
+      if (scriptPath == null) {
+        _log(
+          'TLS self-healing skipped: provision_tls_certificate.ps1 not found.',
+        );
+        return false;
+      }
+
+      _log('Executing TLS provisioning script: $scriptPath');
+      final res = Process.runSync('powershell.exe', [
+        '-NoProfile',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-File',
+        scriptPath,
+        '-Force',
+        '-AddToTrustedRoot',
+      ]);
+      _log('TLS provisioning result code: ${res.exitCode}');
+      return res.exitCode == 0;
+    } catch (e) {
+      _log('TLS self-healing error: $e');
+      return false;
+    }
   }
 
   @visibleForTesting

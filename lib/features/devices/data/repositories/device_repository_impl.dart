@@ -32,8 +32,11 @@ class DeviceRepositoryImpl implements DeviceRepository {
     this._serviceClient,
   ]);
 
-  bool get _useAuthoritativeService =>
-      AppConfig.isProductionClient || _serviceClient != null;
+  bool get _useAuthoritativeService {
+    if (AppConfig.isProductionClient) return true;
+    if (AppConfig.isStandaloneDevelopment) return false;
+    return _serviceClient != null;
+  }
 
   MonitoringServiceClient? get _effectiveClient =>
       _serviceClient ??

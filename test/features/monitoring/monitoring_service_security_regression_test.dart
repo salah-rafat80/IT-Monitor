@@ -919,74 +919,80 @@ void main() {
     test(
       'Case 16: Desktop UI repository uses authoritative service and refuses unauthoritative divergent store',
       () async {
-        final token = server.trustedClientToken!;
-        expect(token, isNotNull);
-
-        final client = MonitoringServiceClient(
-          baseUrl: 'http://127.0.0.1:$serverPort',
-        );
-        final authRes = await client.authenticateWithProvisionedToken(token);
-        expect(authRes.isSuccess, isTrue);
-        expect(client.isAuthenticated, isTrue);
-
-        final fakeAuditRepo = FakeAuditLogRepository();
-        final fakeAuthRepo = FakeAuthRepository();
-
-        // 1. DeviceRepositoryImpl delegates to authenticated MonitoringServiceClient
-        final devRepo = DeviceRepositoryImpl(
-          db,
-          fakeAuditRepo,
-          fakeAuthRepo,
-          client,
-        );
-        final devicesRes = await devRepo.getDevices();
-        expect(devicesRes.isSuccess, isTrue);
-        expect(devicesRes.dataOrNull, isNotNull);
-
-        // 2. MonitoringRepositoryImpl delegates to authenticated MonitoringServiceClient
-        final monRepo = MonitoringRepositoryImpl(db, client);
-        final statusesRes = await monRepo.getDeviceStatuses();
-        expect(statusesRes.isSuccess, isTrue);
-        expect(statusesRes.dataOrNull, isNotNull);
-
-        // 3. When service is unavailable/unauthenticated, repository returns failure rather than silently reading empty/divergent local DB
-        final unauthClient = MonitoringServiceClient(
-          baseUrl: 'http://127.0.0.1:65530', // unreachable port
-        );
-        final unauthRes = await unauthClient.authenticateWithProvisionedToken(
-          'invalid_token_12345678901234567890123456789012',
-        );
-        expect(unauthRes.isFailure, isTrue);
-        expect(unauthClient.isAuthenticated, isFalse);
-        final failingDevRepo = DeviceRepositoryImpl(
-          db,
-          fakeAuditRepo,
-          fakeAuthRepo,
-          unauthClient,
-        );
-        final failRes = await failingDevRepo.getDevices();
-        expect(failRes.isFailure, isTrue);
-        expect(failRes.failureOrNull, isA<NetworkFailure>());
-        expect(
-          failRes.failureOrNull?.message,
-          anyOf(
-            contains('Authoritative monitoring service is unreachable'),
-            contains('Production client is not authenticated'),
-          ),
-        );
-
-        // 4. In production mode, AppDatabase throws StateError instead of falling back to LOCALAPPDATA
-        final prevDevMode = DatabaseConfig.isDevelopment;
+        final prevRunMode = AppConfig.runMode;
+        AppConfig.runMode = AppRunMode.productionClient;
         try {
-          DatabaseConfig.isDevelopment = false;
-          expect(
-            () => DatabaseConfig.verifyClientAccessAllowed(canWriteProd: false),
-            throwsA(isA<StateError>()),
+          final token = server.trustedClientToken!;
+          expect(token, isNotNull);
+
+          final client = MonitoringServiceClient(
+            baseUrl: 'http://127.0.0.1:$serverPort',
           );
+          final authRes = await client.authenticateWithProvisionedToken(token);
+          expect(authRes.isSuccess, isTrue);
+          expect(client.isAuthenticated, isTrue);
+
+          final fakeAuditRepo = FakeAuditLogRepository();
+          final fakeAuthRepo = FakeAuthRepository();
+
+          // 1. DeviceRepositoryImpl delegates to authenticated MonitoringServiceClient
+          final devRepo = DeviceRepositoryImpl(
+            db,
+            fakeAuditRepo,
+            fakeAuthRepo,
+            client,
+          );
+          final devicesRes = await devRepo.getDevices();
+          expect(devicesRes.isSuccess, isTrue);
+          expect(devicesRes.dataOrNull, isNotNull);
+
+          // 2. MonitoringRepositoryImpl delegates to authenticated MonitoringServiceClient
+          final monRepo = MonitoringRepositoryImpl(db, client);
+          final statusesRes = await monRepo.getDeviceStatuses();
+          expect(statusesRes.isSuccess, isTrue);
+          expect(statusesRes.dataOrNull, isNotNull);
+
+          // 3. When service is unavailable/unauthenticated, repository returns failure rather than silently reading empty/divergent local DB
+          final unauthClient = MonitoringServiceClient(
+            baseUrl: 'http://127.0.0.1:65530', // unreachable port
+          );
+          final unauthRes = await unauthClient.authenticateWithProvisionedToken(
+            'invalid_token_12345678901234567890123456789012',
+          );
+          expect(unauthRes.isFailure, isTrue);
+          expect(unauthClient.isAuthenticated, isFalse);
+          final failingDevRepo = DeviceRepositoryImpl(
+            db,
+            fakeAuditRepo,
+            fakeAuthRepo,
+            unauthClient,
+          );
+          final failRes = await failingDevRepo.getDevices();
+          expect(failRes.isFailure, isTrue);
+          expect(failRes.failureOrNull, isA<NetworkFailure>());
+          expect(
+            failRes.failureOrNull?.message,
+            anyOf(
+              contains('Authoritative monitoring service is unreachable'),
+              contains('Production client is not authenticated'),
+            ),
+          );
+
+          // 4. In production mode, AppDatabase throws StateError instead of falling back to LOCALAPPDATA
+          final prevDevMode = DatabaseConfig.isDevelopment;
+          try {
+            DatabaseConfig.isDevelopment = false;
+            expect(
+              () => DatabaseConfig.verifyClientAccessAllowed(canWriteProd: false),
+              throwsA(isA<StateError>()),
+            );
+          } finally {
+            DatabaseConfig.isDevelopment = prevDevMode;
+            client.dispose();
+            unauthClient.dispose();
+          }
         } finally {
-          DatabaseConfig.isDevelopment = prevDevMode;
-          client.dispose();
-          unauthClient.dispose();
+          AppConfig.runMode = prevRunMode;
         }
       },
     );

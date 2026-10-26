@@ -59,8 +59,8 @@ void main(List<String> args) async {
     return true;
   };
 
-  // In Desktop Client mode, register authoritative MonitoringServiceClient in getIt before configureDependencies
-  if (AppConfig.isProductionClient) {
+  // Register authoritative MonitoringServiceClient in getIt before configureDependencies
+  if (!getIt.isRegistered<MonitoringServiceClient>()) {
     MonitoringClientConfig clientConfig;
     try {
       clientConfig = MonitoringClientConfig.loadFromEnvironmentOrFile(args);
@@ -86,9 +86,7 @@ void main(List<String> args) async {
         configurationError: e.toString(),
       );
     }
-    if (!getIt.isRegistered<MonitoringServiceClient>()) {
-      getIt.registerSingleton<MonitoringServiceClient>(client);
-    }
+    getIt.registerSingleton<MonitoringServiceClient>(client);
   }
 
   await configureDependencies();

@@ -365,8 +365,11 @@ class _ReportsView extends StatelessWidget {
                   const SizedBox(height: 20),
 
                   // Device Availability DataTable Header
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  Wrap(
+                    alignment: WrapAlignment.spaceBetween,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 8,
+                    runSpacing: 8,
                     children: [
                       const Text(
                         'Device Uptime Breakdown',
@@ -429,11 +432,20 @@ class _ReportsView extends StatelessWidget {
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(color: AppColors.darkBorder),
                       ),
-                      child: SingleChildScrollView(
-                        child: DataTable(
-                          headingRowColor: WidgetStateProperty.all(
-                            AppColors.darkSurface,
-                          ),
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          return SingleChildScrollView(
+                            scrollDirection: Axis.vertical,
+                            child: SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              child: ConstrainedBox(
+                                constraints: BoxConstraints(
+                                  minWidth: constraints.maxWidth,
+                                ),
+                                child: DataTable(
+                                  headingRowColor: WidgetStateProperty.all(
+                                    AppColors.darkSurface,
+                                  ),
                           columns: const [
                             DataColumn(
                               label: Text(
@@ -618,7 +630,11 @@ class _ReportsView extends StatelessWidget {
                         ),
                       ),
                     ),
-                  ),
+                  );
+                },
+              ),
+            ),
+          ),
                 ],
               );
             }

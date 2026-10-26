@@ -840,67 +840,75 @@ class _DevicesPageState extends State<DevicesPage> {
                         child: TabBarView(
                           children: [
                             SingleChildScrollView(
-                              child: DataTable(
-                                columns: const [
-                                  DataColumn(label: Text('Owner Name')),
-                                  DataColumn(label: Text('Department')),
-                                  DataColumn(label: Text('Device Name')),
-                                  DataColumn(label: Text('IP Address')),
-                                  DataColumn(label: Text('Location')),
-                                ],
-                                rows: preview.validDevices
-                                    .map(
-                                      (d) => DataRow(
-                                        cells: [
-                                          DataCell(
-                                            Text(
-                                              d.ownerName,
-                                              style: const TextStyle(
-                                                fontWeight: FontWeight.bold,
+                              scrollDirection: Axis.vertical,
+                              child: SingleChildScrollView(
+                                scrollDirection: Axis.horizontal,
+                                child: DataTable(
+                                  columns: const [
+                                    DataColumn(label: Text('Owner Name')),
+                                    DataColumn(label: Text('Department')),
+                                    DataColumn(label: Text('Device Name')),
+                                    DataColumn(label: Text('IP Address')),
+                                    DataColumn(label: Text('Location')),
+                                  ],
+                                  rows: preview.validDevices
+                                      .map(
+                                        (d) => DataRow(
+                                          cells: [
+                                            DataCell(
+                                              Text(
+                                                d.ownerName,
+                                                style: const TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                ),
                                               ),
                                             ),
-                                          ),
-                                          DataCell(Text(d.department)),
-                                          DataCell(Text(d.name)),
-                                          DataCell(Text(d.ip)),
-                                          DataCell(
-                                            Text(d.officeLocation ?? '—'),
-                                          ),
-                                        ],
-                                      ),
-                                    )
-                                    .toList(),
+                                            DataCell(Text(d.department)),
+                                            DataCell(Text(d.name)),
+                                            DataCell(Text(d.ip)),
+                                            DataCell(
+                                              Text(d.officeLocation ?? '—'),
+                                            ),
+                                          ],
+                                        ),
+                                      )
+                                      .toList(),
+                                ),
                               ),
                             ),
                             SingleChildScrollView(
-                              child: DataTable(
-                                columns: const [
-                                  DataColumn(label: Text('Row #')),
-                                  DataColumn(label: Text('Device / IP')),
-                                  DataColumn(label: Text('Rejection Reason')),
-                                ],
-                                rows: preview.invalidRecords
-                                    .map(
-                                      (err) => DataRow(
-                                        cells: [
-                                          DataCell(Text('Row ${err.rowIndex}')),
-                                          DataCell(
-                                            Text(
-                                              '${err.deviceName} (${err.rawIp})',
-                                            ),
-                                          ),
-                                          DataCell(
-                                            Text(
-                                              err.reason,
-                                              style: TextStyle(
-                                                color: Colors.red.shade300,
+                              scrollDirection: Axis.vertical,
+                              child: SingleChildScrollView(
+                                scrollDirection: Axis.horizontal,
+                                child: DataTable(
+                                  columns: const [
+                                    DataColumn(label: Text('Row #')),
+                                    DataColumn(label: Text('Device / IP')),
+                                    DataColumn(label: Text('Rejection Reason')),
+                                  ],
+                                  rows: preview.invalidRecords
+                                      .map(
+                                        (err) => DataRow(
+                                          cells: [
+                                            DataCell(Text('Row ${err.rowIndex}')),
+                                            DataCell(
+                                              Text(
+                                                '${err.deviceName} (${err.rawIp})',
                                               ),
                                             ),
-                                          ),
-                                        ],
-                                      ),
-                                    )
-                                    .toList(),
+                                            DataCell(
+                                              Text(
+                                                err.reason,
+                                                style: TextStyle(
+                                                  color: Colors.red.shade300,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      )
+                                      .toList(),
+                                ),
                               ),
                             ),
                           ],

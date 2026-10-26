@@ -328,7 +328,9 @@ class _InfrastructureDevicesTableState
                 ),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(12),
-                  child: DataTable(
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: DataTable(
                     headingRowColor: WidgetStateProperty.all(
                       isDark ? AppColors.darkCard : AppColors.lightCard,
                     ),
@@ -584,6 +586,7 @@ class _InfrastructureDevicesTableState
                   ),
                 ),
               ),
+            ),
           ],
         );
       },

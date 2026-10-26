@@ -35,24 +35,34 @@ class InfrastructureStatusCards extends StatelessWidget {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 12,
+              runSpacing: 12,
               children: [
-                Row(
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
-                    const Icon(
-                      Icons.hub_outlined,
-                      color: AppColors.primary,
-                      size: 22,
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.hub_outlined,
+                          color: AppColors.primary,
+                          size: 22,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Critical UniFi Infrastructure',
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Critical UniFi Infrastructure',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
                     Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 8,
@@ -76,7 +86,10 @@ class InfrastructureStatusCards extends StatelessWidget {
                     ),
                   ],
                 ),
-                Row(
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     ElevatedButton.icon(
                       onPressed: state.isCheckingAll
@@ -100,15 +113,13 @@ class InfrastructureStatusCards extends StatelessWidget {
                         foregroundColor: Colors.white,
                       ),
                     ),
-                    if (isAdmin) ...[
-                      const SizedBox(width: 8),
+                    if (isAdmin)
                       OutlinedButton.icon(
                         icon: const Icon(Icons.settings_outlined, size: 16),
                         label: const Text('Manage Infrastructure'),
                         onPressed: () =>
                             ManageInfrastructureDialog.show(context),
                       ),
-                    ],
                   ],
                 ),
               ],

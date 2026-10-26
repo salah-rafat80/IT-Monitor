@@ -39,38 +39,38 @@ class MonitoringFilterBar extends StatelessWidget {
       child: Column(
         children: [
           // Search & Engine Controller Row
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  onChanged: (val) => cubit.setSearchQuery(val),
-                  decoration: InputDecoration(
-                    hintText:
-                        'Search by Owner, Department, Device Name, IP, Office Location...',
-                    prefixIcon: const Icon(Icons.search_rounded, size: 20),
-                    suffixIcon: state.searchQuery.isNotEmpty
-                        ? IconButton(
-                            icon: const Icon(Icons.clear_rounded, size: 18),
-                            onPressed: () => cubit.setSearchQuery(''),
-                          )
-                        : null,
-                    isDense: true,
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 12,
-                    ),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide(
-                        color: theme.dividerColor.withValues(alpha: 0.2),
-                      ),
+          // Search & Engine Controller Row
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isCompact = constraints.maxWidth < 780;
+
+              final searchField = TextField(
+                onChanged: (val) => cubit.setSearchQuery(val),
+                decoration: InputDecoration(
+                  hintText:
+                      'Search by Owner, Department, Device Name, IP, Office Location...',
+                  prefixIcon: const Icon(Icons.search_rounded, size: 20),
+                  suffixIcon: state.searchQuery.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.clear_rounded, size: 18),
+                          onPressed: () => cubit.setSearchQuery(''),
+                        )
+                      : null,
+                  isDense: true,
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide(
+                      color: theme.dividerColor.withValues(alpha: 0.2),
                     ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 16),
-              // Engine Status Indicator & Toggle
-              Container(
+              );
+
+              final engineStatus = Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 12,
                   vertical: 8,
@@ -87,6 +87,7 @@ class MonitoringFilterBar extends StatelessWidget {
                   ),
                 ),
                 child: Row(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     Container(
                       width: 8,
@@ -129,10 +130,9 @@ class MonitoringFilterBar extends StatelessWidget {
                     ),
                   ],
                 ),
-              ),
-              const SizedBox(width: 12),
-              // Wall Display Mode Button
-              ElevatedButton.icon(
+              );
+
+              final wallDisplayBtn = ElevatedButton.icon(
                 onPressed: () => GoRouter.of(context).push('/wall-display'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(
@@ -153,8 +153,38 @@ class MonitoringFilterBar extends StatelessWidget {
                   'Wall Display',
                   style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                 ),
-              ),
-            ],
+              );
+
+              if (isCompact) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    searchField,
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 10,
+                      runSpacing: 10,
+                      alignment: WrapAlignment.spaceBetween,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        engineStatus,
+                        wallDisplayBtn,
+                      ],
+                    ),
+                  ],
+                );
+              }
+
+              return Row(
+                children: [
+                  Expanded(child: searchField),
+                  const SizedBox(width: 16),
+                  engineStatus,
+                  const SizedBox(width: 12),
+                  wallDisplayBtn,
+                ],
+              );
+            },
           ),
           const SizedBox(height: 12),
 

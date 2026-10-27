@@ -55,7 +55,9 @@ class InfrastructureRepositoryImpl implements InfrastructureRepository {
   }
 
   @override
-  Future<Result<List<UniFiDeviceEntity>>> getInfrastructureDevices() async {
+  Future<Result<List<UniFiDeviceEntity>>> getInfrastructureDevices({
+    String? factoryId,
+  }) async {
     if (AppConfig.isProductionClient) {
       final client = _effectiveClient;
       if (client == null || !client.isAuthenticated) {
@@ -65,7 +67,7 @@ class InfrastructureRepositoryImpl implements InfrastructureRepository {
           ),
         );
       }
-      final res = await client.getInfrastructureDevices();
+      final res = await client.getInfrastructureDevices(factoryId: factoryId);
       if (res.isSuccess && res.data != null) {
         final list = res.data!
             .map((item) => UniFiDeviceEntity.fromJson(item))
@@ -81,7 +83,11 @@ class InfrastructureRepositoryImpl implements InfrastructureRepository {
     }
 
     try {
-      final rows = await _db.select(_db.infrastructureDevices).get();
+      var query = _db.select(_db.infrastructureDevices);
+      if (factoryId != null && factoryId.isNotEmpty) {
+        query = query..where((t) => t.factoryId.equals(factoryId));
+      }
+      final rows = await query.get();
       final entities = rows.map(_mapToEntity).toList();
       return Result.success(entities);
     } catch (e) {
@@ -116,9 +122,12 @@ class InfrastructureRepositoryImpl implements InfrastructureRepository {
   }
 
   @override
-  Future<Result<UniFiDeviceEntity?>> getDeviceByIp(String ip) async {
+  Future<Result<UniFiDeviceEntity?>> getDeviceByIp(
+    String ip, {
+    String? factoryId,
+  }) async {
     if (AppConfig.isProductionClient) {
-      final allRes = await getInfrastructureDevices();
+      final allRes = await getInfrastructureDevices(factoryId: factoryId);
       if (allRes.isFailure) {
         return Result.failure(allRes.failureOrNull!);
       }
@@ -129,8 +138,11 @@ class InfrastructureRepositoryImpl implements InfrastructureRepository {
     }
 
     try {
-      final query = _db.select(_db.infrastructureDevices)
+      var query = _db.select(_db.infrastructureDevices)
         ..where((t) => t.ip.equals(ip.trim()));
+      if (factoryId != null && factoryId.isNotEmpty) {
+        query = query..where((t) => t.factoryId.equals(factoryId));
+      }
       final rows = await query.get();
       if (rows.isEmpty) return Result.success(null);
       return Result.success(_mapToEntity(rows.first));
@@ -182,12 +194,17 @@ class InfrastructureRepositoryImpl implements InfrastructureRepository {
         );
       }
 
-      final existingByIp = await getDeviceByIp(device.ip);
+      final existingByIp = await getDeviceByIp(
+        device.ip,
+        factoryId: device.factoryId,
+      );
       final existingDevice = existingByIp.dataOrNull;
 
       if (device.id == 0 && existingDevice != null) {
         return Result.failure(
-          ValidationFailure('A device with IP ${device.ip} already exists'),
+          ValidationFailure(
+            'A device with IP ${device.ip} already exists in factory ${device.factoryId}',
+          ),
         );
       }
 
@@ -199,6 +216,7 @@ class InfrastructureRepositoryImpl implements InfrastructureRepository {
             .into(_db.infrastructureDevices)
             .insert(
               InfrastructureDevicesCompanion.insert(
+                factoryId: Value(device.factoryId),
                 name: device.name,
                 ip: device.ip.trim(),
                 mac: Value(device.mac),
@@ -358,13 +376,17 @@ class InfrastructureRepositoryImpl implements InfrastructureRepository {
   }
 
   @override
-  Stream<List<UniFiDeviceEntity>> watchInfrastructureDevices() {
+  Stream<List<UniFiDeviceEntity>> watchInfrastructureDevices({
+    String? factoryId,
+  }) {
     if (AppConfig.isProductionClient) {
       return _devicesController.stream;
     }
-    return (_db.select(
-      _db.infrastructureDevices,
-    )).watch().map((rows) => rows.map(_mapToEntity).toList());
+    var query = _db.select(_db.infrastructureDevices);
+    if (factoryId != null && factoryId.isNotEmpty) {
+      query = query..where((t) => t.factoryId.equals(factoryId));
+    }
+    return query.watch().map((rows) => rows.map(_mapToEntity).toList());
   }
 
   void _notifyChanged() async {
@@ -489,6 +511,7 @@ class InfrastructureRepositoryImpl implements InfrastructureRepository {
 
     return UniFiDeviceEntity(
       id: row.id,
+      factoryId: row.factoryId,
       name: row.name,
       ip: row.ip,
       mac: row.mac,

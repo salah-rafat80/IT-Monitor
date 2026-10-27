@@ -51,7 +51,7 @@ class DeviceRepositoryImpl implements DeviceRepository {
   }
 
   @override
-  Future<Result<List<DeviceEntity>>> getDevices() async {
+  Future<Result<List<DeviceEntity>>> getDevices({String? factoryId}) async {
     if (_useAuthoritativeService) {
       final client = _effectiveClient;
       if (client == null || !client.isAuthenticated) {
@@ -61,7 +61,7 @@ class DeviceRepositoryImpl implements DeviceRepository {
           ),
         );
       }
-      final res = await client.getDevices();
+      final res = await client.getDevices(factoryId: factoryId);
       if (res.isSuccess && res.data != null) {
         final list = res.data!.map((item) {
           final devMap = item['device'] as Map<String, dynamic>;
@@ -79,11 +79,16 @@ class DeviceRepositoryImpl implements DeviceRepository {
     }
 
     try {
-      final rows = await _db.select(_db.devices).get();
+      var query = _db.select(_db.devices);
+      if (factoryId != null && factoryId.isNotEmpty) {
+        query = query..where((d) => d.factoryId.equals(factoryId));
+      }
+      final rows = await query.get();
       final entities = rows
           .map(
             (r) => DeviceEntity(
               id: r.id,
+              factoryId: r.factoryId,
               name: r.name,
               type: DeviceType.fromString(r.type),
               ip: r.ip,
@@ -135,6 +140,7 @@ class DeviceRepositoryImpl implements DeviceRepository {
       return Result.success(
         DeviceEntity(
           id: r.id,
+          factoryId: r.factoryId,
           name: r.name,
           type: DeviceType.fromString(r.type),
           ip: r.ip,
@@ -208,24 +214,32 @@ class DeviceRepositoryImpl implements DeviceRepository {
         );
       }
 
-      final existingIp = await (_db.select(
-        _db.devices,
-      )..where((t) => t.ip.equals(canonicalIp))).getSingleOrNull();
+      final existingIp =
+          await (_db.select(_db.devices)..where(
+                (t) =>
+                    t.factoryId.equals(device.factoryId) &
+                    t.ip.equals(canonicalIp),
+              ))
+              .getSingleOrNull();
       if (existingIp != null) {
         return Result.failure(
           ValidationFailure(
-            'Device with IP $canonicalIp already exists (${existingIp.name}).',
+            'Device with IP $canonicalIp already exists in factory ${device.factoryId} (${existingIp.name}).',
           ),
         );
       }
 
-      final existingInfraIp = await (_db.select(
-        _db.infrastructureDevices,
-      )..where((t) => t.ip.equals(canonicalIp))).getSingleOrNull();
+      final existingInfraIp =
+          await (_db.select(_db.infrastructureDevices)..where(
+                (t) =>
+                    t.factoryId.equals(device.factoryId) &
+                    t.ip.equals(canonicalIp),
+              ))
+              .getSingleOrNull();
       if (existingInfraIp != null) {
         return Result.failure(
           ValidationFailure(
-            'IP $canonicalIp is already assigned to infrastructure device "${existingInfraIp.name}".',
+            'IP $canonicalIp is already assigned to infrastructure device "${existingInfraIp.name}" in factory ${device.factoryId}.',
           ),
         );
       }
@@ -235,6 +249,7 @@ class DeviceRepositoryImpl implements DeviceRepository {
           .into(_db.devices)
           .insert(
             DevicesCompanion.insert(
+              factoryId: Value(device.factoryId),
               name: device.name.trim(),
               type: Value(device.type.toValue()),
               ip: canonicalIp,
@@ -323,24 +338,31 @@ class DeviceRepositoryImpl implements DeviceRepository {
 
       final conflicting =
           await (_db.select(_db.devices)..where(
-                (t) => t.ip.equals(canonicalIp) & t.id.equals(device.id).not(),
+                (t) =>
+                    t.factoryId.equals(device.factoryId) &
+                    t.ip.equals(canonicalIp) &
+                    t.id.equals(device.id).not(),
               ))
               .getSingleOrNull();
       if (conflicting != null) {
         return Result.failure(
           ValidationFailure(
-            'Device with IP $canonicalIp already exists (${conflicting.name}).',
+            'Device with IP $canonicalIp already exists in factory ${device.factoryId} (${conflicting.name}).',
           ),
         );
       }
 
-      final conflictingInfra = await (_db.select(
-        _db.infrastructureDevices,
-      )..where((t) => t.ip.equals(canonicalIp))).getSingleOrNull();
+      final conflictingInfra =
+          await (_db.select(_db.infrastructureDevices)..where(
+                (t) =>
+                    t.factoryId.equals(device.factoryId) &
+                    t.ip.equals(canonicalIp),
+              ))
+              .getSingleOrNull();
       if (conflictingInfra != null) {
         return Result.failure(
           ValidationFailure(
-            'IP $canonicalIp is already assigned to infrastructure device "${conflictingInfra.name}".',
+            'IP $canonicalIp is already assigned to infrastructure device "${conflictingInfra.name}" in factory ${device.factoryId}.',
           ),
         );
       }
@@ -350,6 +372,7 @@ class DeviceRepositoryImpl implements DeviceRepository {
         _db.devices,
       )..where((t) => t.id.equals(device.id))).write(
         DevicesCompanion(
+          factoryId: Value(device.factoryId),
           name: Value(device.name.trim()),
           type: Value(device.type.toValue()),
           ip: Value(canonicalIp),
@@ -658,6 +681,7 @@ class DeviceRepositoryImpl implements DeviceRepository {
           batch.insert(
             _db.devices,
             DevicesCompanion.insert(
+              factoryId: Value(device.factoryId),
               name: device.name,
               type: Value(device.type.toValue()),
               ip: device.ip,

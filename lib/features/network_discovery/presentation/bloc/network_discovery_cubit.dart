@@ -41,19 +41,34 @@ class NetworkDiscoveryCubit extends Cubit<NetworkDiscoveryState> {
     this._infrastructureRepo,
   ]) : super(const NetworkDiscoveryInitial());
 
-  Future<void> init() async {
+  String? _activeFactoryId;
+  String? get activeFactoryId => _activeFactoryId;
+
+  Future<void> setFactory(String? factoryId) async {
+    _activeFactoryId = factoryId;
+    await init(factoryId: factoryId);
+  }
+
+  Future<void> init({String? factoryId}) async {
+    _activeFactoryId = factoryId ?? _activeFactoryId;
     emit(const NetworkDiscoveryLoading());
     try {
       final configRes = await _discoveryRepo.getConfig();
       final config = configRes.dataOrNull ?? DiscoveryConfigEntity.initial();
 
-      final latestScanRes = await _discoveryRepo.getLatestScanJob();
+      final latestScanRes = await _discoveryRepo.getLatestScanJob(
+        factoryId: _activeFactoryId,
+      );
       final latestScan = latestScanRes.dataOrNull;
 
-      final allScansRes = await _discoveryRepo.getAllScanJobs();
+      final allScansRes = await _discoveryRepo.getAllScanJobs(
+        factoryId: _activeFactoryId,
+      );
       final allScans = allScansRes.dataOrNull ?? [];
 
-      final devicesRes = await _discoveryRepo.getDiscoveredDevices();
+      final devicesRes = await _discoveryRepo.getDiscoveredDevices(
+        factoryId: _activeFactoryId,
+      );
       final devices = devicesRes.dataOrNull ?? [];
 
       final ranges = _evaluateRanges(config.networkRanges, devices);
@@ -62,17 +77,19 @@ class NetworkDiscoveryCubit extends Cubit<NetworkDiscoveryState> {
       _progressSub = _coordinator.progressStream.listen(_handleProgress);
 
       _scanSub?.cancel();
-      _scanSub = _discoveryRepo.watchLatestScanJob().listen(
-        _handleScanJobUpdate,
-      );
+      _scanSub = _discoveryRepo
+          .watchLatestScanJob(factoryId: _activeFactoryId)
+          .listen(_handleScanJobUpdate);
 
       _deviceSub?.cancel();
-      _deviceSub = _discoveryRepo.watchDiscoveredDevices().listen(
-        _handleDevicesUpdate,
-      );
+      _deviceSub = _discoveryRepo
+          .watchDiscoveredDevices(factoryId: _activeFactoryId)
+          .listen(_handleDevicesUpdate);
 
       _rangesSub?.cancel();
-      _rangesSub = _discoveryRepo.watchRanges().listen(_handleRangesUpdate);
+      _rangesSub = _discoveryRepo
+          .watchRanges(factoryId: _activeFactoryId)
+          .listen(_handleRangesUpdate);
 
       if (isClosed) return;
       emit(
@@ -169,12 +186,15 @@ class NetworkDiscoveryCubit extends Cubit<NetworkDiscoveryState> {
   }
 
   Future<void> startScan({
+    String? factoryId,
     List<String>? requestedRanges,
     List<String>? enabledStrategies,
     int? maxConcurrency,
     int? timeoutSeconds,
   }) async {
+    final effectiveFactory = factoryId ?? _activeFactoryId ?? 'bnf';
     final res = await _coordinator.startScan(
+      factoryId: effectiveFactory,
       requestedRanges: requestedRanges,
       enabledStrategies: enabledStrategies,
       maxConcurrency: maxConcurrency,
@@ -243,6 +263,7 @@ class NetworkDiscoveryCubit extends Cubit<NetworkDiscoveryState> {
     required String cidr,
     String? name,
     bool isEnabled = true,
+    String factoryId = 'unassigned',
   }) async {
     final parsed = _rangeValidator.validateSingleRange(cidr.trim());
     if (parsed == null) {
@@ -255,7 +276,12 @@ class NetworkDiscoveryCubit extends Cubit<NetworkDiscoveryState> {
       return Result.failure(ValidationFailure(msg));
     }
 
+    final effectiveFactory = factoryId != 'unassigned'
+        ? factoryId
+        : (_activeFactoryId ?? 'unassigned');
+
     final range = parsed.copyWith(
+      factoryId: effectiveFactory,
       name: (name != null && name.trim().isNotEmpty) ? name.trim() : null,
       isEnabled: isEnabled,
       createdAt: DateTime.now(),

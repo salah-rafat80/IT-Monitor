@@ -1,0 +1,381 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+
+import '../../../devices/domain/entities/device_entity.dart';
+import '../../../incidents/domain/entities/incident_entity.dart';
+import '../../../monitoring/domain/entities/device_status_entity.dart';
+import '../../../network_discovery/domain/entities/discovery_config_entity.dart';
+import '../../../network_discovery/domain/entities/discovery_scan_job.dart';
+import '../../../network_discovery/domain/entities/network_range.dart';
+import '../../../network_discovery/presentation/bloc/network_discovery_cubit.dart';
+import '../../../network_discovery/presentation/bloc/network_discovery_state.dart';
+import '../../../network_discovery/presentation/widgets/discovery_start_dialog.dart';
+import '../../../network_discovery/presentation/widgets/manage_network_ranges_dialog.dart';
+import '../../domain/entities/factory_entity.dart';
+import '../bloc/factory_cubit.dart';
+
+class FactoryOverviewCards extends StatelessWidget {
+  final List<DeviceEntity> devices;
+  final Map<int, DeviceStatusEntity> statuses;
+  final List<IncidentEntity> incidents;
+  final bool isAdmin;
+
+  const FactoryOverviewCards({
+    super.key,
+    required this.devices,
+    required this.statuses,
+    required this.incidents,
+    required this.isAdmin,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final factoryState = context.watch<FactoryCubit>().state;
+    final discoveryState = context.watch<NetworkDiscoveryCubit>().state;
+
+    final factories = factoryState.factories;
+    final allRanges = discoveryState is NetworkDiscoveryLoaded
+        ? discoveryState.config.networkRanges
+        : <NetworkRange>[];
+    final allScans = discoveryState is NetworkDiscoveryLoaded
+        ? discoveryState.allScans
+        : <DiscoveryScanJob>[];
+
+    if (factories.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Icon(
+              Icons.apartment_rounded,
+              size: 20,
+              color: Color(0xFF0F62FE),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              'Factory Overview & Network Scopes',
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final isWide = constraints.maxWidth > 800;
+            return GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: isWide ? 2 : 1,
+                mainAxisExtent: 220,
+                crossAxisSpacing: 16,
+                mainAxisSpacing: 16,
+              ),
+              itemCount: factories.length,
+              itemBuilder: (context, index) {
+                final factory = factories[index];
+                return _FactoryCard(
+                  factory: factory,
+                  devices: devices
+                      .where((d) => d.factoryId == factory.id)
+                      .toList(),
+                  statuses: statuses,
+                  incidents: incidents
+                      .where((i) => i.factoryId == factory.id)
+                      .toList(),
+                  ranges: allRanges
+                      .where((r) => r.factoryId == factory.id)
+                      .toList(),
+                  latestScan: allScans
+                      .where((s) => s.factoryId == factory.id)
+                      .firstOrNull,
+                  isAdmin: isAdmin,
+                );
+              },
+            );
+          },
+        ),
+      ],
+    );
+  }
+}
+
+class _FactoryCard extends StatelessWidget {
+  final FactoryEntity factory;
+  final List<DeviceEntity> devices;
+  final Map<int, DeviceStatusEntity> statuses;
+  final List<IncidentEntity> incidents;
+  final List<NetworkRange> ranges;
+  final DiscoveryScanJob? latestScan;
+  final bool isAdmin;
+
+  const _FactoryCard({
+    required this.factory,
+    required this.devices,
+    required this.statuses,
+    required this.incidents,
+    required this.ranges,
+    required this.latestScan,
+    required this.isAdmin,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final activeFactory = context.watch<FactoryCubit>().state.selectedFactory;
+    final isSelected = activeFactory?.id == factory.id;
+
+    final monitoredDevices = devices.where((d) => d.isMonitored).toList();
+    final onlineCount = monitoredDevices.where((d) {
+      final st = statuses[d.id];
+      return st?.status == DeviceStatusEnum.up ||
+          st?.status == DeviceStatusEnum.degraded;
+    }).length;
+    final offlineCount = monitoredDevices.length - onlineCount;
+
+    final enabledRanges = ranges.where((r) => r.isEnabled).length;
+    final activeAlerts = incidents
+        .where((i) => i.status != IncidentStatusEnum.resolved)
+        .length;
+
+    return Card(
+      elevation: isSelected ? 4 : 1,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(
+          color: isSelected
+              ? const Color(0xFF0F62FE)
+              : theme.dividerColor.withValues(alpha: 0.2),
+          width: isSelected ? 2 : 1,
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0F62FE).withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    factory.code,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                      color: Color(0xFF0F62FE),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    factory.name,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                if (isSelected)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF10B981).withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: const Text(
+                      'ACTIVE SCOPE',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF10B981),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            // Metrics row
+            Row(
+              children: [
+                _MetricTile(
+                  label: 'Devices',
+                  value: '${devices.length}',
+                  subtext: '$onlineCount on / $offlineCount off',
+                  color: const Color(0xFF0F62FE),
+                ),
+                const SizedBox(width: 8),
+                _MetricTile(
+                  label: 'Ranges',
+                  value: '$enabledRanges / ${ranges.length}',
+                  subtext: 'enabled',
+                  color: const Color(0xFF8A3FFC),
+                ),
+                const SizedBox(width: 8),
+                _MetricTile(
+                  label: 'Alerts',
+                  value: '$activeAlerts',
+                  subtext: activeAlerts == 0 ? 'Normal' : 'Active',
+                  color: activeAlerts > 0
+                      ? Colors.red
+                      : const Color(0xFF10B981),
+                ),
+                const SizedBox(width: 8),
+                _MetricTile(
+                  label: 'Scan Status',
+                  value: latestScan != null
+                      ? latestScan!.status.name.toUpperCase()
+                      : 'NEVER',
+                  subtext: latestScan != null
+                      ? '${latestScan!.classifiedCount + latestScan!.unknownCount} assets'
+                      : 'No scans',
+                  color: Colors.blueGrey,
+                ),
+              ],
+            ),
+            const Spacer(),
+            const Divider(height: 1),
+            const SizedBox(height: 8),
+            // Actions
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: () {
+                    context.read<FactoryCubit>().selectFactoryById(factory.id);
+                    showDialog(
+                      context: context,
+                      builder: (_) => ManageNetworkRangesDialog(
+                        isAdmin: isAdmin,
+                        factoryId: factory.id,
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.settings_ethernet, size: 14),
+                  label: const Text('Manage Ranges'),
+                  style: OutlinedButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                ElevatedButton.icon(
+                  onPressed: () {
+                    context.read<FactoryCubit>().selectFactoryById(factory.id);
+                    final discoveryCubit = context
+                        .read<NetworkDiscoveryCubit>();
+                    final discoveryState = discoveryCubit.state;
+                    final config = discoveryState is NetworkDiscoveryLoaded
+                        ? discoveryState.config
+                        : DiscoveryConfigEntity.initial();
+                    showDialog(
+                      context: context,
+                      builder: (_) => DiscoveryStartDialog(
+                        config: config,
+                        ranges: ranges,
+                        onStart:
+                            ({
+                              required ranges,
+                              required strategies,
+                              required concurrency,
+                              required timeoutSeconds,
+                            }) {
+                              discoveryCubit.startScan(
+                                factoryId: factory.id,
+                                requestedRanges: ranges,
+                                enabledStrategies: strategies,
+                                maxConcurrency: concurrency,
+                                timeoutSeconds: timeoutSeconds,
+                              );
+                            },
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.radar, size: 14),
+                  label: const Text('Start Discovery'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF0F62FE),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MetricTile extends StatelessWidget {
+  final String label;
+  final String value;
+  final String subtext;
+  final Color color;
+
+  const _MetricTile({
+    required this.label,
+    required this.value,
+    required this.subtext,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: color.withValues(alpha: 0.2)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              style: TextStyle(fontSize: 10, color: Colors.grey[400]),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 2),
+            Text(
+              value,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+                color: color,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            Text(
+              subtext,
+              style: TextStyle(fontSize: 9, color: Colors.grey[400]),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

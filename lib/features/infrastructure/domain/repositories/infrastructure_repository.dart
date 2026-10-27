@@ -2,9 +2,14 @@ import '../../../../core/utils/result.dart';
 import '../entities/unifi_device_entity.dart';
 
 abstract class InfrastructureRepository {
-  Future<Result<List<UniFiDeviceEntity>>> getInfrastructureDevices();
+  Future<Result<List<UniFiDeviceEntity>>> getInfrastructureDevices({
+    String? factoryId,
+  });
   Future<Result<UniFiDeviceEntity?>> getDeviceById(int id);
-  Future<Result<UniFiDeviceEntity?>> getDeviceByIp(String ip);
+  Future<Result<UniFiDeviceEntity?>> getDeviceByIp(
+    String ip, {
+    String? factoryId,
+  });
   Future<Result<UniFiDeviceEntity>> saveInfrastructureDevice(
     UniFiDeviceEntity device,
   );
@@ -15,6 +20,8 @@ abstract class InfrastructureRepository {
     required bool isCritical,
     required List<String> linkedSubnets,
   });
-  Stream<List<UniFiDeviceEntity>> watchInfrastructureDevices();
+  Stream<List<UniFiDeviceEntity>> watchInfrastructureDevices({
+    String? factoryId,
+  });
   Future<Result<void>> bootstrapVerifiedAccessPoints();
 }

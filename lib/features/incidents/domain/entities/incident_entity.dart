@@ -88,6 +88,7 @@ enum IncidentStatusEnum {
 
 class IncidentEntity extends Equatable {
   final int id;
+  final String factoryId;
   final int deviceId;
   final String deviceName;
   final String ownerName;
@@ -106,6 +107,7 @@ class IncidentEntity extends Equatable {
 
   const IncidentEntity({
     required this.id,
+    this.factoryId = 'unassigned',
     required this.deviceId,
     required this.deviceName,
     required this.ownerName,
@@ -125,6 +127,7 @@ class IncidentEntity extends Equatable {
 
   IncidentEntity copyWith({
     int? id,
+    String? factoryId,
     int? deviceId,
     String? deviceName,
     String? ownerName,
@@ -143,6 +146,7 @@ class IncidentEntity extends Equatable {
   }) {
     return IncidentEntity(
       id: id ?? this.id,
+      factoryId: factoryId ?? this.factoryId,
       deviceId: deviceId ?? this.deviceId,
       deviceName: deviceName ?? this.deviceName,
       ownerName: ownerName ?? this.ownerName,
@@ -164,6 +168,7 @@ class IncidentEntity extends Equatable {
   Map<String, dynamic> toJson() {
     return {
       'id': id,
+      'factoryId': factoryId,
       'deviceId': deviceId,
       'deviceName': deviceName,
       'ownerName': ownerName,
@@ -185,6 +190,7 @@ class IncidentEntity extends Equatable {
   factory IncidentEntity.fromJson(Map<String, dynamic> json) {
     return IncidentEntity(
       id: json['id'] as int? ?? 0,
+      factoryId: json['factoryId']?.toString() ?? 'unassigned',
       deviceId: json['deviceId'] as int? ?? 0,
       deviceName: json['deviceName']?.toString() ?? '',
       ownerName: json['ownerName']?.toString() ?? 'Unassigned',
@@ -218,6 +224,7 @@ class IncidentEntity extends Equatable {
   @override
   List<Object?> get props => [
     id,
+    factoryId,
     deviceId,
     deviceName,
     ownerName,

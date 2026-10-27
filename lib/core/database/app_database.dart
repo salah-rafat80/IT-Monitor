@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:drift/drift.dart';
@@ -9,6 +10,19 @@ import 'package:path_provider/path_provider.dart';
 import '../utils/ipv4_utils.dart';
 
 part 'app_database.g.dart';
+
+@DataClassName('FactoryData')
+class Factories extends Table {
+  TextColumn get id => text()(); // 'bnf', 'rnf', 'unassigned'
+  TextColumn get code => text().unique()();
+  TextColumn get name => text()();
+  BoolColumn get isActive => boolean().withDefault(const Constant(true))();
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+  DateTimeColumn get updatedAt => dateTime().nullable()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
 
 class Users extends Table {
   IntColumn get id => integer().autoIncrement()();
@@ -40,6 +54,8 @@ class Locations extends Table {
 
 class Devices extends Table {
   IntColumn get id => integer().autoIncrement()();
+  TextColumn get factoryId =>
+      text().withDefault(const Constant('unassigned'))();
   TextColumn get name => text()();
   TextColumn get type => text().withDefault(
     const Constant('pc'),
@@ -65,6 +81,8 @@ class Devices extends Table {
 @DataClassName('CheckResultData')
 class CheckResults extends Table {
   IntColumn get id => integer().autoIncrement()();
+  TextColumn get factoryId =>
+      text().withDefault(const Constant('unassigned'))();
   IntColumn get deviceId => integer()();
   TextColumn get assetId => text().nullable()();
   TextColumn get targetIp => text()();
@@ -101,6 +119,8 @@ class DeviceStatuses extends Table {
 @DataClassName('IncidentData')
 class Incidents extends Table {
   IntColumn get id => integer().autoIncrement()();
+  TextColumn get factoryId =>
+      text().withDefault(const Constant('unassigned'))();
   IntColumn get deviceId => integer()();
   TextColumn get deviceName => text()();
   TextColumn get ownerName => text()();
@@ -139,6 +159,8 @@ class DiscoveryConfigurations extends Table {
 @DataClassName('DiscoveryScanData')
 class DiscoveryScans extends Table {
   IntColumn get id => integer().autoIncrement()();
+  TextColumn get factoryId =>
+      text().withDefault(const Constant('unassigned'))();
   TextColumn get status => text().withDefault(const Constant('draft'))();
   TextColumn get rangesJson => text()();
   TextColumn get enabledStrategiesJson => text().withDefault(
@@ -159,6 +181,8 @@ class DiscoveryScans extends Table {
 class DiscoveredDevices extends Table {
   IntColumn get id => integer().autoIncrement()();
   IntColumn get scanId => integer()();
+  TextColumn get factoryId =>
+      text().withDefault(const Constant('unassigned'))();
   TextColumn get ip => text()();
   TextColumn get mac => text().nullable()();
   TextColumn get hostname => text().nullable()();
@@ -196,8 +220,10 @@ class DiscoveryEvidences extends Table {
 @DataClassName('InfrastructureDeviceData')
 class InfrastructureDevices extends Table {
   IntColumn get id => integer().autoIncrement()();
+  TextColumn get factoryId =>
+      text().withDefault(const Constant('unassigned'))();
   TextColumn get name => text()();
-  TextColumn get ip => text().unique()();
+  TextColumn get ip => text()();
   TextColumn get mac => text().nullable()();
   TextColumn get role => text().withDefault(
     const Constant('other_unknown'),
@@ -220,6 +246,7 @@ class InfrastructureDevices extends Table {
 @lazySingleton
 @DriftDatabase(
   tables: [
+    Factories,
     Users,
     AuditLogs,
     Locations,
@@ -240,7 +267,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 11;
+  int get schemaVersion => 12;
 
   @override
   MigrationStrategy get migration {
@@ -359,7 +386,7 @@ class AppDatabase extends _$AppDatabase {
             }
           }
         }
-        if (from < 10) {
+        if (from < 10 && to >= 10) {
           try {
             await transaction(() async {
               // 1. Process all inventory devices: normalize whitespace and canonicalize IPv4
@@ -495,7 +522,7 @@ class AppDatabase extends _$AppDatabase {
             rethrow;
           }
         }
-        if (from < 11) {
+        if (from < 11 && to >= 11) {
           try {
             await transaction(() async {
               // Normalize legacy status strings to canonical states in device_statuses
@@ -515,14 +542,202 @@ class AppDatabase extends _$AppDatabase {
             rethrow;
           }
         }
+        if (from < 12 && to >= 12) {
+          try {
+            await transaction(() async {
+              // 1. Create factories table if not exists
+              final factoryTableCheck = await customSelect(
+                "SELECT count(*) as c FROM sqlite_master WHERE type='table' AND name='factories'",
+              ).getSingle();
+              if (factoryTableCheck.read<int>('c') == 0) {
+                await m.createTable(factories);
+              }
+
+              // 2. Add factory_id column to devices
+              final devCols = await customSelect(
+                "PRAGMA table_info('devices')",
+              ).get();
+              if (!devCols.any((r) => r.read<String>('name') == 'factory_id')) {
+                await m.addColumn(devices, devices.factoryId);
+              }
+
+              // 3. Add factory_id column to discovery_scans
+              final scanCols = await customSelect(
+                "PRAGMA table_info('discovery_scans')",
+              ).get();
+              if (!scanCols.any(
+                (r) => r.read<String>('name') == 'factory_id',
+              )) {
+                await m.addColumn(discoveryScans, discoveryScans.factoryId);
+              }
+
+              // 4. Add factory_id column to discovered_devices
+              final discCols = await customSelect(
+                "PRAGMA table_info('discovered_devices')",
+              ).get();
+              if (!discCols.any(
+                (r) => r.read<String>('name') == 'factory_id',
+              )) {
+                await m.addColumn(
+                  discoveredDevices,
+                  discoveredDevices.factoryId,
+                );
+              }
+
+              // 5. Add factory_id column to infrastructure_devices
+              final infraCols = await customSelect(
+                "PRAGMA table_info('infrastructure_devices')",
+              ).get();
+              if (!infraCols.any(
+                (r) => r.read<String>('name') == 'factory_id',
+              )) {
+                await m.addColumn(
+                  infrastructureDevices,
+                  infrastructureDevices.factoryId,
+                );
+              }
+
+              // 6. Add factory_id column to incidents
+              final incCols = await customSelect(
+                "PRAGMA table_info('incidents')",
+              ).get();
+              if (!incCols.any((r) => r.read<String>('name') == 'factory_id')) {
+                await m.addColumn(incidents, incidents.factoryId);
+              }
+
+              // 7. Add factory_id column to check_results
+              final checkCols = await customSelect(
+                "PRAGMA table_info('check_results')",
+              ).get();
+              if (!checkCols.any(
+                (r) => r.read<String>('name') == 'factory_id',
+              )) {
+                await m.addColumn(checkResults, checkResults.factoryId);
+              }
+
+              // 8. Seed BNF, RNF, and UNASSIGNED factories idempotently
+              await _ensureDefaultFactoriesSeeded();
+
+              // 9. Migrate discovery configurations: ensure legacy ranges have factory_id = 'unassigned'
+              final configRows = await select(discoveryConfigurations).get();
+              for (final cfg in configRows) {
+                try {
+                  final rawList = jsonDecode(cfg.authorizedRangesJson);
+                  if (rawList is List && rawList.isNotEmpty) {
+                    bool modified = false;
+                    final updatedList = rawList.map((item) {
+                      if (item is Map<String, dynamic>) {
+                        if (item['factoryId'] == null ||
+                            (item['factoryId'] as String).trim().isEmpty) {
+                          modified = true;
+                          return {...item, 'factoryId': 'unassigned'};
+                        }
+                      } else if (item is String) {
+                        modified = true;
+                        return {
+                          'id':
+                              'range_unassigned_${item.replaceAll('.', '_').replaceAll('/', '_')}',
+                          'factoryId': 'unassigned',
+                          'cidr': item,
+                          'baseIp': item.split('/').first,
+                          'prefixLength':
+                              int.tryParse(item.split('/').last) ?? 24,
+                          'totalHosts': 256,
+                          'usableHostsCount': 254,
+                          'isEnabled': true,
+                          'reachability': 'reachability_not_tested',
+                          'createdAt': DateTime.now().toIso8601String(),
+                        };
+                      }
+                      return item;
+                    }).toList();
+
+                    if (modified) {
+                      await (update(
+                        discoveryConfigurations,
+                      )..where((t) => t.id.equals(cfg.id))).write(
+                        DiscoveryConfigurationsCompanion(
+                          authorizedRangesJson: Value(jsonEncode(updatedList)),
+                        ),
+                      );
+                    }
+                  }
+                } catch (_) {}
+              }
+
+              // 10. Drop old global unique index and create factory-scoped partial unique indexes
+              await customStatement('DROP INDEX IF EXISTS idx_devices_ip;');
+              await customStatement(
+                'CREATE UNIQUE INDEX IF NOT EXISTS idx_devices_factory_ip ON devices(factory_id, ip) WHERE ip != \'\' AND ip IS NOT NULL;',
+              );
+              await customStatement(
+                'DROP INDEX IF EXISTS idx_infrastructure_devices_ip;',
+              );
+              await customStatement(
+                'CREATE UNIQUE INDEX IF NOT EXISTS idx_infrastructure_devices_factory_ip ON infrastructure_devices(factory_id, ip) WHERE ip != \'\' AND ip IS NOT NULL;',
+              );
+            });
+          } catch (e, st) {
+            _logMigrationDiagnostic(
+              'from < 12: multi-factory migration',
+              e,
+              st,
+            );
+            rethrow;
+          }
+        }
       },
       beforeOpen: (details) async {
         await customStatement('PRAGMA foreign_keys = ON;');
         await customStatement(
-          'CREATE UNIQUE INDEX IF NOT EXISTS idx_devices_ip ON devices(ip) WHERE ip != \'\' AND ip IS NOT NULL;',
+          'CREATE UNIQUE INDEX IF NOT EXISTS idx_devices_factory_ip ON devices(factory_id, ip) WHERE ip != \'\' AND ip IS NOT NULL;',
         );
+        await customStatement(
+          'CREATE UNIQUE INDEX IF NOT EXISTS idx_infrastructure_devices_factory_ip ON infrastructure_devices(factory_id, ip) WHERE ip != \'\' AND ip IS NOT NULL;',
+        );
+        await _ensureDefaultFactoriesSeeded();
       },
     );
+  }
+
+  Future<void> ensureDefaultFactoriesSeeded() async {
+    await _ensureDefaultFactoriesSeeded();
+  }
+
+  Future<void> _ensureDefaultFactoriesSeeded() async {
+    try {
+      final now = DateTime.now();
+      await into(factories).insert(
+        FactoriesCompanion(
+          id: const Value('bnf'),
+          code: const Value('BNF'),
+          name: const Value('BNF Factory'),
+          isActive: const Value(true),
+          createdAt: Value(now),
+        ),
+        mode: InsertMode.insertOrIgnore,
+      );
+      await into(factories).insert(
+        FactoriesCompanion(
+          id: const Value('rnf'),
+          code: const Value('RNF'),
+          name: const Value('RNF Factory'),
+          isActive: const Value(true),
+          createdAt: Value(now),
+        ),
+        mode: InsertMode.insertOrIgnore,
+      );
+      await into(factories).insert(
+        FactoriesCompanion(
+          id: const Value('unassigned'),
+          code: const Value('UNASSIGNED'),
+          name: const Value('Unassigned / Needs Factory Assignment'),
+          isActive: const Value(true),
+          createdAt: Value(now),
+        ),
+        mode: InsertMode.insertOrIgnore,
+      );
+    } catch (_) {}
   }
 
   static bool _isDuplicateColumnError(Object error) {

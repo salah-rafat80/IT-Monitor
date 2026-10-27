@@ -8,6 +8,7 @@ import 'review_state.dart';
 class DiscoveredDeviceEntity extends Equatable {
   final int id;
   final int scanId;
+  final String factoryId;
   final String ip;
   final String? mac;
   final String? hostname;
@@ -30,6 +31,7 @@ class DiscoveredDeviceEntity extends Equatable {
   const DiscoveredDeviceEntity({
     this.id = 0,
     required this.scanId,
+    this.factoryId = 'unassigned',
     required this.ip,
     this.mac,
     this.hostname,
@@ -53,6 +55,7 @@ class DiscoveredDeviceEntity extends Equatable {
   DiscoveredDeviceEntity copyWith({
     int? id,
     int? scanId,
+    String? factoryId,
     String? ip,
     String? mac,
     String? hostname,
@@ -75,6 +78,7 @@ class DiscoveredDeviceEntity extends Equatable {
     return DiscoveredDeviceEntity(
       id: id ?? this.id,
       scanId: scanId ?? this.scanId,
+      factoryId: factoryId ?? this.factoryId,
       ip: ip ?? this.ip,
       mac: mac ?? this.mac,
       hostname: hostname ?? this.hostname,
@@ -101,13 +105,10 @@ class DiscoveredDeviceEntity extends Equatable {
   DeviceCategory get effectiveCategory =>
       adminConfirmedCategory ?? predictedCategory;
 
-  bool get isApproved => reviewState == ReviewState.approved;
-  bool get isAlreadyKnown => reviewState == ReviewState.alreadyKnown;
-  bool get isConflict => reviewState == ReviewState.conflict;
-
   Map<String, dynamic> toJson() => {
     'id': id,
     'scanId': scanId,
+    'factoryId': factoryId,
     'ip': ip,
     'mac': mac,
     'hostname': hostname,
@@ -132,6 +133,7 @@ class DiscoveredDeviceEntity extends Equatable {
     return DiscoveredDeviceEntity(
       id: json['id'] as int? ?? 0,
       scanId: json['scanId'] as int? ?? 0,
+      factoryId: json['factoryId'] as String? ?? 'unassigned',
       ip: json['ip'] as String,
       mac: json['mac'] as String?,
       hostname: json['hostname'] as String?,
@@ -185,6 +187,7 @@ class DiscoveredDeviceEntity extends Equatable {
   List<Object?> get props => [
     id,
     scanId,
+    factoryId,
     ip,
     mac,
     hostname,

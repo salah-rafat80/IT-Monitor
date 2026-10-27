@@ -63,6 +63,7 @@ enum UniFiDeviceRole {
 
 class UniFiDeviceEntity extends Equatable {
   final int id;
+  final String factoryId;
   final String name;
   final String ip;
   final String? mac;
@@ -80,6 +81,7 @@ class UniFiDeviceEntity extends Equatable {
 
   const UniFiDeviceEntity({
     required this.id,
+    this.factoryId = 'unassigned',
     required this.name,
     required this.ip,
     this.mac,
@@ -102,6 +104,7 @@ class UniFiDeviceEntity extends Equatable {
 
   UniFiDeviceEntity copyWith({
     int? id,
+    String? factoryId,
     String? name,
     String? ip,
     String? mac,
@@ -119,6 +122,7 @@ class UniFiDeviceEntity extends Equatable {
   }) {
     return UniFiDeviceEntity(
       id: id ?? this.id,
+      factoryId: factoryId ?? this.factoryId,
       name: name ?? this.name,
       ip: ip ?? this.ip,
       mac: mac ?? this.mac,
@@ -141,6 +145,7 @@ class UniFiDeviceEntity extends Equatable {
   Map<String, dynamic> toJson() {
     return {
       'id': id,
+      'factoryId': factoryId,
       'name': name,
       'ip': ip,
       'mac': mac,
@@ -166,8 +171,15 @@ class UniFiDeviceEntity extends Equatable {
           .map((e) => e.toString())
           .toList();
     }
+    final factoryId =
+        json['factoryId']?.toString() ??
+        (json['siteName']?.toString() != null &&
+                json['siteName'].toString() != 'default'
+            ? json['siteName'].toString()
+            : 'unassigned');
     return UniFiDeviceEntity(
       id: json['id'] as int? ?? 0,
+      factoryId: factoryId,
       name: json['name']?.toString() ?? '',
       ip: json['ip']?.toString() ?? '',
       mac: json['mac']?.toString(),
@@ -194,6 +206,7 @@ class UniFiDeviceEntity extends Equatable {
   @override
   List<Object?> get props => [
     id,
+    factoryId,
     name,
     ip,
     mac,

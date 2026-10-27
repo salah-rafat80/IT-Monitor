@@ -12,23 +12,27 @@ abstract class DiscoveryRepository {
   Future<Result<void>> saveConfig(DiscoveryConfigEntity config);
 
   // Authoritative Network Range Management
-  Future<Result<List<NetworkRange>>> getRanges();
+  Future<Result<List<NetworkRange>>> getRanges({String? factoryId});
   Future<Result<void>> addRange(NetworkRange range);
   Future<Result<void>> updateRange(NetworkRange range);
   Future<Result<void>> deleteRange(String rangeId);
-  Stream<List<NetworkRange>> watchRanges();
+  Stream<List<NetworkRange>> watchRanges({String? factoryId});
 
   Future<Result<int>> createScanJob(DiscoveryScanJob job);
   Future<Result<void>> updateScanJob(DiscoveryScanJob job);
   Future<Result<DiscoveryScanJob>> getScanJob(int scanId);
-  Future<Result<DiscoveryScanJob?>> getLatestScanJob();
-  Future<Result<List<DiscoveryScanJob>>> getAllScanJobs();
+  Future<Result<DiscoveryScanJob?>> getLatestScanJob({String? factoryId});
+  Future<Result<List<DiscoveryScanJob>>> getAllScanJobs({String? factoryId});
 
   Future<Result<int>> saveDiscoveredDevice(DiscoveredDeviceEntity device);
   Future<Result<List<DiscoveredDeviceEntity>>> getDiscoveredDevices({
     int? scanId,
+    String? factoryId,
   });
-  Future<Result<DiscoveredDeviceEntity?>> getDiscoveredDeviceByIp(String ip);
+  Future<Result<DiscoveredDeviceEntity?>> getDiscoveredDeviceByIp(
+    String ip, {
+    String? factoryId,
+  });
 
   Future<Result<void>> updateDeviceReview({
     required int deviceId,
@@ -42,6 +46,9 @@ abstract class DiscoveryRepository {
     int deviceId,
   );
 
-  Stream<DiscoveryScanJob?> watchLatestScanJob();
-  Stream<List<DiscoveredDeviceEntity>> watchDiscoveredDevices({int? scanId});
+  Stream<DiscoveryScanJob?> watchLatestScanJob({String? factoryId});
+  Stream<List<DiscoveredDeviceEntity>> watchDiscoveredDevices({
+    int? scanId,
+    String? factoryId,
+  });
 }

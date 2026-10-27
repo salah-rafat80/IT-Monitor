@@ -94,6 +94,7 @@ enum ScanJobStatus {
 
 class DiscoveryScanJob extends Equatable {
   final int id;
+  final String factoryId;
   final ScanJobStatus status;
   final List<String>
   targetRanges; // e.g. ['192.168.27.0/24', '192.168.22.0/24']
@@ -110,6 +111,7 @@ class DiscoveryScanJob extends Equatable {
 
   const DiscoveryScanJob({
     this.id = 0,
+    this.factoryId = 'unassigned',
     this.status = ScanJobStatus.draft,
     required this.targetRanges,
     this.enabledStrategies = const [
@@ -133,6 +135,7 @@ class DiscoveryScanJob extends Equatable {
 
   DiscoveryScanJob copyWith({
     int? id,
+    String? factoryId,
     ScanJobStatus? status,
     List<String>? targetRanges,
     List<String>? enabledStrategies,
@@ -148,6 +151,7 @@ class DiscoveryScanJob extends Equatable {
   }) {
     return DiscoveryScanJob(
       id: id ?? this.id,
+      factoryId: factoryId ?? this.factoryId,
       status: status ?? this.status,
       targetRanges: targetRanges ?? this.targetRanges,
       enabledStrategies: enabledStrategies ?? this.enabledStrategies,
@@ -169,6 +173,7 @@ class DiscoveryScanJob extends Equatable {
 
   Map<String, dynamic> toJson() => {
     'id': id,
+    'factoryId': factoryId,
     'status': status.toValue(),
     'targetRanges': targetRanges,
     'enabledStrategies': enabledStrategies,
@@ -187,6 +192,7 @@ class DiscoveryScanJob extends Equatable {
   factory DiscoveryScanJob.fromJson(Map<String, dynamic> json) {
     return DiscoveryScanJob(
       id: json['id'] as int? ?? 0,
+      factoryId: json['factoryId'] as String? ?? 'unassigned',
       status: ScanJobStatus.fromString(json['status'] as String? ?? 'draft'),
       targetRanges:
           (json['targetRanges'] as List<dynamic>?)
@@ -217,6 +223,7 @@ class DiscoveryScanJob extends Equatable {
   @override
   List<Object?> get props => [
     id,
+    factoryId,
     status,
     targetRanges,
     enabledStrategies,

@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../auth/domain/entities/user_entity.dart';
 import '../../../auth/presentation/bloc/auth_cubit.dart';
+import '../../../factories/presentation/bloc/factory_cubit.dart';
 import '../../domain/entities/device_category.dart';
 import '../../domain/entities/discovered_device_entity.dart';
 import '../../domain/entities/review_state.dart';
@@ -317,11 +318,19 @@ class NetworkDiscoveryPage extends StatelessWidget {
     BuildContext context,
     NetworkDiscoveryLoaded state,
   ) {
+    final factoryCubit = context.read<FactoryCubit>();
+    final activeFactoryId = factoryCubit.state.selectedFactoryId;
+    final ranges = activeFactoryId != null
+        ? state.rangesWithStatus
+              .where((r) => r.factoryId == activeFactoryId)
+              .toList()
+        : state.rangesWithStatus;
+
     showDialog(
       context: context,
       builder: (ctx) => DiscoveryStartDialog(
         config: state.config,
-        ranges: state.rangesWithStatus,
+        ranges: ranges,
         onStart:
             ({
               required ranges,
@@ -330,6 +339,7 @@ class NetworkDiscoveryPage extends StatelessWidget {
               required timeoutSeconds,
             }) {
               context.read<NetworkDiscoveryCubit>().startScan(
+                factoryId: activeFactoryId,
                 requestedRanges: ranges,
                 enabledStrategies: strategies,
                 maxConcurrency: concurrency,
@@ -341,11 +351,16 @@ class NetworkDiscoveryPage extends StatelessWidget {
   }
 
   void _showManageRangesDialog(BuildContext context, bool isAdmin) {
+    final factoryCubit = context.read<FactoryCubit>();
+    final activeFactoryId = factoryCubit.state.selectedFactoryId;
     showDialog(
       context: context,
       builder: (ctx) => BlocProvider.value(
         value: context.read<NetworkDiscoveryCubit>(),
-        child: ManageNetworkRangesDialog(isAdmin: isAdmin),
+        child: ManageNetworkRangesDialog(
+          isAdmin: isAdmin,
+          factoryId: activeFactoryId,
+        ),
       ),
     );
   }

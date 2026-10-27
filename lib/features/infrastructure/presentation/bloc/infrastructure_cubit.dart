@@ -27,6 +27,8 @@ class InfrastructureCubit extends Cubit<InfrastructureState> {
   StreamSubscription<List<UniFiDeviceEntity>>? _devicesSub;
   StreamSubscription<List<IncidentEntity>>? _incidentsSub;
   StreamSubscription<List<DeviceStatusEntity>>? _statusesSub;
+  String? _activeFactoryId;
+  String? get activeFactoryId => _activeFactoryId;
 
   InfrastructureCubit(
     this._infrastructureRepo,
@@ -48,18 +50,46 @@ class InfrastructureCubit extends Cubit<InfrastructureState> {
     });
   }
 
-  Future<void> loadInfrastructure({bool triggerPing = true}) async {
+  Future<void> setFactory(String? factoryId) async {
+    _activeFactoryId = factoryId;
+    await loadInfrastructure(factoryId: factoryId);
+  }
+
+  Future<void> loadInfrastructure({
+    bool triggerPing = true,
+    String? factoryId,
+  }) async {
     if (isClosed) return;
+    _activeFactoryId = factoryId ?? _activeFactoryId;
     emit(state.copyWith(isLoading: true, clearError: true));
+
+    _devicesSub?.cancel();
+    _devicesSub = _infrastructureRepo
+        .watchInfrastructureDevices(factoryId: _activeFactoryId)
+        .listen((devices) {
+          _onDevicesUpdated(devices);
+        });
+
+    _incidentsSub?.cancel();
+    _incidentsSub = _incidentRepo
+        .watchActiveIncidents(factoryId: _activeFactoryId)
+        .listen((incidents) {
+          _onIncidentsUpdated(incidents);
+        });
+
     await _infrastructureRepo.bootstrapVerifiedAccessPoints();
-    final res = await _infrastructureRepo.getInfrastructureDevices();
+    final res = await _infrastructureRepo.getInfrastructureDevices(
+      factoryId: _activeFactoryId,
+    );
 
     if (isClosed) return;
     if (res.isSuccess) {
       final devices = res.dataOrNull ?? [];
       await _onDevicesUpdated(devices);
       if (isClosed) return;
-      final activeIncRes = await _incidentRepo.getActiveIncidents();
+      final activeIncRes = await _incidentRepo.getActiveIncidents(
+        factoryId: _activeFactoryId,
+      );
       if (isClosed) return;
       if (activeIncRes.isSuccess) {
         _onIncidentsUpdated(activeIncRes.dataOrNull ?? []);

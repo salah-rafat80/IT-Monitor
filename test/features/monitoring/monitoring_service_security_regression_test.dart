@@ -48,7 +48,7 @@ class FakeAuditLogRepository implements AuditLogRepository {
 
 class FakeDeviceRepository implements DeviceRepository {
   @override
-  Future<Result<List<DeviceEntity>>> getDevices() async =>
+  Future<Result<List<DeviceEntity>>> getDevices({String? factoryId}) async =>
       Result.success(const []);
 
   @override
@@ -983,7 +983,8 @@ void main() {
           try {
             DatabaseConfig.isDevelopment = false;
             expect(
-              () => DatabaseConfig.verifyClientAccessAllowed(canWriteProd: false),
+              () =>
+                  DatabaseConfig.verifyClientAccessAllowed(canWriteProd: false),
               throwsA(isA<StateError>()),
             );
           } finally {

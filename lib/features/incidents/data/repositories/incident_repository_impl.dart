@@ -64,6 +64,7 @@ class IncidentRepositoryImpl implements IncidentRepository {
           .into(_db.incidents)
           .insert(
             IncidentsCompanion.insert(
+              factoryId: Value(incident.factoryId),
               deviceId: incident.deviceId,
               deviceName: incident.deviceName,
               ownerName: incident.ownerName,
@@ -96,7 +97,9 @@ class IncidentRepositoryImpl implements IncidentRepository {
   }
 
   @override
-  Future<Result<List<IncidentEntity>>> getActiveIncidents() async {
+  Future<Result<List<IncidentEntity>>> getActiveIncidents({
+    String? factoryId,
+  }) async {
     if (AppConfig.isProductionClient) {
       final client = _effectiveClient;
       if (client == null || !client.isAuthenticated) {
@@ -106,7 +109,7 @@ class IncidentRepositoryImpl implements IncidentRepository {
           ),
         );
       }
-      final res = await client.getIncidents();
+      final res = await client.getIncidents(factoryId: factoryId);
       if (res.isSuccess && res.data != null) {
         final activeRaw = res.data!['active'] as List<dynamic>? ?? [];
         final list = activeRaw
@@ -125,10 +128,13 @@ class IncidentRepositoryImpl implements IncidentRepository {
 
     try {
       final query = _db.select(_db.incidents)
-        ..where((t) => t.status.isIn(['active', 'acknowledged']))
-        ..orderBy([
-          (t) => OrderingTerm(expression: t.startedAt, mode: OrderingMode.desc),
-        ]);
+        ..where((t) => t.status.isIn(['active', 'acknowledged']));
+      if (factoryId != null && factoryId.isNotEmpty) {
+        query.where((t) => t.factoryId.equals(factoryId));
+      }
+      query.orderBy([
+        (t) => OrderingTerm(expression: t.startedAt, mode: OrderingMode.desc),
+      ]);
       final rows = await query.get();
       final entities = rows.map(_mapToEntity).toList();
       return Result.success(entities);
@@ -213,8 +219,13 @@ class IncidentRepositoryImpl implements IncidentRepository {
   }
 
   @override
-  Stream<List<IncidentEntity>> watchActiveIncidents() {
-    return _activeIncidentsController.stream;
+  Stream<List<IncidentEntity>> watchActiveIncidents({String? factoryId}) {
+    return _activeIncidentsController.stream.map((list) {
+      if (factoryId != null && factoryId.isNotEmpty) {
+        return list.where((i) => i.factoryId == factoryId).toList();
+      }
+      return list;
+    });
   }
 
   @override
@@ -398,6 +409,7 @@ class IncidentRepositoryImpl implements IncidentRepository {
     String? severity,
     int? deviceId,
     String? location,
+    String? factoryId,
   }) async {
     if (AppConfig.isProductionClient) {
       final client = _effectiveClient;
@@ -408,13 +420,16 @@ class IncidentRepositoryImpl implements IncidentRepository {
           ),
         );
       }
-      final res = await client.getIncidents();
+      final res = await client.getIncidents(factoryId: factoryId);
       if (res.isSuccess && res.data != null) {
         final historyRaw = res.data!['history'] as List<dynamic>? ?? [];
         var list = historyRaw
             .map((e) => IncidentEntity.fromJson(e as Map<String, dynamic>))
             .toList();
 
+        if (factoryId != null && factoryId.isNotEmpty) {
+          list = list.where((i) => i.factoryId == factoryId).toList();
+        }
         if (type != null) {
           list = list.where((i) => i.incidentType.toValue() == type).toList();
         }
@@ -442,6 +457,9 @@ class IncidentRepositoryImpl implements IncidentRepository {
           (t) => OrderingTerm(expression: t.startedAt, mode: OrderingMode.desc),
         ]);
 
+      if (factoryId != null && factoryId.isNotEmpty) {
+        query.where((t) => t.factoryId.equals(factoryId));
+      }
       if (type != null) {
         query.where((t) => t.incidentType.equals(type));
       }
@@ -475,6 +493,7 @@ class IncidentRepositoryImpl implements IncidentRepository {
   IncidentEntity _mapToEntity(IncidentData r) {
     return IncidentEntity(
       id: r.id,
+      factoryId: r.factoryId,
       deviceId: r.deviceId,
       deviceName: r.deviceName,
       ownerName: r.ownerName,

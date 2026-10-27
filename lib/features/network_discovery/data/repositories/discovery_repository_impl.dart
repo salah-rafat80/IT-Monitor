@@ -206,10 +206,16 @@ class DiscoveryRepositoryImpl implements DiscoveryRepository {
   }
 
   @override
-  Future<Result<List<NetworkRange>>> getRanges() async {
+  Future<Result<List<NetworkRange>>> getRanges({String? factoryId}) async {
     final configRes = await getConfig();
     if (configRes.isSuccess) {
-      return Result.success(configRes.dataOrNull?.networkRanges ?? []);
+      final all = configRes.dataOrNull?.networkRanges ?? [];
+      if (factoryId != null && factoryId.isNotEmpty) {
+        return Result.success(
+          all.where((r) => r.factoryId == factoryId).toList(),
+        );
+      }
+      return Result.success(all);
     }
     return Result.failure(configRes.failureOrNull!);
   }
@@ -221,11 +227,13 @@ class DiscoveryRepositoryImpl implements DiscoveryRepository {
     final config = configRes.dataOrNull!;
 
     if (config.networkRanges.any(
-      (r) => r.cidr == range.cidr || r.id == range.id,
+      (r) =>
+          (r.cidr == range.cidr && r.factoryId == range.factoryId) ||
+          r.id == range.id,
     )) {
       return Result.failure(
         ValidationFailure(
-          'Network range ${range.cidr} already exists in configuration.',
+          'Network range ${range.cidr} already exists for factory ${range.factoryId}.',
         ),
       );
     }
@@ -240,7 +248,9 @@ class DiscoveryRepositoryImpl implements DiscoveryRepository {
     final config = configRes.dataOrNull!;
 
     final index = config.networkRanges.indexWhere(
-      (r) => r.id == range.id || r.cidr == range.cidr,
+      (r) =>
+          r.id == range.id ||
+          (r.cidr == range.cidr && r.factoryId == range.factoryId),
     );
     if (index == -1) {
       return Result.failure(
@@ -270,13 +280,18 @@ class DiscoveryRepositoryImpl implements DiscoveryRepository {
   }
 
   @override
-  Stream<List<NetworkRange>> watchRanges() {
-    getRanges().then((res) {
+  Stream<List<NetworkRange>> watchRanges({String? factoryId}) {
+    getRanges(factoryId: factoryId).then((res) {
       if (res.isSuccess && !_rangesController.isClosed) {
         _rangesController.add(res.dataOrNull ?? []);
       }
     });
-    return _rangesController.stream;
+    return _rangesController.stream.map((ranges) {
+      if (factoryId != null && factoryId.isNotEmpty) {
+        return ranges.where((r) => r.factoryId == factoryId).toList();
+      }
+      return ranges;
+    });
   }
 
   @override
@@ -294,6 +309,7 @@ class DiscoveryRepositoryImpl implements DiscoveryRepository {
           .into(_db.discoveryScans)
           .insert(
             DiscoveryScansCompanion(
+              factoryId: Value(job.factoryId),
               status: Value(job.status.toValue()),
               rangesJson: Value(jsonEncode(job.targetRanges)),
               enabledStrategiesJson: Value(jsonEncode(job.enabledStrategies)),
@@ -329,6 +345,7 @@ class DiscoveryRepositoryImpl implements DiscoveryRepository {
         _db.discoveryScans,
       )..where((t) => t.id.equals(job.id))).write(
         DiscoveryScansCompanion(
+          factoryId: Value(job.factoryId),
           status: Value(job.status.toValue()),
           rangesJson: Value(jsonEncode(job.targetRanges)),
           enabledStrategiesJson: Value(jsonEncode(job.enabledStrategies)),
@@ -375,7 +392,9 @@ class DiscoveryRepositoryImpl implements DiscoveryRepository {
   }
 
   @override
-  Future<Result<DiscoveryScanJob?>> getLatestScanJob() async {
+  Future<Result<DiscoveryScanJob?>> getLatestScanJob({
+    String? factoryId,
+  }) async {
     if (AppConfig.isProductionClient) {
       final client = _effectiveClient;
       if (client == null || !client.isAuthenticated) {
@@ -385,7 +404,7 @@ class DiscoveryRepositoryImpl implements DiscoveryRepository {
           ),
         );
       }
-      final res = await client.getDiscoveryStatus();
+      final res = await client.getDiscoveryStatus(factoryId: factoryId);
       if (res.isSuccess && res.data != null) {
         final latest = res.data!['latestScan'] as Map<String, dynamic>?;
         if (latest != null) {
@@ -402,8 +421,12 @@ class DiscoveryRepositoryImpl implements DiscoveryRepository {
     }
 
     try {
+      var query = _db.select(_db.discoveryScans);
+      if (factoryId != null && factoryId.isNotEmpty) {
+        query = query..where((t) => t.factoryId.equals(factoryId));
+      }
       final row =
-          await (_db.select(_db.discoveryScans)
+          await (query
                 ..orderBy([
                   (t) =>
                       OrderingTerm(expression: t.id, mode: OrderingMode.desc),
@@ -419,9 +442,11 @@ class DiscoveryRepositoryImpl implements DiscoveryRepository {
   }
 
   @override
-  Future<Result<List<DiscoveryScanJob>>> getAllScanJobs() async {
+  Future<Result<List<DiscoveryScanJob>>> getAllScanJobs({
+    String? factoryId,
+  }) async {
     if (AppConfig.isProductionClient) {
-      final latest = await getLatestScanJob();
+      final latest = await getLatestScanJob(factoryId: factoryId);
       if (latest.isFailure) {
         return Result.failure(latest.failureOrNull!);
       }
@@ -432,8 +457,12 @@ class DiscoveryRepositoryImpl implements DiscoveryRepository {
     }
 
     try {
+      var query = _db.select(_db.discoveryScans);
+      if (factoryId != null && factoryId.isNotEmpty) {
+        query = query..where((t) => t.factoryId.equals(factoryId));
+      }
       final rows =
-          await (_db.select(_db.discoveryScans)..orderBy([
+          await (query..orderBy([
                 (t) => OrderingTerm(expression: t.id, mode: OrderingMode.desc),
               ]))
               .get();
@@ -456,10 +485,14 @@ class DiscoveryRepositoryImpl implements DiscoveryRepository {
     }
 
     try {
-      // Check if IP already recorded for this scan or existing records
+      // Check if IP already recorded for this factory (and scan/existing records)
       final existing =
           await (_db.select(_db.discoveredDevices)
-                ..where((t) => t.ip.equals(device.ip))
+                ..where(
+                  (t) =>
+                      t.factoryId.equals(device.factoryId) &
+                      t.ip.equals(device.ip),
+                )
                 ..orderBy([
                   (t) =>
                       OrderingTerm(expression: t.id, mode: OrderingMode.desc),
@@ -468,6 +501,7 @@ class DiscoveryRepositoryImpl implements DiscoveryRepository {
               .getSingleOrNull();
 
       final companion = DiscoveredDevicesCompanion(
+        factoryId: Value(device.factoryId),
         scanId: Value(device.scanId),
         ip: Value(device.ip),
         mac: Value(device.mac ?? existing?.mac),
@@ -514,6 +548,7 @@ class DiscoveryRepositoryImpl implements DiscoveryRepository {
   @override
   Future<Result<List<DiscoveredDeviceEntity>>> getDiscoveredDevices({
     int? scanId,
+    String? factoryId,
   }) async {
     if (AppConfig.isProductionClient) {
       final client = _effectiveClient;
@@ -524,7 +559,7 @@ class DiscoveryRepositoryImpl implements DiscoveryRepository {
           ),
         );
       }
-      final res = await client.getDiscoveryDevices(scanId);
+      final res = await client.getDiscoveryDevices(scanId, factoryId);
       if (res.isSuccess && res.data != null) {
         final list = res.data!
             .map((item) => DiscoveredDeviceEntity.fromJson(item))
@@ -544,6 +579,9 @@ class DiscoveryRepositoryImpl implements DiscoveryRepository {
       if (scanId != null) {
         query = query..where((t) => t.scanId.equals(scanId));
       }
+      if (factoryId != null && factoryId.isNotEmpty) {
+        query = query..where((t) => t.factoryId.equals(factoryId));
+      }
       final rows =
           await (query..orderBy([
                 (t) => OrderingTerm(expression: t.ip, mode: OrderingMode.asc),
@@ -559,10 +597,11 @@ class DiscoveryRepositoryImpl implements DiscoveryRepository {
 
   @override
   Future<Result<DiscoveredDeviceEntity?>> getDiscoveredDeviceByIp(
-    String ip,
-  ) async {
+    String ip, {
+    String? factoryId,
+  }) async {
     if (AppConfig.isProductionClient) {
-      final allRes = await getDiscoveredDevices();
+      final allRes = await getDiscoveredDevices(factoryId: factoryId);
       if (allRes.isFailure) return Result.failure(allRes.failureOrNull!);
       final match = allRes.dataOrNull!
           .where((d) => d.ip.trim() == ip.trim())
@@ -571,9 +610,13 @@ class DiscoveryRepositoryImpl implements DiscoveryRepository {
     }
 
     try {
+      var query = _db.select(_db.discoveredDevices)
+        ..where((t) => t.ip.equals(ip));
+      if (factoryId != null && factoryId.isNotEmpty) {
+        query = query..where((t) => t.factoryId.equals(factoryId));
+      }
       final row =
-          await (_db.select(_db.discoveredDevices)
-                ..where((t) => t.ip.equals(ip))
+          await (query
                 ..orderBy([
                   (t) =>
                       OrderingTerm(expression: t.id, mode: OrderingMode.desc),
@@ -731,11 +774,15 @@ class DiscoveryRepositoryImpl implements DiscoveryRepository {
   }
 
   @override
-  Stream<DiscoveryScanJob?> watchLatestScanJob() {
+  Stream<DiscoveryScanJob?> watchLatestScanJob({String? factoryId}) {
     if (AppConfig.isProductionClient) {
       return _scanJobController.stream;
     }
-    return (_db.select(_db.discoveryScans)
+    var query = _db.select(_db.discoveryScans);
+    if (factoryId != null && factoryId.isNotEmpty) {
+      query = query..where((t) => t.factoryId.equals(factoryId));
+    }
+    return (query
           ..orderBy([
             (t) => OrderingTerm(expression: t.id, mode: OrderingMode.desc),
           ])
@@ -745,13 +792,19 @@ class DiscoveryRepositoryImpl implements DiscoveryRepository {
   }
 
   @override
-  Stream<List<DiscoveredDeviceEntity>> watchDiscoveredDevices({int? scanId}) {
+  Stream<List<DiscoveredDeviceEntity>> watchDiscoveredDevices({
+    int? scanId,
+    String? factoryId,
+  }) {
     if (AppConfig.isProductionClient) {
       return _discoveredDevicesController.stream;
     }
     var query = _db.select(_db.discoveredDevices);
     if (scanId != null) {
       query = query..where((t) => t.scanId.equals(scanId));
+    }
+    if (factoryId != null && factoryId.isNotEmpty) {
+      query = query..where((t) => t.factoryId.equals(factoryId));
     }
     return (query..orderBy([
           (t) => OrderingTerm(expression: t.ip, mode: OrderingMode.asc),
@@ -776,6 +829,7 @@ class DiscoveryRepositoryImpl implements DiscoveryRepository {
 
     return DiscoveryScanJob(
       id: r.id,
+      factoryId: r.factoryId,
       status: ScanJobStatus.fromString(r.status),
       targetRanges: ranges,
       enabledStrategies: strategies,
@@ -813,6 +867,7 @@ class DiscoveryRepositoryImpl implements DiscoveryRepository {
 
     return DiscoveredDeviceEntity(
       id: r.id,
+      factoryId: r.factoryId,
       scanId: r.scanId,
       ip: r.ip,
       mac: r.mac,

@@ -73,17 +73,25 @@ final class DevicesError extends DevicesState {
 @injectable
 class DevicesCubit extends Cubit<DevicesState> {
   final DeviceRepository _deviceRepo;
+  String? _activeFactoryId;
+  String? get activeFactoryId => _activeFactoryId;
 
   DevicesCubit(this._deviceRepo) : super(const DevicesInitial());
 
-  Future<void> loadDevices() async {
+  Future<void> setFactory(String? factoryId) async {
+    _activeFactoryId = factoryId;
+    await loadDevices(factoryId: factoryId);
+  }
+
+  Future<void> loadDevices({String? factoryId}) async {
+    _activeFactoryId = factoryId ?? _activeFactoryId;
     if (isClosed) return;
     emit(const DevicesLoading());
 
     await _deviceRepo.bootstrapApprovedInventory();
     if (isClosed) return;
 
-    final res = await _deviceRepo.getDevices();
+    final res = await _deviceRepo.getDevices(factoryId: _activeFactoryId);
     if (isClosed) return;
 
     res.fold(

@@ -16,6 +16,7 @@ import '../widgets/monitoring_summary_cards.dart';
 
 import '../../../infrastructure/presentation/bloc/infrastructure_cubit.dart';
 import '../../../infrastructure/presentation/widgets/infrastructure_status_cards.dart';
+import '../../../factories/presentation/widgets/factory_overview_cards.dart';
 
 class MonitoringDashboardPage extends StatelessWidget {
   const MonitoringDashboardPage({super.key});
@@ -166,6 +167,17 @@ class MonitoringDashboardView extends StatelessWidget {
                   MonitoringSummaryCards(
                     state: state,
                     onStatusCardTap: (status) => cubit.setStatusFilter(status),
+                  ),
+                  const SizedBox(height: 24),
+
+                  // Factory Overview Cards for Multi-Factory Architecture (BNF, RNF)
+                  FactoryOverviewCards(
+                    devices: state.allDevices.map((m) => m.device).toList(),
+                    statuses: {
+                      for (var m in state.allDevices) m.device.id: m.status,
+                    },
+                    incidents: state.realActiveIncidents,
+                    isAdmin: isAdmin,
                   ),
                   const SizedBox(height: 24),
 

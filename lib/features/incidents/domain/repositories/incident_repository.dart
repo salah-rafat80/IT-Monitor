@@ -3,10 +3,10 @@ import '../entities/incident_entity.dart';
 
 abstract class IncidentRepository {
   Future<Result<IncidentEntity>> createIncident(IncidentEntity incident);
-  Future<Result<List<IncidentEntity>>> getActiveIncidents();
+  Future<Result<List<IncidentEntity>>> getActiveIncidents({String? factoryId});
   Future<Result<IncidentEntity?>> getActiveIncidentForDevice(int deviceId);
   Future<Result<IncidentEntity?>> getIncidentById(int id);
-  Stream<List<IncidentEntity>> watchActiveIncidents();
+  Stream<List<IncidentEntity>> watchActiveIncidents({String? factoryId});
   Future<Result<void>> resolveIncident(int id, DateTime resolvedAt);
   Future<Result<void>> acknowledgeIncident({
     required int id,
@@ -21,5 +21,6 @@ abstract class IncidentRepository {
     String? severity,
     int? deviceId,
     String? location,
+    String? factoryId,
   });
 }

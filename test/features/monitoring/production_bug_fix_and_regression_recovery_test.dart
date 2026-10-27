@@ -89,9 +89,14 @@ class StubDeviceRepository implements DeviceRepository {
   bool shouldFail = false;
 
   @override
-  Future<Result<List<DeviceEntity>>> getDevices() async {
+  Future<Result<List<DeviceEntity>>> getDevices({String? factoryId}) async {
     if (shouldFail) {
       return Result.failure(const NetworkFailure('Service unreachable'));
+    }
+    if (factoryId != null) {
+      return Result.success(
+        devicesList.where((d) => d.factoryId == factoryId).toList(),
+      );
     }
     return Result.success(List.from(devicesList));
   }
@@ -214,9 +219,16 @@ class StubInfrastructureRepository implements InfrastructureRepository {
   bool shouldFail = false;
 
   @override
-  Future<Result<List<UniFiDeviceEntity>>> getInfrastructureDevices() async {
+  Future<Result<List<UniFiDeviceEntity>>> getInfrastructureDevices({
+    String? factoryId,
+  }) async {
     if (shouldFail) {
       return Result.failure(const NetworkFailure('Service unreachable'));
+    }
+    if (factoryId != null) {
+      return Result.success(
+        infraList.where((d) => d.factoryId == factoryId).toList(),
+      );
     }
     return Result.success(List.from(infraList));
   }
@@ -228,8 +240,15 @@ class StubInfrastructureRepository implements InfrastructureRepository {
   }
 
   @override
-  Future<Result<UniFiDeviceEntity?>> getDeviceByIp(String ip) async {
-    final match = infraList.where((d) => d.ip == ip).firstOrNull;
+  Future<Result<UniFiDeviceEntity?>> getDeviceByIp(
+    String ip, {
+    String? factoryId,
+  }) async {
+    final match = infraList
+        .where(
+          (d) => d.ip == ip && (factoryId == null || d.factoryId == factoryId),
+        )
+        .firstOrNull;
     return Result.success(match);
   }
 
@@ -256,8 +275,13 @@ class StubInfrastructureRepository implements InfrastructureRepository {
   }) async => throw UnimplementedError();
 
   @override
-  Stream<List<UniFiDeviceEntity>> watchInfrastructureDevices() =>
-      Stream.value(List.from(infraList));
+  Stream<List<UniFiDeviceEntity>> watchInfrastructureDevices({
+    String? factoryId,
+  }) => Stream.value(
+    factoryId != null
+        ? infraList.where((d) => d.factoryId == factoryId).toList()
+        : List.from(infraList),
+  );
 
   @override
   Future<Result<void>> bootstrapVerifiedAccessPoints() async =>

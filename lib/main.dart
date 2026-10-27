@@ -10,6 +10,7 @@ import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
 import 'features/auth/presentation/bloc/auth_cubit.dart';
 import 'features/devices/presentation/bloc/devices_cubit.dart';
+import 'features/factories/presentation/bloc/factory_cubit.dart';
 import 'features/infrastructure/presentation/bloc/infrastructure_cubit.dart';
 import 'features/monitoring/data/datasources/monitoring_service_client.dart';
 import 'features/monitoring/presentation/bloc/monitoring_cubit.dart';
@@ -139,6 +140,9 @@ class ITNetworkMonitorApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiBlocProvider(
       providers: [
+        BlocProvider<FactoryCubit>(
+          create: (_) => getIt<FactoryCubit>()..loadFactories(),
+        ),
         BlocProvider<AuthCubit>.value(
           value: getIt<AuthCubit>()..checkAuthStatus(),
         ),

@@ -3,7 +3,7 @@ import '../entities/device_entity.dart';
 import '../entities/inventory_import_preview.dart';
 
 abstract class DeviceRepository {
-  Future<Result<List<DeviceEntity>>> getDevices();
+  Future<Result<List<DeviceEntity>>> getDevices({String? factoryId});
   Future<Result<DeviceEntity>> getDeviceById(int id);
   Future<Result<DeviceEntity>> addDevice(DeviceEntity device);
   Future<Result<DeviceEntity>> updateDevice(DeviceEntity device);

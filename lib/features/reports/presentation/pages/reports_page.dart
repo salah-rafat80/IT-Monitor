@@ -446,195 +446,197 @@ class _ReportsView extends StatelessWidget {
                                   headingRowColor: WidgetStateProperty.all(
                                     AppColors.darkSurface,
                                   ),
-                          columns: const [
-                            DataColumn(
-                              label: Text(
-                                'OWNER NAME',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: AppColors.textSecondaryDark,
-                                ),
-                              ),
-                            ),
-                            DataColumn(
-                              label: Text(
-                                'DEPARTMENT',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: AppColors.textSecondaryDark,
-                                ),
-                              ),
-                            ),
-                            DataColumn(
-                              label: Text(
-                                'DEVICE NAME',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: AppColors.textSecondaryDark,
-                                ),
-                              ),
-                            ),
-                            DataColumn(
-                              label: Text(
-                                'IP ADDRESS',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: AppColors.textSecondaryDark,
-                                ),
-                              ),
-                            ),
-                            DataColumn(
-                              label: Text(
-                                'UPTIME %',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: AppColors.textSecondaryDark,
-                                ),
-                              ),
-                            ),
-                            DataColumn(
-                              label: Text(
-                                'TOTAL CHECKS',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: AppColors.textSecondaryDark,
-                                ),
-                              ),
-                            ),
-                            DataColumn(
-                              label: Text(
-                                'FAILED CHECKS',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: AppColors.textSecondaryDark,
-                                ),
-                              ),
-                            ),
-                            DataColumn(
-                              label: Text(
-                                'AVG LATENCY',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: AppColors.textSecondaryDark,
-                                ),
-                              ),
-                            ),
-                          ],
-                          rows: report.deviceUptimes.map((dev) {
-                            final hasHistory =
-                                dev.hasSufficientHistory &&
-                                dev.uptimePercent != null;
-                            final uptimeColor = !hasHistory
-                                ? AppColors.textSecondaryDark
-                                : (dev.uptimePercent! >= 98.0
-                                      ? AppColors.statusUp
-                                      : (dev.uptimePercent! >= 90.0
-                                            ? AppColors.statusDegraded
-                                            : AppColors.statusDown));
-                            final uptimeText = hasHistory
-                                ? '${dev.uptimePercent}%'
-                                : 'N/A (No Data)';
+                                  columns: const [
+                                    DataColumn(
+                                      label: Text(
+                                        'OWNER NAME',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          color: AppColors.textSecondaryDark,
+                                        ),
+                                      ),
+                                    ),
+                                    DataColumn(
+                                      label: Text(
+                                        'DEPARTMENT',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          color: AppColors.textSecondaryDark,
+                                        ),
+                                      ),
+                                    ),
+                                    DataColumn(
+                                      label: Text(
+                                        'DEVICE NAME',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          color: AppColors.textSecondaryDark,
+                                        ),
+                                      ),
+                                    ),
+                                    DataColumn(
+                                      label: Text(
+                                        'IP ADDRESS',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          color: AppColors.textSecondaryDark,
+                                        ),
+                                      ),
+                                    ),
+                                    DataColumn(
+                                      label: Text(
+                                        'UPTIME %',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          color: AppColors.textSecondaryDark,
+                                        ),
+                                      ),
+                                    ),
+                                    DataColumn(
+                                      label: Text(
+                                        'TOTAL CHECKS',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          color: AppColors.textSecondaryDark,
+                                        ),
+                                      ),
+                                    ),
+                                    DataColumn(
+                                      label: Text(
+                                        'FAILED CHECKS',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          color: AppColors.textSecondaryDark,
+                                        ),
+                                      ),
+                                    ),
+                                    DataColumn(
+                                      label: Text(
+                                        'AVG LATENCY',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          color: AppColors.textSecondaryDark,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                  rows: report.deviceUptimes.map((dev) {
+                                    final hasHistory =
+                                        dev.hasSufficientHistory &&
+                                        dev.uptimePercent != null;
+                                    final uptimeColor = !hasHistory
+                                        ? AppColors.textSecondaryDark
+                                        : (dev.uptimePercent! >= 98.0
+                                              ? AppColors.statusUp
+                                              : (dev.uptimePercent! >= 90.0
+                                                    ? AppColors.statusDegraded
+                                                    : AppColors.statusDown));
+                                    final uptimeText = hasHistory
+                                        ? '${dev.uptimePercent}%'
+                                        : 'N/A (No Data)';
 
-                            return DataRow(
-                              cells: [
-                                DataCell(
-                                  Text(
-                                    dev.ownerName,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w600,
-                                      color: AppColors.textPrimaryDark,
-                                    ),
-                                  ),
+                                    return DataRow(
+                                      cells: [
+                                        DataCell(
+                                          Text(
+                                            dev.ownerName,
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.w600,
+                                              color: AppColors.textPrimaryDark,
+                                            ),
+                                          ),
+                                        ),
+                                        DataCell(
+                                          Text(
+                                            dev.department,
+                                            style: const TextStyle(
+                                              color:
+                                                  AppColors.textSecondaryDark,
+                                            ),
+                                          ),
+                                        ),
+                                        DataCell(
+                                          Text(
+                                            dev.deviceName,
+                                            style: const TextStyle(
+                                              color: AppColors.textPrimaryDark,
+                                            ),
+                                          ),
+                                        ),
+                                        DataCell(
+                                          Text(
+                                            dev.ip,
+                                            style: const TextStyle(
+                                              fontFamily: 'monospace',
+                                              color: AppColors.primary,
+                                            ),
+                                          ),
+                                        ),
+                                        DataCell(
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 8,
+                                              vertical: 4,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: uptimeColor.withValues(
+                                                alpha: 0.15,
+                                              ),
+                                              borderRadius:
+                                                  BorderRadius.circular(4),
+                                              border: Border.all(
+                                                color: uptimeColor,
+                                                width: 1,
+                                              ),
+                                            ),
+                                            child: Text(
+                                              uptimeText,
+                                              style: TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                                color: uptimeColor,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                        DataCell(
+                                          Text(
+                                            '${dev.totalChecks}',
+                                            style: const TextStyle(
+                                              color: AppColors.textPrimaryDark,
+                                            ),
+                                          ),
+                                        ),
+                                        DataCell(
+                                          Text(
+                                            '${dev.failedChecks}',
+                                            style: TextStyle(
+                                              color: dev.failedChecks > 0
+                                                  ? AppColors.statusDown
+                                                  : AppColors.textSecondaryDark,
+                                            ),
+                                          ),
+                                        ),
+                                        DataCell(
+                                          Text(
+                                            dev.avgLatencyMs != null
+                                                ? '${dev.avgLatencyMs} ms'
+                                                : 'N/A',
+                                            style: const TextStyle(
+                                              color: AppColors.textPrimaryDark,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    );
+                                  }).toList(),
                                 ),
-                                DataCell(
-                                  Text(
-                                    dev.department,
-                                    style: const TextStyle(
-                                      color: AppColors.textSecondaryDark,
-                                    ),
-                                  ),
-                                ),
-                                DataCell(
-                                  Text(
-                                    dev.deviceName,
-                                    style: const TextStyle(
-                                      color: AppColors.textPrimaryDark,
-                                    ),
-                                  ),
-                                ),
-                                DataCell(
-                                  Text(
-                                    dev.ip,
-                                    style: const TextStyle(
-                                      fontFamily: 'monospace',
-                                      color: AppColors.primary,
-                                    ),
-                                  ),
-                                ),
-                                DataCell(
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 8,
-                                      vertical: 4,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: uptimeColor.withValues(
-                                        alpha: 0.15,
-                                      ),
-                                      borderRadius: BorderRadius.circular(4),
-                                      border: Border.all(
-                                        color: uptimeColor,
-                                        width: 1,
-                                      ),
-                                    ),
-                                    child: Text(
-                                      uptimeText,
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        color: uptimeColor,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                DataCell(
-                                  Text(
-                                    '${dev.totalChecks}',
-                                    style: const TextStyle(
-                                      color: AppColors.textPrimaryDark,
-                                    ),
-                                  ),
-                                ),
-                                DataCell(
-                                  Text(
-                                    '${dev.failedChecks}',
-                                    style: TextStyle(
-                                      color: dev.failedChecks > 0
-                                          ? AppColors.statusDown
-                                          : AppColors.textSecondaryDark,
-                                    ),
-                                  ),
-                                ),
-                                DataCell(
-                                  Text(
-                                    dev.avgLatencyMs != null
-                                        ? '${dev.avgLatencyMs} ms'
-                                        : 'N/A',
-                                    style: const TextStyle(
-                                      color: AppColors.textPrimaryDark,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            );
-                          }).toList(),
-                        ),
+                              ),
+                            ),
+                          );
+                        },
                       ),
                     ),
-                  );
-                },
-              ),
-            ),
-          ),
+                  ),
                 ],
               );
             }

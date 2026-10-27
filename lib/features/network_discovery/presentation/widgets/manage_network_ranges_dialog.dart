@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../../factories/presentation/bloc/factory_cubit.dart';
 import '../../domain/entities/network_range.dart';
 import '../bloc/network_discovery_cubit.dart';
 import '../bloc/network_discovery_state.dart';
@@ -8,8 +9,13 @@ import '../bloc/network_discovery_state.dart';
 /// Administrator dialog to centrally manage dynamic network ranges
 class ManageNetworkRangesDialog extends StatefulWidget {
   final bool isAdmin;
+  final String? factoryId;
 
-  const ManageNetworkRangesDialog({super.key, required this.isAdmin});
+  const ManageNetworkRangesDialog({
+    super.key,
+    required this.isAdmin,
+    this.factoryId,
+  });
 
   @override
   State<ManageNetworkRangesDialog> createState() =>
@@ -59,6 +65,10 @@ class _ManageNetworkRangesDialogState extends State<ManageNetworkRangesDialog> {
     final cidr = _cidrController.text.trim();
     final name = _nameController.text.trim();
 
+    final factoryCubit = context.read<FactoryCubit>();
+    final effectiveFactoryId =
+        widget.factoryId ?? factoryCubit.state.selectedFactoryId ?? 'bnf';
+
     setState(() {
       _isSaving = true;
       _errorMessage = null;
@@ -69,6 +79,7 @@ class _ManageNetworkRangesDialogState extends State<ManageNetworkRangesDialog> {
       cidr: cidr,
       name: name.isNotEmpty ? name : null,
       isEnabled: true,
+      factoryId: effectiveFactoryId,
     );
 
     if (!mounted) return;
@@ -94,7 +105,10 @@ class _ManageNetworkRangesDialogState extends State<ManageNetworkRangesDialog> {
       final parsed = NetworkRange.tryParse(cidr);
       final targetCidr = parsed?.cidr ?? cidr;
       Navigator.of(context).pop();
-      await cubit.startScan(requestedRanges: [targetCidr]);
+      await cubit.startScan(
+        factoryId: effectiveFactoryId,
+        requestedRanges: [targetCidr],
+      );
     }
   }
 
@@ -220,9 +234,21 @@ class _ManageNetworkRangesDialogState extends State<ManageNetworkRangesDialog> {
           child: BlocBuilder<NetworkDiscoveryCubit, NetworkDiscoveryState>(
             builder: (context, state) {
               final cubit = context.read<NetworkDiscoveryCubit>();
-              final ranges = state is NetworkDiscoveryLoaded
+              final factoryCubit = context.watch<FactoryCubit>();
+              final effectiveFactoryId =
+                  widget.factoryId ?? factoryCubit.state.selectedFactoryId;
+              final selectedFactory = factoryCubit.state.factories
+                  .where((f) => f.id == effectiveFactoryId)
+                  .firstOrNull;
+
+              final rawRanges = state is NetworkDiscoveryLoaded
                   ? state.config.networkRanges
                   : <NetworkRange>[];
+              final ranges = effectiveFactoryId != null
+                  ? rawRanges
+                        .where((r) => r.factoryId == effectiveFactoryId)
+                        .toList()
+                  : rawRanges;
               final isScanning =
                   state is NetworkDiscoveryLoaded && state.isScanning;
 
@@ -239,13 +265,17 @@ class _ManageNetworkRangesDialogState extends State<ManageNetworkRangesDialog> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Manage Authorized Network Ranges',
+                              selectedFactory != null
+                                  ? 'Manage Ranges: ${selectedFactory.code} (${selectedFactory.name})'
+                                  : 'Manage Authorized Network Ranges (All Factories)',
                               style: theme.textTheme.titleLarge?.copyWith(
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
                             Text(
-                              'Authoritative CIDR scopes for discovery, device reconciliation, and monitoring.',
+                              selectedFactory != null
+                                  ? 'Authoritative CIDR scopes isolated to ${selectedFactory.name}.'
+                                  : 'Authoritative CIDR scopes for discovery, device reconciliation, and monitoring.',
                               style: theme.textTheme.bodySmall?.copyWith(
                                 color: theme.textTheme.bodySmall?.color
                                     ?.withValues(alpha: 0.7),
@@ -630,6 +660,7 @@ class _ManageNetworkRangesDialogState extends State<ManageNetworkRangesDialog> {
                                             : () async {
                                                 Navigator.of(context).pop();
                                                 await cubit.startScan(
+                                                  factoryId: range.factoryId,
                                                   requestedRanges: [range.cidr],
                                                 );
                                               },

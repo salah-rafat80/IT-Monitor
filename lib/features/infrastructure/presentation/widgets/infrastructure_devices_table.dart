@@ -331,262 +331,264 @@ class _InfrastructureDevicesTableState
                   child: SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
                     child: DataTable(
-                    headingRowColor: WidgetStateProperty.all(
-                      isDark ? AppColors.darkCard : AppColors.lightCard,
-                    ),
-                    dataRowMinHeight: 52,
-                    dataRowMaxHeight: 56,
-                    horizontalMargin: 20,
-                    columnSpacing: 24,
-                    columns: const [
-                      DataColumn(
-                        label: Text(
-                          'Status',
-                          style: TextStyle(fontWeight: FontWeight.bold),
-                        ),
+                      headingRowColor: WidgetStateProperty.all(
+                        isDark ? AppColors.darkCard : AppColors.lightCard,
                       ),
-                      DataColumn(
-                        label: Text(
-                          'Device Name',
-                          style: TextStyle(fontWeight: FontWeight.bold),
+                      dataRowMinHeight: 52,
+                      dataRowMaxHeight: 56,
+                      horizontalMargin: 20,
+                      columnSpacing: 24,
+                      columns: const [
+                        DataColumn(
+                          label: Text(
+                            'Status',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
                         ),
-                      ),
-                      DataColumn(
-                        label: Text(
-                          'IP Address',
-                          style: TextStyle(fontWeight: FontWeight.bold),
+                        DataColumn(
+                          label: Text(
+                            'Device Name',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
                         ),
-                      ),
-                      DataColumn(
-                        label: Text(
-                          'Role / Category',
-                          style: TextStyle(fontWeight: FontWeight.bold),
+                        DataColumn(
+                          label: Text(
+                            'IP Address',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
                         ),
-                      ),
-                      DataColumn(
-                        label: Text(
-                          'Location',
-                          style: TextStyle(fontWeight: FontWeight.bold),
+                        DataColumn(
+                          label: Text(
+                            'Role / Category',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
                         ),
-                      ),
-                      DataColumn(
-                        label: Text(
-                          'Latency',
-                          style: TextStyle(fontWeight: FontWeight.bold),
+                        DataColumn(
+                          label: Text(
+                            'Location',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
                         ),
-                      ),
-                      DataColumn(
-                        label: Text(
-                          'Last Checked',
-                          style: TextStyle(fontWeight: FontWeight.bold),
+                        DataColumn(
+                          label: Text(
+                            'Latency',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
                         ),
-                      ),
-                      DataColumn(
-                        label: Text(
-                          'Actions',
-                          style: TextStyle(fontWeight: FontWeight.bold),
+                        DataColumn(
+                          label: Text(
+                            'Last Checked',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
                         ),
-                      ),
-                    ],
-                    rows: filteredDevices.map((dev) {
-                      final status = state.getStatusFor(dev);
-                      final incident = state.getIncidentFor(dev);
-                      final statusEnum =
-                          status?.status ?? DeviceStatusEnum.unknown;
-                      final isChecking = state.isChecking(dev);
+                        DataColumn(
+                          label: Text(
+                            'Actions',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ],
+                      rows: filteredDevices.map((dev) {
+                        final status = state.getStatusFor(dev);
+                        final incident = state.getIncidentFor(dev);
+                        final statusEnum =
+                            status?.status ?? DeviceStatusEnum.unknown;
+                        final isChecking = state.isChecking(dev);
 
-                      return DataRow(
-                        cells: [
-                          DataCell(
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                DeviceStatusChip(status: statusEnum),
-                                if (incident != null) ...[
-                                  const SizedBox(width: 6),
+                        return DataRow(
+                          cells: [
+                            DataCell(
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  DeviceStatusChip(status: statusEnum),
+                                  if (incident != null) ...[
+                                    const SizedBox(width: 6),
+                                    Tooltip(
+                                      message:
+                                          incident.correlationMessage ??
+                                          'Active incident',
+                                      child: const Icon(
+                                        Icons.warning_amber_rounded,
+                                        size: 16,
+                                        color: AppColors.statusDown,
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                            DataCell(
+                              InkWell(
+                                onTap: () =>
+                                    InfrastructureDeviceDetailsModal.show(
+                                      context,
+                                      dev,
+                                    ),
+                                child: Text(
+                                  dev.name,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            DataCell(
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    dev.ip,
+                                    style: const TextStyle(
+                                      fontFamily: 'monospace',
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(
+                                      Icons.copy_rounded,
+                                      size: 14,
+                                    ),
+                                    tooltip: 'Copy IP',
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(),
+                                    onPressed: () {
+                                      Clipboard.setData(
+                                        ClipboardData(text: dev.ip),
+                                      );
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            'Copied ${dev.ip} to clipboard',
+                                          ),
+                                          duration: const Duration(seconds: 1),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ],
+                              ),
+                            ),
+                            DataCell(
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 3,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: _getRoleBadgeColor(
+                                    dev.role,
+                                  ).withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(
+                                    color: _getRoleBadgeColor(
+                                      dev.role,
+                                    ).withValues(alpha: 0.3),
+                                  ),
+                                ),
+                                child: Text(
+                                  dev.role.displayName,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: _getRoleBadgeColor(dev.role),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            DataCell(
+                              Text(
+                                dev.location?.isNotEmpty == true
+                                    ? dev.location!
+                                    : 'Not specified',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: isDark
+                                      ? AppColors.textSecondaryDark
+                                      : AppColors.textSecondaryLight,
+                                ),
+                              ),
+                            ),
+                            DataCell(
+                              Text(
+                                status?.status == DeviceStatusEnum.up &&
+                                        status?.lastLatencyMs != null
+                                    ? '${status!.lastLatencyMs} ms'
+                                    : '--',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: status?.status == DeviceStatusEnum.up
+                                      ? AppColors.statusUp
+                                      : null,
+                                  fontFamily: 'monospace',
+                                ),
+                              ),
+                            ),
+                            DataCell(
+                              Text(
+                                status?.lastCheckAt != null
+                                    ? DateFormat(
+                                        'HH:mm:ss',
+                                      ).format(status!.lastCheckAt!)
+                                    : 'Never',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: isDark
+                                      ? AppColors.textSecondaryDark
+                                      : AppColors.textSecondaryLight,
+                                ),
+                              ),
+                            ),
+                            DataCell(
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
                                   Tooltip(
-                                    message:
-                                        incident.correlationMessage ??
-                                        'Active incident',
-                                    child: const Icon(
-                                      Icons.warning_amber_rounded,
-                                      size: 16,
-                                      color: AppColors.statusDown,
+                                    message: 'Test Reachability / Ping Now',
+                                    child: IconButton(
+                                      icon: isChecking
+                                          ? const SizedBox(
+                                              width: 14,
+                                              height: 14,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                              ),
+                                            )
+                                          : const Icon(
+                                              Icons.network_ping_rounded,
+                                              size: 18,
+                                            ),
+                                      onPressed: isChecking
+                                          ? null
+                                          : () => cubit.pingDevice(dev),
+                                    ),
+                                  ),
+                                  Tooltip(
+                                    message: 'View Diagnostics & Specs',
+                                    child: IconButton(
+                                      icon: const Icon(
+                                        Icons.info_outline,
+                                        size: 18,
+                                      ),
+                                      onPressed: () =>
+                                          InfrastructureDeviceDetailsModal.show(
+                                            context,
+                                            dev,
+                                          ),
                                     ),
                                   ),
                                 ],
-                              ],
-                            ),
-                          ),
-                          DataCell(
-                            InkWell(
-                              onTap: () =>
-                                  InfrastructureDeviceDetailsModal.show(
-                                    context,
-                                    dev,
-                                  ),
-                              child: Text(
-                                dev.name,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                ),
                               ),
                             ),
-                          ),
-                          DataCell(
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  dev.ip,
-                                  style: const TextStyle(
-                                    fontFamily: 'monospace',
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                                IconButton(
-                                  icon: const Icon(
-                                    Icons.copy_rounded,
-                                    size: 14,
-                                  ),
-                                  tooltip: 'Copy IP',
-                                  padding: EdgeInsets.zero,
-                                  constraints: const BoxConstraints(),
-                                  onPressed: () {
-                                    Clipboard.setData(
-                                      ClipboardData(text: dev.ip),
-                                    );
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text(
-                                          'Copied ${dev.ip} to clipboard',
-                                        ),
-                                        duration: const Duration(seconds: 1),
-                                      ),
-                                    );
-                                  },
-                                ),
-                              ],
-                            ),
-                          ),
-                          DataCell(
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 3,
-                              ),
-                              decoration: BoxDecoration(
-                                color: _getRoleBadgeColor(
-                                  dev.role,
-                                ).withValues(alpha: 0.12),
-                                borderRadius: BorderRadius.circular(6),
-                                border: Border.all(
-                                  color: _getRoleBadgeColor(
-                                    dev.role,
-                                  ).withValues(alpha: 0.3),
-                                ),
-                              ),
-                              child: Text(
-                                dev.role.displayName,
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                  color: _getRoleBadgeColor(dev.role),
-                                ),
-                              ),
-                            ),
-                          ),
-                          DataCell(
-                            Text(
-                              dev.location?.isNotEmpty == true
-                                  ? dev.location!
-                                  : 'Not specified',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: isDark
-                                    ? AppColors.textSecondaryDark
-                                    : AppColors.textSecondaryLight,
-                              ),
-                            ),
-                          ),
-                          DataCell(
-                            Text(
-                              status?.status == DeviceStatusEnum.up &&
-                                      status?.lastLatencyMs != null
-                                  ? '${status!.lastLatencyMs} ms'
-                                  : '--',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: status?.status == DeviceStatusEnum.up
-                                    ? AppColors.statusUp
-                                    : null,
-                                fontFamily: 'monospace',
-                              ),
-                            ),
-                          ),
-                          DataCell(
-                            Text(
-                              status?.lastCheckAt != null
-                                  ? DateFormat(
-                                      'HH:mm:ss',
-                                    ).format(status!.lastCheckAt!)
-                                  : 'Never',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: isDark
-                                    ? AppColors.textSecondaryDark
-                                    : AppColors.textSecondaryLight,
-                              ),
-                            ),
-                          ),
-                          DataCell(
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Tooltip(
-                                  message: 'Test Reachability / Ping Now',
-                                  child: IconButton(
-                                    icon: isChecking
-                                        ? const SizedBox(
-                                            width: 14,
-                                            height: 14,
-                                            child: CircularProgressIndicator(
-                                              strokeWidth: 2,
-                                            ),
-                                          )
-                                        : const Icon(
-                                            Icons.network_ping_rounded,
-                                            size: 18,
-                                          ),
-                                    onPressed: isChecking
-                                        ? null
-                                        : () => cubit.pingDevice(dev),
-                                  ),
-                                ),
-                                Tooltip(
-                                  message: 'View Diagnostics & Specs',
-                                  child: IconButton(
-                                    icon: const Icon(
-                                      Icons.info_outline,
-                                      size: 18,
-                                    ),
-                                    onPressed: () =>
-                                        InfrastructureDeviceDetailsModal.show(
-                                          context,
-                                          dev,
-                                        ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      );
-                    }).toList(),
+                          ],
+                        );
+                      }).toList(),
+                    ),
                   ),
                 ),
               ),
-            ),
           ],
         );
       },

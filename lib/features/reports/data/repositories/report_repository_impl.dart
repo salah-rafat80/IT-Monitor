@@ -55,8 +55,9 @@ class ReportRepositoryImpl implements ReportRepository {
 
   @override
   Future<Result<ReportSummaryEntity>> generateReport(
-    ReportPeriod period,
-  ) async {
+    ReportPeriod period, {
+    String? factoryId,
+  }) async {
     if (AppConfig.isProductionClient) {
       final client = _effectiveClient;
       if (client == null || !client.isAuthenticated) {
@@ -66,7 +67,10 @@ class ReportRepositoryImpl implements ReportRepository {
           ),
         );
       }
-      final res = await client.getReportSummary(period.name);
+      final res = await client.getReportSummary(
+        period.name,
+        factoryId: factoryId,
+      );
       if (res.isSuccess && res.data != null) {
         final r = res.data!;
         final days = period == ReportPeriod.last30Days
@@ -113,32 +117,35 @@ class ReportRepositoryImpl implements ReportRepository {
           break;
       }
 
-      final devices =
-          await (_db.select(_db.devices)..where(
-                (d) => d.isEnabled.equals(true) & d.isMonitored.equals(true),
-              ))
-              .get();
-      final infraDevices = await (_db.select(
-        _db.infrastructureDevices,
-      )..where((d) => d.isEnabled.equals(true))).get();
+      var devQuery = _db.select(_db.devices)
+        ..where((d) => d.isEnabled.equals(true) & d.isMonitored.equals(true));
+      var infraQuery = _db.select(_db.infrastructureDevices)
+        ..where((d) => d.isEnabled.equals(true));
+      var checkQuery = _db.select(_db.checkResults)
+        ..where(
+          (c) =>
+              c.timestamp.isBiggerOrEqualValue(startDate) &
+              c.timestamp.isSmallerOrEqualValue(now),
+        );
+      var incQuery = _db.select(_db.incidents)
+        ..where(
+          (i) =>
+              i.startedAt.isSmallerOrEqualValue(now) &
+              (i.resolvedAt.isNull() |
+                  i.resolvedAt.isBiggerOrEqualValue(startDate)),
+        );
 
-      // Exclude future-dated check results and checks before startDate
-      final checkResults =
-          await (_db.select(_db.checkResults)..where(
-                (c) =>
-                    c.timestamp.isBiggerOrEqualValue(startDate) &
-                    c.timestamp.isSmallerOrEqualValue(now),
-              ))
-              .get();
+      if (factoryId != null && factoryId.isNotEmpty) {
+        devQuery = devQuery..where((d) => d.factoryId.equals(factoryId));
+        infraQuery = infraQuery..where((d) => d.factoryId.equals(factoryId));
+        checkQuery = checkQuery..where((c) => c.factoryId.equals(factoryId));
+        incQuery = incQuery..where((i) => i.factoryId.equals(factoryId));
+      }
 
-      final incidents =
-          await (_db.select(_db.incidents)..where(
-                (i) =>
-                    i.startedAt.isSmallerOrEqualValue(now) &
-                    (i.resolvedAt.isNull() |
-                        i.resolvedAt.isBiggerOrEqualValue(startDate)),
-              ))
-              .get();
+      final devices = await devQuery.get();
+      final infraDevices = await infraQuery.get();
+      final checkResults = await checkQuery.get();
+      final incidents = await incQuery.get();
 
       int totalCheckCount = checkResults.length;
       int successfulCheckCount = checkResults.where((c) => c.isSuccess).length;
@@ -406,6 +413,7 @@ class ReportRepositoryImpl implements ReportRepository {
   Future<Result<String>> exportReportToCsv(
     ReportSummaryEntity report, [
     String? outputDirectoryPath,
+    String? factoryId,
   ]) async {
     if (AppConfig.isProductionClient) {
       final client = _effectiveClient;
@@ -416,7 +424,10 @@ class ReportRepositoryImpl implements ReportRepository {
           ),
         );
       }
-      final res = await client.exportReportCsv(report.period.name);
+      final res = await client.exportReportCsv(
+        report.period.name,
+        factoryId: factoryId,
+      );
       if (res.isSuccess && res.data != null) {
         Directory targetDir;
         if (outputDirectoryPath != null &&

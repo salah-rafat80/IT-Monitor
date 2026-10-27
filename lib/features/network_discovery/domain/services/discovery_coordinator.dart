@@ -69,6 +69,7 @@ class DiscoveryCoordinator {
     List<String>? enabledStrategies,
     int? maxConcurrency,
     int? timeoutSeconds,
+    String? factoryId,
   }) async {
     if (_isScanning) {
       return Result.failure(
@@ -81,18 +82,26 @@ class DiscoveryCoordinator {
     _isScanning = true;
     _isCancelled = false;
 
+    final effectiveFactoryId = factoryId ?? 'unassigned';
+
     // 1. Fetch current configuration & validate ranges
     final configRes = await _discoveryRepo.getConfig();
     final config = configRes.dataOrNull ?? DiscoveryConfigEntity.initial();
 
-    final rangesToScan = requestedRanges ?? config.authorizedRanges;
+    List<String> rangesToScan;
+    if (requestedRanges != null && requestedRanges.isNotEmpty) {
+      rangesToScan = requestedRanges;
+    } else {
+      rangesToScan = config.getAuthorizedRangesForFactory(effectiveFactoryId);
+    }
+
     final validRanges = _rangeValidator.validateRanges(rangesToScan);
 
     if (validRanges.isEmpty) {
       _isScanning = false;
       return Result.failure(
         ValidationFailure(
-          'No valid authorized CIDR ranges provided for discovery',
+          'No valid authorized CIDR ranges provided for discovery in factory $effectiveFactoryId',
         ),
       );
     }
@@ -129,6 +138,7 @@ class DiscoveryCoordinator {
     // 3. Create Scan Job record
     final activeStrategies = enabledStrategies ?? config.enabledStrategies;
     var job = DiscoveryScanJob(
+      factoryId: effectiveFactoryId,
       status: ScanJobStatus.validating,
       targetRanges: validRanges.map((r) => r.cidr).toList(),
       enabledStrategies: activeStrategies,
@@ -212,15 +222,21 @@ class DiscoveryCoordinator {
     int unknowns = 0;
     int failures = 0;
 
-    // Load existing approved production inventory and infrastructure to prevent duplicates and detect AlreadyKnown
-    final devicesRes = await _deviceRepo.getDevices();
+    // Load existing approved production inventory and infrastructure for this factory to prevent cross-factory conflicts
+    final queryFactoryId =
+        (job.factoryId == 'unassigned' || job.factoryId.isEmpty)
+        ? null
+        : job.factoryId;
+    final devicesRes = await _deviceRepo.getDevices(factoryId: queryFactoryId);
     final existingDevices = devicesRes.dataOrNull ?? [];
     final knownIpMap = <String, dynamic>{
       for (final d in existingDevices) d.ip.trim(): d,
     };
 
     if (_infrastructureRepo != null) {
-      final infraRes = await _infrastructureRepo.getInfrastructureDevices();
+      final infraRes = await _infrastructureRepo.getInfrastructureDevices(
+        factoryId: queryFactoryId,
+      );
       final infraDevices = infraRes.dataOrNull ?? [];
       for (final infra in infraDevices) {
         if (infra.ip.trim().isNotEmpty) {
@@ -248,6 +264,7 @@ class DiscoveryCoordinator {
 
         final future =
             _probeTarget(
+                  factoryId: job.factoryId,
                   scanId: job.id,
                   targetIp: targetIp,
                   strategies: activeStrategyList,
@@ -344,6 +361,7 @@ class DiscoveryCoordinator {
   }
 
   Future<DiscoveredDeviceEntity?> _probeTarget({
+    required String factoryId,
     required int scanId,
     required String targetIp,
     required List<DiscoveryStrategy> strategies,
@@ -532,6 +550,7 @@ class DiscoveryCoordinator {
           : decision.category;
 
       final discoveredEntity = DiscoveredDeviceEntity(
+        factoryId: factoryId,
         scanId: scanId,
         ip: targetIp,
         mac: resolvedMac,

@@ -42,8 +42,14 @@ class FakeDeviceRepository implements DeviceRepository {
   }
 
   @override
-  Future<Result<List<DeviceEntity>>> getDevices() async =>
-      Result.success(List.from(_devices));
+  Future<Result<List<DeviceEntity>>> getDevices({String? factoryId}) async {
+    if (factoryId != null) {
+      return Result.success(
+        _devices.where((d) => d.factoryId == factoryId).toList(),
+      );
+    }
+    return Result.success(List.from(_devices));
+  }
 
   @override
   Future<Result<DeviceEntity>> getDeviceById(int id) async {
@@ -246,7 +252,8 @@ class FailingSaveDiscoveryRepository implements DiscoveryRepository {
   }
 
   @override
-  Future<Result<List<NetworkRange>>> getRanges() => _inner.getRanges();
+  Future<Result<List<NetworkRange>>> getRanges({String? factoryId}) =>
+      _inner.getRanges(factoryId: factoryId);
 
   @override
   Future<Result<void>> addRange(NetworkRange range) async {
@@ -279,7 +286,8 @@ class FailingSaveDiscoveryRepository implements DiscoveryRepository {
   }
 
   @override
-  Stream<List<NetworkRange>> watchRanges() => _inner.watchRanges();
+  Stream<List<NetworkRange>> watchRanges({String? factoryId}) =>
+      _inner.watchRanges(factoryId: factoryId);
 
   @override
   Future<Result<int>> createScanJob(DiscoveryScanJob job) =>
@@ -294,12 +302,12 @@ class FailingSaveDiscoveryRepository implements DiscoveryRepository {
       _inner.getScanJob(scanId);
 
   @override
-  Future<Result<DiscoveryScanJob?>> getLatestScanJob() =>
-      _inner.getLatestScanJob();
+  Future<Result<DiscoveryScanJob?>> getLatestScanJob({String? factoryId}) =>
+      _inner.getLatestScanJob(factoryId: factoryId);
 
   @override
-  Future<Result<List<DiscoveryScanJob>>> getAllScanJobs() =>
-      _inner.getAllScanJobs();
+  Future<Result<List<DiscoveryScanJob>>> getAllScanJobs({String? factoryId}) =>
+      _inner.getAllScanJobs(factoryId: factoryId);
 
   @override
   Future<Result<int>> saveDiscoveredDevice(DiscoveredDeviceEntity device) =>
@@ -307,12 +315,15 @@ class FailingSaveDiscoveryRepository implements DiscoveryRepository {
 
   @override
   Future<Result<List<DiscoveredDeviceEntity>>> getDiscoveredDevices({
+    String? factoryId,
     int? scanId,
-  }) => _inner.getDiscoveredDevices(scanId: scanId);
+  }) => _inner.getDiscoveredDevices(factoryId: factoryId, scanId: scanId);
 
   @override
-  Future<Result<DiscoveredDeviceEntity?>> getDiscoveredDeviceByIp(String ip) =>
-      _inner.getDiscoveredDeviceByIp(ip);
+  Future<Result<DiscoveredDeviceEntity?>> getDiscoveredDeviceByIp(
+    String ip, {
+    String? factoryId,
+  }) => _inner.getDiscoveredDeviceByIp(ip, factoryId: factoryId);
 
   @override
   Future<Result<void>> updateDeviceReview({
@@ -337,11 +348,14 @@ class FailingSaveDiscoveryRepository implements DiscoveryRepository {
   ) => _inner.getEvidenceForDevice(deviceId);
 
   @override
-  Stream<DiscoveryScanJob?> watchLatestScanJob() => _inner.watchLatestScanJob();
+  Stream<DiscoveryScanJob?> watchLatestScanJob({String? factoryId}) =>
+      _inner.watchLatestScanJob(factoryId: factoryId);
 
   @override
-  Stream<List<DiscoveredDeviceEntity>> watchDiscoveredDevices({int? scanId}) =>
-      _inner.watchDiscoveredDevices(scanId: scanId);
+  Stream<List<DiscoveredDeviceEntity>> watchDiscoveredDevices({
+    String? factoryId,
+    int? scanId,
+  }) => _inner.watchDiscoveredDevices(factoryId: factoryId, scanId: scanId);
 }
 
 void main() {

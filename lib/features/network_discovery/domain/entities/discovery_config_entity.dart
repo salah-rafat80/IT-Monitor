@@ -27,19 +27,33 @@ class DiscoveryConfigEntity extends Equatable {
            networkRanges ??
            (authorizedRanges != null
                ? authorizedRanges
-                     .map((c) => NetworkRange.parse(c))
+                     .map((c) => NetworkRange.parse(c, factoryId: 'unassigned'))
                      .whereType<NetworkRange>()
                      .toList()
                : const []);
 
-  /// Returns canonical CIDRs for all currently enabled network ranges.
-  /// Consumed by discovery scans, filters, and downstream scope checks.
+  /// Returns canonical CIDRs for all currently enabled network ranges across all factories.
   List<String> get authorizedRanges =>
       networkRanges.where((r) => r.isEnabled).map((r) => r.cidr).toList();
 
   /// Returns all configured CIDRs regardless of enabled state.
   List<String> get allConfiguredRanges =>
       networkRanges.map((r) => r.cidr).toList();
+
+  /// Returns all configured ranges belonging to a specific factory.
+  List<NetworkRange> getRangesForFactory(String factoryId) {
+    final clean = factoryId.trim().toLowerCase();
+    return networkRanges
+        .where((r) => r.factoryId.trim().toLowerCase() == clean)
+        .toList();
+  }
+
+  /// Returns canonical CIDRs for enabled network ranges belonging to a specific factory.
+  List<String> getAuthorizedRangesForFactory(String factoryId) {
+    return getRangesForFactory(
+      factoryId,
+    ).where((r) => r.isEnabled).map((r) => r.cidr).toList();
+  }
 
   /// Fresh installations initialize with zero hardcoded network ranges.
   /// Administrators must configure authorized scopes explicitly.
@@ -61,7 +75,7 @@ class DiscoveryConfigEntity extends Equatable {
     List<NetworkRange>? effectiveRanges = networkRanges;
     if (effectiveRanges == null && authorizedRanges != null) {
       effectiveRanges = authorizedRanges
-          .map((c) => NetworkRange.parse(c))
+          .map((c) => NetworkRange.parse(c, factoryId: 'unassigned'))
           .whereType<NetworkRange>()
           .toList();
     }
@@ -93,7 +107,7 @@ class DiscoveryConfigEntity extends Equatable {
             if (e is Map<String, dynamic>) {
               return NetworkRange.fromJson(e);
             } else if (e is String) {
-              return NetworkRange.parse(e);
+              return NetworkRange.parse(e, factoryId: 'unassigned');
             }
             return null;
           })
@@ -101,7 +115,7 @@ class DiscoveryConfigEntity extends Equatable {
           .toList();
     } else if (json['authorizedRanges'] is List) {
       ranges = (json['authorizedRanges'] as List)
-          .map((e) => NetworkRange.parse(e.toString()))
+          .map((e) => NetworkRange.parse(e.toString(), factoryId: 'unassigned'))
           .whereType<NetworkRange>()
           .toList();
     }

@@ -25,6 +25,8 @@ class MonitoringDashboardCubit extends Cubit<MonitoringDashboardState> {
   List<DeviceEntity> _cachedDevices = [];
   Map<int, DeviceStatusEntity> _cachedStatusMap = {};
   List<IncidentEntity> _cachedRealIncidents = [];
+  String? _activeFactoryId;
+  String? get activeFactoryId => _activeFactoryId;
 
   MonitoringDashboardCubit(
     this._deviceRepo,
@@ -33,13 +35,26 @@ class MonitoringDashboardCubit extends Cubit<MonitoringDashboardState> {
     this._incidentRepo,
   ]) : super(const MonitoringDashboardLoading());
 
-  Future<void> initDashboard({bool startScheduler = false}) async {
+  Future<void> setFactoryFilter(String? factoryId) async {
+    _activeFactoryId = factoryId;
+    await initDashboard(factoryId: factoryId);
+  }
+
+  Future<void> initDashboard({
+    bool startScheduler = false,
+    String? factoryId,
+  }) async {
+    if (factoryId != null || _activeFactoryId != null) {
+      _activeFactoryId = factoryId ?? _activeFactoryId;
+    }
     emit(const MonitoringDashboardLoading());
 
     try {
       await _deviceRepo.bootstrapApprovedInventory();
 
-      final devicesRes = await _deviceRepo.getDevices();
+      final devicesRes = await _deviceRepo.getDevices(
+        factoryId: _activeFactoryId,
+      );
       final statusesRes = await _monitoringRepo.getDeviceStatuses();
 
       if (devicesRes.isFailure) {
@@ -66,18 +81,22 @@ class MonitoringDashboardCubit extends Cubit<MonitoringDashboardState> {
       _cachedStatusMap = {for (final s in statusList) s.deviceId: s};
 
       if (_incidentRepo != null) {
-        final incidentsRes = await _incidentRepo.getActiveIncidents();
+        final incidentsRes = await _incidentRepo.getActiveIncidents(
+          factoryId: _activeFactoryId,
+        );
         _cachedRealIncidents = incidentsRes.dataOrNull ?? [];
         _incidentSubscription?.cancel();
-        _incidentSubscription = _incidentRepo.watchActiveIncidents().listen(
-          (incidents) {
-            _cachedRealIncidents = incidents;
-            _rebuildAndEmitLoaded();
-          },
-          onError: (e) {
-            // Stale or interrupted incident stream handled gracefully
-          },
-        );
+        _incidentSubscription = _incidentRepo
+            .watchActiveIncidents(factoryId: _activeFactoryId)
+            .listen(
+              (incidents) {
+                _cachedRealIncidents = incidents;
+                _rebuildAndEmitLoaded();
+              },
+              onError: (e) {
+                // Stale or interrupted incident stream handled gracefully
+              },
+            );
       }
 
       _statusSubscription?.cancel();
@@ -109,7 +128,9 @@ class MonitoringDashboardCubit extends Cubit<MonitoringDashboardState> {
   Future<void> refreshDevices() async {
     try {
       await _scheduler.triggerAllChecks(force: true);
-      final devicesRes = await _deviceRepo.getDevices();
+      final devicesRes = await _deviceRepo.getDevices(
+        factoryId: _activeFactoryId,
+      );
       final statusesRes = await _monitoringRepo.getDeviceStatuses();
       if (devicesRes.isFailure) {
         if (!isClosed) {

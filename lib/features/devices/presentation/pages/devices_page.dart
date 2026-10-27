@@ -10,6 +10,7 @@ import '../../../monitoring/presentation/bloc/monitoring_cubit.dart';
 import '../../../monitoring/presentation/widgets/device_status_chip.dart';
 import '../../domain/entities/device_entity.dart';
 import '../../domain/entities/inventory_import_preview.dart';
+import '../../../factories/presentation/bloc/factory_cubit.dart';
 import '../../../infrastructure/presentation/bloc/infrastructure_cubit.dart';
 import '../../../infrastructure/presentation/widgets/infrastructure_devices_table.dart';
 import '../bloc/devices_cubit.dart';
@@ -294,8 +295,12 @@ class _DevicesPageState extends State<DevicesPage> {
                 final name = nameController.text.trim();
                 if (ip.isNotEmpty && name.isNotEmpty) {
                   final now = DateTime.now();
+                  final factoryId =
+                      context.read<FactoryCubit>().state.selectedFactoryId ??
+                      'bnf';
                   final newDevice = DeviceEntity(
                     id: 0,
+                    factoryId: factoryId,
                     name: name,
                     type: selectedType,
                     ip: ip,
@@ -890,7 +895,9 @@ class _DevicesPageState extends State<DevicesPage> {
                                       .map(
                                         (err) => DataRow(
                                           cells: [
-                                            DataCell(Text('Row ${err.rowIndex}')),
+                                            DataCell(
+                                              Text('Row ${err.rowIndex}'),
+                                            ),
                                             DataCell(
                                               Text(
                                                 '${err.deviceName} (${err.rawIp})',

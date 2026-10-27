@@ -34,6 +34,8 @@ import '../../domain/services/monitoring_scheduler.dart';
 import '../../../infrastructure/domain/entities/unifi_device_entity.dart';
 import '../../../infrastructure/domain/repositories/infrastructure_repository.dart';
 import '../../../../core/config/app_run_mode.dart';
+import '../../../factories/domain/entities/factory_entity.dart';
+import '../../../factories/domain/repositories/factory_repository.dart';
 import '../../../users/domain/repositories/audit_log_repository.dart';
 import '../../../users/domain/repositories/user_repository.dart';
 
@@ -1281,6 +1283,133 @@ Write-Output 'OK'
             'expiresAt': session.expiresAt.toIso8601String(),
           },
         });
+      } else if (path == '/api/factories' && request.method == 'GET') {
+        final session = _authenticateRequest(request);
+        if (session == null) {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': 'Unauthorized: Valid session token required',
+          }, status: HttpStatus.unauthorized);
+          return;
+        }
+
+        final includeInactive =
+            request.uri.queryParameters['includeInactive'] == 'true';
+        final factoryRepo = getIt<FactoryRepository>();
+        final res = await factoryRepo.getFactories(
+          includeInactive: includeInactive,
+        );
+        if (res.isSuccess) {
+          await _jsonResponse(request, {
+            'success': true,
+            'factories': res.dataOrNull!.map((f) => f.toJson()).toList(),
+          });
+        } else {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': res.failureOrNull?.message ?? 'Failed to list factories',
+          }, status: 500);
+        }
+      } else if (path == '/api/factories' && request.method == 'POST') {
+        final session = _authenticateRequest(request);
+        if (session == null) {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': 'Unauthorized: Valid session token required',
+          }, status: HttpStatus.unauthorized);
+          return;
+        }
+        if (!_isAdmin(session)) {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': 'Forbidden: Admin role required to create factory',
+          }, status: HttpStatus.forbidden);
+          return;
+        }
+
+        final body = await _readJsonBody(request);
+        final factory = FactoryEntity.fromJson(body);
+        final factoryRepo = getIt<FactoryRepository>();
+        final res = await factoryRepo.createFactory(factory);
+        if (res.isSuccess) {
+          _broadcastEvent('factory_created', res.dataOrNull!.toJson());
+          await _jsonResponse(request, {
+            'success': true,
+            'factory': res.dataOrNull!.toJson(),
+          });
+        } else {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': res.failureOrNull?.message ?? 'Failed to create factory',
+          }, status: 400);
+        }
+      } else if (path.startsWith('/api/factories/') &&
+          request.method == 'PUT') {
+        final session = _authenticateRequest(request);
+        if (session == null) {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': 'Unauthorized: Valid session token required',
+          }, status: HttpStatus.unauthorized);
+          return;
+        }
+        if (!_isAdmin(session)) {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': 'Forbidden: Admin role required to update factory',
+          }, status: HttpStatus.forbidden);
+          return;
+        }
+
+        final body = await _readJsonBody(request);
+        final factory = FactoryEntity.fromJson(body);
+        final factoryRepo = getIt<FactoryRepository>();
+        final res = await factoryRepo.updateFactory(factory);
+        if (res.isSuccess) {
+          _broadcastEvent('factory_updated', res.dataOrNull!.toJson());
+          await _jsonResponse(request, {
+            'success': true,
+            'factory': res.dataOrNull!.toJson(),
+          });
+        } else {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': res.failureOrNull?.message ?? 'Failed to update factory',
+          }, status: 400);
+        }
+      } else if (path.startsWith('/api/factories/') &&
+          request.method == 'DELETE') {
+        final session = _authenticateRequest(request);
+        if (session == null) {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': 'Unauthorized: Valid session token required',
+          }, status: HttpStatus.unauthorized);
+          return;
+        }
+        if (!_isAdmin(session)) {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': 'Forbidden: Admin role required to delete factory',
+          }, status: HttpStatus.forbidden);
+          return;
+        }
+
+        final id = path.substring('/api/factories/'.length).trim();
+        final factoryRepo = getIt<FactoryRepository>();
+        final res = await factoryRepo.deleteFactory(id);
+        if (res.isSuccess) {
+          _broadcastEvent('factory_deleted', {'id': id});
+          await _jsonResponse(request, {
+            'success': true,
+            'message': 'Factory deactivated',
+          });
+        } else {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': res.failureOrNull?.message ?? 'Failed to delete factory',
+          }, status: 400);
+        }
       } else if (path == '/api/devices' && request.method == 'GET') {
         final session = _authenticateRequest(request);
         if (session == null) {
@@ -1291,10 +1420,11 @@ Write-Output 'OK'
           return;
         }
 
+        final factoryId = request.uri.queryParameters['factoryId'];
         final deviceRepo = getIt<DeviceRepository>();
         final monitoringRepo = getIt<MonitoringRepository>();
 
-        final devRes = await deviceRepo.getDevices();
+        final devRes = await deviceRepo.getDevices(factoryId: factoryId);
         final statRes = await monitoringRepo.getDeviceStatuses();
 
         if (devRes.isSuccess && statRes.isSuccess) {
@@ -1594,13 +1724,17 @@ Write-Output 'OK'
           return;
         }
 
+        final factoryId = request.uri.queryParameters['factoryId'];
         final infraRepo = getIt<InfrastructureRepository>();
-        final res = await infraRepo.getInfrastructureDevices();
+        final res = await infraRepo.getInfrastructureDevices(
+          factoryId: factoryId,
+        );
         if (res.isSuccess) {
           final list = res.dataOrNull!
               .map(
                 (d) => {
                   'id': d.id,
+                  'factoryId': d.factoryId,
                   'name': d.name,
                   'ip': d.ip,
                   'mac': d.mac,
@@ -1642,6 +1776,7 @@ Write-Output 'OK'
 
         final body = await _readJsonBody(request);
         final infraRepo = getIt<InfrastructureRepository>();
+        final factoryId = body['factoryId']?.toString().trim() ?? 'unassigned';
         final name = body['name']?.toString() ?? 'UniFi Device';
         final ip = body['ip']?.toString() ?? '';
         final roleStr = body['deviceRole']?.toString();
@@ -1652,6 +1787,7 @@ Write-Output 'OK'
 
         final device = UniFiDeviceEntity(
           id: body['id'] is int ? body['id'] as int : 0,
+          factoryId: factoryId,
           name: name,
           ip: ip,
           role: UniFiDeviceRole.fromString(roleStr),
@@ -1769,9 +1905,14 @@ Write-Output 'OK'
           return;
         }
 
+        final factoryId = request.uri.queryParameters['factoryId'];
         final incidentRepo = getIt<IncidentRepository>();
-        final activeRes = await incidentRepo.getActiveIncidents();
-        final historyRes = await incidentRepo.getIncidentHistory();
+        final activeRes = await incidentRepo.getActiveIncidents(
+          factoryId: factoryId,
+        );
+        final historyRes = await incidentRepo.getIncidentHistory(
+          factoryId: factoryId,
+        );
 
         await _jsonResponse(request, {
           'success': true,
@@ -1792,10 +1933,11 @@ Write-Output 'OK'
           return;
         }
 
+        final factoryId = request.uri.queryParameters['factoryId'];
         final deviceRepo = getIt<DeviceRepository>();
         final monitoringRepo = getIt<MonitoringRepository>();
 
-        final devRes = await deviceRepo.getDevices();
+        final devRes = await deviceRepo.getDevices(factoryId: factoryId);
         final statRes = await monitoringRepo.getDeviceStatuses();
 
         if (devRes.isSuccess && statRes.isSuccess) {
@@ -1962,6 +2104,7 @@ Write-Output 'OK'
           return;
         }
 
+        final factoryId = request.uri.queryParameters['factoryId'];
         final periodStr =
             request.uri.queryParameters['period'] ?? 'last24Hours';
         final period = periodStr == 'last7Days'
@@ -1971,7 +2114,10 @@ Write-Output 'OK'
                   : ReportPeriod.last24Hours);
 
         final reportRepo = getIt<ReportRepository>();
-        final res = await reportRepo.generateReport(period);
+        final res = await reportRepo.generateReport(
+          period,
+          factoryId: factoryId,
+        );
         if (res.isSuccess) {
           final r = res.dataOrNull!;
           await _jsonResponse(request, {
@@ -2000,6 +2146,7 @@ Write-Output 'OK'
           return;
         }
 
+        final factoryId = request.uri.queryParameters['factoryId'];
         final periodStr =
             request.uri.queryParameters['period'] ?? 'last24Hours';
         final period = periodStr == 'last7Days'
@@ -2009,7 +2156,10 @@ Write-Output 'OK'
                   : ReportPeriod.last24Hours);
 
         final reportRepo = getIt<ReportRepository>();
-        final reportRes = await reportRepo.generateReport(period);
+        final reportRes = await reportRepo.generateReport(
+          period,
+          factoryId: factoryId,
+        );
         if (!reportRes.isSuccess || reportRes.dataOrNull == null) {
           await _jsonResponse(request, {
             'success': false,
@@ -2019,7 +2169,11 @@ Write-Output 'OK'
           return;
         }
 
-        final res = await reportRepo.exportReportToCsv(reportRes.dataOrNull!);
+        final res = await reportRepo.exportReportToCsv(
+          reportRes.dataOrNull!,
+          null,
+          factoryId,
+        );
         if (res.isSuccess && res.dataOrNull != null) {
           final csvContent = await File(res.dataOrNull!).readAsString();
           await _jsonResponse(request, {'success': true, 'csv': csvContent});
@@ -2391,8 +2545,9 @@ Write-Output 'OK'
           return;
         }
 
+        final factoryId = request.uri.queryParameters['factoryId'];
         final discoveryRepo = getIt<DiscoveryRepository>();
-        final rangesRes = await discoveryRepo.getRanges();
+        final rangesRes = await discoveryRepo.getRanges(factoryId: factoryId);
         if (rangesRes.isSuccess) {
           await _jsonResponse(request, {
             'success': true,
@@ -2441,11 +2596,13 @@ Write-Output 'OK'
           return;
         }
 
+        final factoryId = body['factoryId']?.toString().trim() ?? 'unassigned';
         final name = body['name']?.toString().trim();
         final isEnabled = body['isEnabled'] is bool
             ? body['isEnabled'] as bool
             : true;
         final range = parsed.copyWith(
+          factoryId: factoryId,
           name: (name != null && name.isNotEmpty) ? name : null,
           isEnabled: isEnabled,
           createdAt: DateTime.now(),
@@ -2512,12 +2669,14 @@ Write-Output 'OK'
         }
 
         final id = body['id']?.toString() ?? parsed.id;
+        final factoryId = body['factoryId']?.toString().trim() ?? 'unassigned';
         final name = body['name']?.toString().trim();
         final isEnabled = body['isEnabled'] is bool
             ? body['isEnabled'] as bool
             : true;
         final range = parsed.copyWith(
           id: id,
+          factoryId: factoryId,
           name: (name != null && name.isNotEmpty) ? name : null,
           isEnabled: isEnabled,
           updatedAt: DateTime.now(),
@@ -2622,6 +2781,7 @@ Write-Output 'OK'
         }
 
         final body = await _readJsonBody(request);
+        final factoryId = body['factoryId']?.toString().trim() ?? 'unassigned';
         final ranges = (body['ranges'] as List<dynamic>?)
             ?.map((e) => e.toString())
             .toList();
@@ -2633,6 +2793,7 @@ Write-Output 'OK'
 
         final coordinator = getIt<DiscoveryCoordinator>();
         final res = await coordinator.startScan(
+          factoryId: factoryId,
           requestedRanges: ranges,
           enabledStrategies: strategies,
           maxConcurrency: concurrency,
@@ -2683,6 +2844,7 @@ Write-Output 'OK'
           return;
         }
 
+        final factoryId = request.uri.queryParameters['factoryId'];
         final coordinator = getIt.isRegistered<DiscoveryCoordinator>()
             ? getIt<DiscoveryCoordinator>()
             : null;
@@ -2690,7 +2852,7 @@ Write-Output 'OK'
             ? getIt<DiscoveryRepository>()
             : null;
         final latestJob = discoveryRepo != null
-            ? await discoveryRepo.getLatestScanJob()
+            ? await discoveryRepo.getLatestScanJob(factoryId: factoryId)
             : null;
 
         await _jsonResponse(request, {
@@ -2709,11 +2871,15 @@ Write-Output 'OK'
           return;
         }
 
+        final factoryId = request.uri.queryParameters['factoryId'];
         final discoveryRepo = getIt<DiscoveryRepository>();
         final scanIdStr = request.uri.queryParameters['scanId'];
         final scanId = scanIdStr != null ? int.tryParse(scanIdStr) : null;
 
-        final res = await discoveryRepo.getDiscoveredDevices(scanId: scanId);
+        final res = await discoveryRepo.getDiscoveredDevices(
+          factoryId: factoryId,
+          scanId: scanId,
+        );
         if (res.isSuccess) {
           await _jsonResponse(request, {
             'success': true,
@@ -2795,10 +2961,16 @@ Write-Output 'OK'
                   : '${deviceType.displayName}-${discovered.ip.replaceAll('.', '-')}');
 
         final deviceRepo = getIt<DeviceRepository>();
-        final existingDevicesRes = await deviceRepo.getDevices();
+        final existingDevicesRes = await deviceRepo.getDevices(
+          factoryId: discovered.factoryId,
+        );
         final existingDevices = existingDevicesRes.dataOrNull ?? [];
         final existing = existingDevices
-            .where((d) => d.ip.trim() == discovered.ip.trim())
+            .where(
+              (d) =>
+                  d.factoryId == discovered.factoryId &&
+                  d.ip.trim() == discovered.ip.trim(),
+            )
             .firstOrNull;
 
         int? savedId;
@@ -2840,6 +3012,7 @@ Write-Output 'OK'
           final createRes = await deviceRepo.addDevice(
             DeviceEntity(
               id: 0,
+              factoryId: discovered.factoryId,
               name: devName,
               type: deviceType,
               ip: discovered.ip,

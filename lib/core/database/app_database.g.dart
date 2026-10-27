@@ -3,6 +3,413 @@
 part of 'app_database.dart';
 
 // ignore_for_file: type=lint
+class $FactoriesTable extends Factories
+    with TableInfo<$FactoriesTable, FactoryData> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $FactoriesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _codeMeta = const VerificationMeta('code');
+  @override
+  late final GeneratedColumn<String> code = GeneratedColumn<String>(
+    'code',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways('UNIQUE'),
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _isActiveMeta = const VerificationMeta(
+    'isActive',
+  );
+  @override
+  late final GeneratedColumn<bool> isActive = GeneratedColumn<bool>(
+    'is_active',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_active" IN (0, 1))',
+    ),
+    defaultValue: const Constant(true),
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    code,
+    name,
+    isActive,
+    createdAt,
+    updatedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'factories';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<FactoryData> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('code')) {
+      context.handle(
+        _codeMeta,
+        code.isAcceptableOrUnknown(data['code']!, _codeMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_codeMeta);
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('is_active')) {
+      context.handle(
+        _isActiveMeta,
+        isActive.isAcceptableOrUnknown(data['is_active']!, _isActiveMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  FactoryData map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return FactoryData(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      code: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}code'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      isActive: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_active'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      ),
+    );
+  }
+
+  @override
+  $FactoriesTable createAlias(String alias) {
+    return $FactoriesTable(attachedDatabase, alias);
+  }
+}
+
+class FactoryData extends DataClass implements Insertable<FactoryData> {
+  final String id;
+  final String code;
+  final String name;
+  final bool isActive;
+  final DateTime createdAt;
+  final DateTime? updatedAt;
+  const FactoryData({
+    required this.id,
+    required this.code,
+    required this.name,
+    required this.isActive,
+    required this.createdAt,
+    this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['code'] = Variable<String>(code);
+    map['name'] = Variable<String>(name);
+    map['is_active'] = Variable<bool>(isActive);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    if (!nullToAbsent || updatedAt != null) {
+      map['updated_at'] = Variable<DateTime>(updatedAt);
+    }
+    return map;
+  }
+
+  FactoriesCompanion toCompanion(bool nullToAbsent) {
+    return FactoriesCompanion(
+      id: Value(id),
+      code: Value(code),
+      name: Value(name),
+      isActive: Value(isActive),
+      createdAt: Value(createdAt),
+      updatedAt: updatedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(updatedAt),
+    );
+  }
+
+  factory FactoryData.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return FactoryData(
+      id: serializer.fromJson<String>(json['id']),
+      code: serializer.fromJson<String>(json['code']),
+      name: serializer.fromJson<String>(json['name']),
+      isActive: serializer.fromJson<bool>(json['isActive']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime?>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'code': serializer.toJson<String>(code),
+      'name': serializer.toJson<String>(name),
+      'isActive': serializer.toJson<bool>(isActive),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime?>(updatedAt),
+    };
+  }
+
+  FactoryData copyWith({
+    String? id,
+    String? code,
+    String? name,
+    bool? isActive,
+    DateTime? createdAt,
+    Value<DateTime?> updatedAt = const Value.absent(),
+  }) => FactoryData(
+    id: id ?? this.id,
+    code: code ?? this.code,
+    name: name ?? this.name,
+    isActive: isActive ?? this.isActive,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt.present ? updatedAt.value : this.updatedAt,
+  );
+  FactoryData copyWithCompanion(FactoriesCompanion data) {
+    return FactoryData(
+      id: data.id.present ? data.id.value : this.id,
+      code: data.code.present ? data.code.value : this.code,
+      name: data.name.present ? data.name.value : this.name,
+      isActive: data.isActive.present ? data.isActive.value : this.isActive,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('FactoryData(')
+          ..write('id: $id, ')
+          ..write('code: $code, ')
+          ..write('name: $name, ')
+          ..write('isActive: $isActive, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(id, code, name, isActive, createdAt, updatedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is FactoryData &&
+          other.id == this.id &&
+          other.code == this.code &&
+          other.name == this.name &&
+          other.isActive == this.isActive &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt);
+}
+
+class FactoriesCompanion extends UpdateCompanion<FactoryData> {
+  final Value<String> id;
+  final Value<String> code;
+  final Value<String> name;
+  final Value<bool> isActive;
+  final Value<DateTime> createdAt;
+  final Value<DateTime?> updatedAt;
+  final Value<int> rowid;
+  const FactoriesCompanion({
+    this.id = const Value.absent(),
+    this.code = const Value.absent(),
+    this.name = const Value.absent(),
+    this.isActive = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  FactoriesCompanion.insert({
+    required String id,
+    required String code,
+    required String name,
+    this.isActive = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       code = Value(code),
+       name = Value(name);
+  static Insertable<FactoryData> custom({
+    Expression<String>? id,
+    Expression<String>? code,
+    Expression<String>? name,
+    Expression<bool>? isActive,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (code != null) 'code': code,
+      if (name != null) 'name': name,
+      if (isActive != null) 'is_active': isActive,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  FactoriesCompanion copyWith({
+    Value<String>? id,
+    Value<String>? code,
+    Value<String>? name,
+    Value<bool>? isActive,
+    Value<DateTime>? createdAt,
+    Value<DateTime?>? updatedAt,
+    Value<int>? rowid,
+  }) {
+    return FactoriesCompanion(
+      id: id ?? this.id,
+      code: code ?? this.code,
+      name: name ?? this.name,
+      isActive: isActive ?? this.isActive,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (code.present) {
+      map['code'] = Variable<String>(code.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (isActive.present) {
+      map['is_active'] = Variable<bool>(isActive.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('FactoriesCompanion(')
+          ..write('id: $id, ')
+          ..write('code: $code, ')
+          ..write('name: $name, ')
+          ..write('isActive: $isActive, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $UsersTable extends Users with TableInfo<$UsersTable, User> {
   @override
   final GeneratedDatabase attachedDatabase;
@@ -1185,6 +1592,18 @@ class $DevicesTable extends Devices with TableInfo<$DevicesTable, Device> {
       'PRIMARY KEY AUTOINCREMENT',
     ),
   );
+  static const VerificationMeta _factoryIdMeta = const VerificationMeta(
+    'factoryId',
+  );
+  @override
+  late final GeneratedColumn<String> factoryId = GeneratedColumn<String>(
+    'factory_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('unassigned'),
+  );
   static const VerificationMeta _nameMeta = const VerificationMeta('name');
   @override
   late final GeneratedColumn<String> name = GeneratedColumn<String>(
@@ -1382,6 +1801,7 @@ class $DevicesTable extends Devices with TableInfo<$DevicesTable, Device> {
   @override
   List<GeneratedColumn> get $columns => [
     id,
+    factoryId,
     name,
     type,
     ip,
@@ -1415,6 +1835,12 @@ class $DevicesTable extends Devices with TableInfo<$DevicesTable, Device> {
     final data = instance.toColumns(true);
     if (data.containsKey('id')) {
       context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('factory_id')) {
+      context.handle(
+        _factoryIdMeta,
+        factoryId.isAcceptableOrUnknown(data['factory_id']!, _factoryIdMeta),
+      );
     }
     if (data.containsKey('name')) {
       context.handle(
@@ -1557,6 +1983,10 @@ class $DevicesTable extends Devices with TableInfo<$DevicesTable, Device> {
         DriftSqlType.int,
         data['${effectivePrefix}id'],
       )!,
+      factoryId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}factory_id'],
+      )!,
       name: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}name'],
@@ -1640,6 +2070,7 @@ class $DevicesTable extends Devices with TableInfo<$DevicesTable, Device> {
 
 class Device extends DataClass implements Insertable<Device> {
   final int id;
+  final String factoryId;
   final String name;
   final String type;
   final String ip;
@@ -1660,6 +2091,7 @@ class Device extends DataClass implements Insertable<Device> {
   final DateTime? updatedAt;
   const Device({
     required this.id,
+    required this.factoryId,
     required this.name,
     required this.type,
     required this.ip,
@@ -1683,6 +2115,7 @@ class Device extends DataClass implements Insertable<Device> {
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['id'] = Variable<int>(id);
+    map['factory_id'] = Variable<String>(factoryId);
     map['name'] = Variable<String>(name);
     map['type'] = Variable<String>(type);
     map['ip'] = Variable<String>(ip);
@@ -1727,6 +2160,7 @@ class Device extends DataClass implements Insertable<Device> {
   DevicesCompanion toCompanion(bool nullToAbsent) {
     return DevicesCompanion(
       id: Value(id),
+      factoryId: Value(factoryId),
       name: Value(name),
       type: Value(type),
       ip: Value(ip),
@@ -1773,6 +2207,7 @@ class Device extends DataClass implements Insertable<Device> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return Device(
       id: serializer.fromJson<int>(json['id']),
+      factoryId: serializer.fromJson<String>(json['factoryId']),
       name: serializer.fromJson<String>(json['name']),
       type: serializer.fromJson<String>(json['type']),
       ip: serializer.fromJson<String>(json['ip']),
@@ -1798,6 +2233,7 @@ class Device extends DataClass implements Insertable<Device> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
       'id': serializer.toJson<int>(id),
+      'factoryId': serializer.toJson<String>(factoryId),
       'name': serializer.toJson<String>(name),
       'type': serializer.toJson<String>(type),
       'ip': serializer.toJson<String>(ip),
@@ -1821,6 +2257,7 @@ class Device extends DataClass implements Insertable<Device> {
 
   Device copyWith({
     int? id,
+    String? factoryId,
     String? name,
     String? type,
     String? ip,
@@ -1841,6 +2278,7 @@ class Device extends DataClass implements Insertable<Device> {
     Value<DateTime?> updatedAt = const Value.absent(),
   }) => Device(
     id: id ?? this.id,
+    factoryId: factoryId ?? this.factoryId,
     name: name ?? this.name,
     type: type ?? this.type,
     ip: ip ?? this.ip,
@@ -1871,6 +2309,7 @@ class Device extends DataClass implements Insertable<Device> {
   Device copyWithCompanion(DevicesCompanion data) {
     return Device(
       id: data.id.present ? data.id.value : this.id,
+      factoryId: data.factoryId.present ? data.factoryId.value : this.factoryId,
       name: data.name.present ? data.name.value : this.name,
       type: data.type.present ? data.type.value : this.type,
       ip: data.ip.present ? data.ip.value : this.ip,
@@ -1908,6 +2347,7 @@ class Device extends DataClass implements Insertable<Device> {
   String toString() {
     return (StringBuffer('Device(')
           ..write('id: $id, ')
+          ..write('factoryId: $factoryId, ')
           ..write('name: $name, ')
           ..write('type: $type, ')
           ..write('ip: $ip, ')
@@ -1933,6 +2373,7 @@ class Device extends DataClass implements Insertable<Device> {
   @override
   int get hashCode => Object.hash(
     id,
+    factoryId,
     name,
     type,
     ip,
@@ -1957,6 +2398,7 @@ class Device extends DataClass implements Insertable<Device> {
       identical(this, other) ||
       (other is Device &&
           other.id == this.id &&
+          other.factoryId == this.factoryId &&
           other.name == this.name &&
           other.type == this.type &&
           other.ip == this.ip &&
@@ -1979,6 +2421,7 @@ class Device extends DataClass implements Insertable<Device> {
 
 class DevicesCompanion extends UpdateCompanion<Device> {
   final Value<int> id;
+  final Value<String> factoryId;
   final Value<String> name;
   final Value<String> type;
   final Value<String> ip;
@@ -1999,6 +2442,7 @@ class DevicesCompanion extends UpdateCompanion<Device> {
   final Value<DateTime?> updatedAt;
   const DevicesCompanion({
     this.id = const Value.absent(),
+    this.factoryId = const Value.absent(),
     this.name = const Value.absent(),
     this.type = const Value.absent(),
     this.ip = const Value.absent(),
@@ -2020,6 +2464,7 @@ class DevicesCompanion extends UpdateCompanion<Device> {
   });
   DevicesCompanion.insert({
     this.id = const Value.absent(),
+    this.factoryId = const Value.absent(),
     required String name,
     this.type = const Value.absent(),
     required String ip,
@@ -2044,6 +2489,7 @@ class DevicesCompanion extends UpdateCompanion<Device> {
        department = Value(department);
   static Insertable<Device> custom({
     Expression<int>? id,
+    Expression<String>? factoryId,
     Expression<String>? name,
     Expression<String>? type,
     Expression<String>? ip,
@@ -2065,6 +2511,7 @@ class DevicesCompanion extends UpdateCompanion<Device> {
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
+      if (factoryId != null) 'factory_id': factoryId,
       if (name != null) 'name': name,
       if (type != null) 'type': type,
       if (ip != null) 'ip': ip,
@@ -2088,6 +2535,7 @@ class DevicesCompanion extends UpdateCompanion<Device> {
 
   DevicesCompanion copyWith({
     Value<int>? id,
+    Value<String>? factoryId,
     Value<String>? name,
     Value<String>? type,
     Value<String>? ip,
@@ -2109,6 +2557,7 @@ class DevicesCompanion extends UpdateCompanion<Device> {
   }) {
     return DevicesCompanion(
       id: id ?? this.id,
+      factoryId: factoryId ?? this.factoryId,
       name: name ?? this.name,
       type: type ?? this.type,
       ip: ip ?? this.ip,
@@ -2135,6 +2584,9 @@ class DevicesCompanion extends UpdateCompanion<Device> {
     final map = <String, Expression>{};
     if (id.present) {
       map['id'] = Variable<int>(id.value);
+    }
+    if (factoryId.present) {
+      map['factory_id'] = Variable<String>(factoryId.value);
     }
     if (name.present) {
       map['name'] = Variable<String>(name.value);
@@ -2197,6 +2649,7 @@ class DevicesCompanion extends UpdateCompanion<Device> {
   String toString() {
     return (StringBuffer('DevicesCompanion(')
           ..write('id: $id, ')
+          ..write('factoryId: $factoryId, ')
           ..write('name: $name, ')
           ..write('type: $type, ')
           ..write('ip: $ip, ')
@@ -2238,6 +2691,18 @@ class $CheckResultsTable extends CheckResults
     defaultConstraints: GeneratedColumn.constraintIsAlways(
       'PRIMARY KEY AUTOINCREMENT',
     ),
+  );
+  static const VerificationMeta _factoryIdMeta = const VerificationMeta(
+    'factoryId',
+  );
+  @override
+  late final GeneratedColumn<String> factoryId = GeneratedColumn<String>(
+    'factory_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('unassigned'),
   );
   static const VerificationMeta _deviceIdMeta = const VerificationMeta(
     'deviceId',
@@ -2347,6 +2812,7 @@ class $CheckResultsTable extends CheckResults
   @override
   List<GeneratedColumn> get $columns => [
     id,
+    factoryId,
     deviceId,
     assetId,
     targetIp,
@@ -2371,6 +2837,12 @@ class $CheckResultsTable extends CheckResults
     final data = instance.toColumns(true);
     if (data.containsKey('id')) {
       context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('factory_id')) {
+      context.handle(
+        _factoryIdMeta,
+        factoryId.isAcceptableOrUnknown(data['factory_id']!, _factoryIdMeta),
+      );
     }
     if (data.containsKey('device_id')) {
       context.handle(
@@ -2451,6 +2923,10 @@ class $CheckResultsTable extends CheckResults
         DriftSqlType.int,
         data['${effectivePrefix}id'],
       )!,
+      factoryId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}factory_id'],
+      )!,
       deviceId: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}device_id'],
@@ -2498,6 +2974,7 @@ class $CheckResultsTable extends CheckResults
 
 class CheckResultData extends DataClass implements Insertable<CheckResultData> {
   final int id;
+  final String factoryId;
   final int deviceId;
   final String? assetId;
   final String targetIp;
@@ -2509,6 +2986,7 @@ class CheckResultData extends DataClass implements Insertable<CheckResultData> {
   final DateTime timestamp;
   const CheckResultData({
     required this.id,
+    required this.factoryId,
     required this.deviceId,
     this.assetId,
     required this.targetIp,
@@ -2523,6 +3001,7 @@ class CheckResultData extends DataClass implements Insertable<CheckResultData> {
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['id'] = Variable<int>(id);
+    map['factory_id'] = Variable<String>(factoryId);
     map['device_id'] = Variable<int>(deviceId);
     if (!nullToAbsent || assetId != null) {
       map['asset_id'] = Variable<String>(assetId);
@@ -2546,6 +3025,7 @@ class CheckResultData extends DataClass implements Insertable<CheckResultData> {
   CheckResultsCompanion toCompanion(bool nullToAbsent) {
     return CheckResultsCompanion(
       id: Value(id),
+      factoryId: Value(factoryId),
       deviceId: Value(deviceId),
       assetId: assetId == null && nullToAbsent
           ? const Value.absent()
@@ -2573,6 +3053,7 @@ class CheckResultData extends DataClass implements Insertable<CheckResultData> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return CheckResultData(
       id: serializer.fromJson<int>(json['id']),
+      factoryId: serializer.fromJson<String>(json['factoryId']),
       deviceId: serializer.fromJson<int>(json['deviceId']),
       assetId: serializer.fromJson<String?>(json['assetId']),
       targetIp: serializer.fromJson<String>(json['targetIp']),
@@ -2591,6 +3072,7 @@ class CheckResultData extends DataClass implements Insertable<CheckResultData> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
       'id': serializer.toJson<int>(id),
+      'factoryId': serializer.toJson<String>(factoryId),
       'deviceId': serializer.toJson<int>(deviceId),
       'assetId': serializer.toJson<String?>(assetId),
       'targetIp': serializer.toJson<String>(targetIp),
@@ -2605,6 +3087,7 @@ class CheckResultData extends DataClass implements Insertable<CheckResultData> {
 
   CheckResultData copyWith({
     int? id,
+    String? factoryId,
     int? deviceId,
     Value<String?> assetId = const Value.absent(),
     String? targetIp,
@@ -2616,6 +3099,7 @@ class CheckResultData extends DataClass implements Insertable<CheckResultData> {
     DateTime? timestamp,
   }) => CheckResultData(
     id: id ?? this.id,
+    factoryId: factoryId ?? this.factoryId,
     deviceId: deviceId ?? this.deviceId,
     assetId: assetId.present ? assetId.value : this.assetId,
     targetIp: targetIp ?? this.targetIp,
@@ -2631,6 +3115,7 @@ class CheckResultData extends DataClass implements Insertable<CheckResultData> {
   CheckResultData copyWithCompanion(CheckResultsCompanion data) {
     return CheckResultData(
       id: data.id.present ? data.id.value : this.id,
+      factoryId: data.factoryId.present ? data.factoryId.value : this.factoryId,
       deviceId: data.deviceId.present ? data.deviceId.value : this.deviceId,
       assetId: data.assetId.present ? data.assetId.value : this.assetId,
       targetIp: data.targetIp.present ? data.targetIp.value : this.targetIp,
@@ -2651,6 +3136,7 @@ class CheckResultData extends DataClass implements Insertable<CheckResultData> {
   String toString() {
     return (StringBuffer('CheckResultData(')
           ..write('id: $id, ')
+          ..write('factoryId: $factoryId, ')
           ..write('deviceId: $deviceId, ')
           ..write('assetId: $assetId, ')
           ..write('targetIp: $targetIp, ')
@@ -2667,6 +3153,7 @@ class CheckResultData extends DataClass implements Insertable<CheckResultData> {
   @override
   int get hashCode => Object.hash(
     id,
+    factoryId,
     deviceId,
     assetId,
     targetIp,
@@ -2682,6 +3169,7 @@ class CheckResultData extends DataClass implements Insertable<CheckResultData> {
       identical(this, other) ||
       (other is CheckResultData &&
           other.id == this.id &&
+          other.factoryId == this.factoryId &&
           other.deviceId == this.deviceId &&
           other.assetId == this.assetId &&
           other.targetIp == this.targetIp &&
@@ -2695,6 +3183,7 @@ class CheckResultData extends DataClass implements Insertable<CheckResultData> {
 
 class CheckResultsCompanion extends UpdateCompanion<CheckResultData> {
   final Value<int> id;
+  final Value<String> factoryId;
   final Value<int> deviceId;
   final Value<String?> assetId;
   final Value<String> targetIp;
@@ -2706,6 +3195,7 @@ class CheckResultsCompanion extends UpdateCompanion<CheckResultData> {
   final Value<DateTime> timestamp;
   const CheckResultsCompanion({
     this.id = const Value.absent(),
+    this.factoryId = const Value.absent(),
     this.deviceId = const Value.absent(),
     this.assetId = const Value.absent(),
     this.targetIp = const Value.absent(),
@@ -2718,6 +3208,7 @@ class CheckResultsCompanion extends UpdateCompanion<CheckResultData> {
   });
   CheckResultsCompanion.insert({
     this.id = const Value.absent(),
+    this.factoryId = const Value.absent(),
     required int deviceId,
     this.assetId = const Value.absent(),
     required String targetIp,
@@ -2732,6 +3223,7 @@ class CheckResultsCompanion extends UpdateCompanion<CheckResultData> {
        isSuccess = Value(isSuccess);
   static Insertable<CheckResultData> custom({
     Expression<int>? id,
+    Expression<String>? factoryId,
     Expression<int>? deviceId,
     Expression<String>? assetId,
     Expression<String>? targetIp,
@@ -2744,6 +3236,7 @@ class CheckResultsCompanion extends UpdateCompanion<CheckResultData> {
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
+      if (factoryId != null) 'factory_id': factoryId,
       if (deviceId != null) 'device_id': deviceId,
       if (assetId != null) 'asset_id': assetId,
       if (targetIp != null) 'target_ip': targetIp,
@@ -2758,6 +3251,7 @@ class CheckResultsCompanion extends UpdateCompanion<CheckResultData> {
 
   CheckResultsCompanion copyWith({
     Value<int>? id,
+    Value<String>? factoryId,
     Value<int>? deviceId,
     Value<String?>? assetId,
     Value<String>? targetIp,
@@ -2770,6 +3264,7 @@ class CheckResultsCompanion extends UpdateCompanion<CheckResultData> {
   }) {
     return CheckResultsCompanion(
       id: id ?? this.id,
+      factoryId: factoryId ?? this.factoryId,
       deviceId: deviceId ?? this.deviceId,
       assetId: assetId ?? this.assetId,
       targetIp: targetIp ?? this.targetIp,
@@ -2787,6 +3282,9 @@ class CheckResultsCompanion extends UpdateCompanion<CheckResultData> {
     final map = <String, Expression>{};
     if (id.present) {
       map['id'] = Variable<int>(id.value);
+    }
+    if (factoryId.present) {
+      map['factory_id'] = Variable<String>(factoryId.value);
     }
     if (deviceId.present) {
       map['device_id'] = Variable<int>(deviceId.value);
@@ -2822,6 +3320,7 @@ class CheckResultsCompanion extends UpdateCompanion<CheckResultData> {
   String toString() {
     return (StringBuffer('CheckResultsCompanion(')
           ..write('id: $id, ')
+          ..write('factoryId: $factoryId, ')
           ..write('deviceId: $deviceId, ')
           ..write('assetId: $assetId, ')
           ..write('targetIp: $targetIp, ')
@@ -3564,6 +4063,18 @@ class $IncidentsTable extends Incidents
       'PRIMARY KEY AUTOINCREMENT',
     ),
   );
+  static const VerificationMeta _factoryIdMeta = const VerificationMeta(
+    'factoryId',
+  );
+  @override
+  late final GeneratedColumn<String> factoryId = GeneratedColumn<String>(
+    'factory_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('unassigned'),
+  );
   static const VerificationMeta _deviceIdMeta = const VerificationMeta(
     'deviceId',
   );
@@ -3732,6 +4243,7 @@ class $IncidentsTable extends Incidents
   @override
   List<GeneratedColumn> get $columns => [
     id,
+    factoryId,
     deviceId,
     deviceName,
     ownerName,
@@ -3762,6 +4274,12 @@ class $IncidentsTable extends Incidents
     final data = instance.toColumns(true);
     if (data.containsKey('id')) {
       context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('factory_id')) {
+      context.handle(
+        _factoryIdMeta,
+        factoryId.isAcceptableOrUnknown(data['factory_id']!, _factoryIdMeta),
+      );
     }
     if (data.containsKey('device_id')) {
       context.handle(
@@ -3890,6 +4408,10 @@ class $IncidentsTable extends Incidents
         DriftSqlType.int,
         data['${effectivePrefix}id'],
       )!,
+      factoryId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}factory_id'],
+      )!,
       deviceId: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}device_id'],
@@ -3961,6 +4483,7 @@ class $IncidentsTable extends Incidents
 
 class IncidentData extends DataClass implements Insertable<IncidentData> {
   final int id;
+  final String factoryId;
   final int deviceId;
   final String deviceName;
   final String ownerName;
@@ -3978,6 +4501,7 @@ class IncidentData extends DataClass implements Insertable<IncidentData> {
   final String? correlationMessage;
   const IncidentData({
     required this.id,
+    required this.factoryId,
     required this.deviceId,
     required this.deviceName,
     required this.ownerName,
@@ -3998,6 +4522,7 @@ class IncidentData extends DataClass implements Insertable<IncidentData> {
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['id'] = Variable<int>(id);
+    map['factory_id'] = Variable<String>(factoryId);
     map['device_id'] = Variable<int>(deviceId);
     map['device_name'] = Variable<String>(deviceName);
     map['owner_name'] = Variable<String>(ownerName);
@@ -4031,6 +4556,7 @@ class IncidentData extends DataClass implements Insertable<IncidentData> {
   IncidentsCompanion toCompanion(bool nullToAbsent) {
     return IncidentsCompanion(
       id: Value(id),
+      factoryId: Value(factoryId),
       deviceId: Value(deviceId),
       deviceName: Value(deviceName),
       ownerName: Value(ownerName),
@@ -4068,6 +4594,7 @@ class IncidentData extends DataClass implements Insertable<IncidentData> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return IncidentData(
       id: serializer.fromJson<int>(json['id']),
+      factoryId: serializer.fromJson<String>(json['factoryId']),
       deviceId: serializer.fromJson<int>(json['deviceId']),
       deviceName: serializer.fromJson<String>(json['deviceName']),
       ownerName: serializer.fromJson<String>(json['ownerName']),
@@ -4092,6 +4619,7 @@ class IncidentData extends DataClass implements Insertable<IncidentData> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
       'id': serializer.toJson<int>(id),
+      'factoryId': serializer.toJson<String>(factoryId),
       'deviceId': serializer.toJson<int>(deviceId),
       'deviceName': serializer.toJson<String>(deviceName),
       'ownerName': serializer.toJson<String>(ownerName),
@@ -4112,6 +4640,7 @@ class IncidentData extends DataClass implements Insertable<IncidentData> {
 
   IncidentData copyWith({
     int? id,
+    String? factoryId,
     int? deviceId,
     String? deviceName,
     String? ownerName,
@@ -4129,6 +4658,7 @@ class IncidentData extends DataClass implements Insertable<IncidentData> {
     Value<String?> correlationMessage = const Value.absent(),
   }) => IncidentData(
     id: id ?? this.id,
+    factoryId: factoryId ?? this.factoryId,
     deviceId: deviceId ?? this.deviceId,
     deviceName: deviceName ?? this.deviceName,
     ownerName: ownerName ?? this.ownerName,
@@ -4154,6 +4684,7 @@ class IncidentData extends DataClass implements Insertable<IncidentData> {
   IncidentData copyWithCompanion(IncidentsCompanion data) {
     return IncidentData(
       id: data.id.present ? data.id.value : this.id,
+      factoryId: data.factoryId.present ? data.factoryId.value : this.factoryId,
       deviceId: data.deviceId.present ? data.deviceId.value : this.deviceId,
       deviceName: data.deviceName.present
           ? data.deviceName.value
@@ -4190,6 +4721,7 @@ class IncidentData extends DataClass implements Insertable<IncidentData> {
   String toString() {
     return (StringBuffer('IncidentData(')
           ..write('id: $id, ')
+          ..write('factoryId: $factoryId, ')
           ..write('deviceId: $deviceId, ')
           ..write('deviceName: $deviceName, ')
           ..write('ownerName: $ownerName, ')
@@ -4212,6 +4744,7 @@ class IncidentData extends DataClass implements Insertable<IncidentData> {
   @override
   int get hashCode => Object.hash(
     id,
+    factoryId,
     deviceId,
     deviceName,
     ownerName,
@@ -4233,6 +4766,7 @@ class IncidentData extends DataClass implements Insertable<IncidentData> {
       identical(this, other) ||
       (other is IncidentData &&
           other.id == this.id &&
+          other.factoryId == this.factoryId &&
           other.deviceId == this.deviceId &&
           other.deviceName == this.deviceName &&
           other.ownerName == this.ownerName &&
@@ -4252,6 +4786,7 @@ class IncidentData extends DataClass implements Insertable<IncidentData> {
 
 class IncidentsCompanion extends UpdateCompanion<IncidentData> {
   final Value<int> id;
+  final Value<String> factoryId;
   final Value<int> deviceId;
   final Value<String> deviceName;
   final Value<String> ownerName;
@@ -4269,6 +4804,7 @@ class IncidentsCompanion extends UpdateCompanion<IncidentData> {
   final Value<String?> correlationMessage;
   const IncidentsCompanion({
     this.id = const Value.absent(),
+    this.factoryId = const Value.absent(),
     this.deviceId = const Value.absent(),
     this.deviceName = const Value.absent(),
     this.ownerName = const Value.absent(),
@@ -4287,6 +4823,7 @@ class IncidentsCompanion extends UpdateCompanion<IncidentData> {
   });
   IncidentsCompanion.insert({
     this.id = const Value.absent(),
+    this.factoryId = const Value.absent(),
     required int deviceId,
     required String deviceName,
     required String ownerName,
@@ -4310,6 +4847,7 @@ class IncidentsCompanion extends UpdateCompanion<IncidentData> {
        incidentType = Value(incidentType);
   static Insertable<IncidentData> custom({
     Expression<int>? id,
+    Expression<String>? factoryId,
     Expression<int>? deviceId,
     Expression<String>? deviceName,
     Expression<String>? ownerName,
@@ -4328,6 +4866,7 @@ class IncidentsCompanion extends UpdateCompanion<IncidentData> {
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
+      if (factoryId != null) 'factory_id': factoryId,
       if (deviceId != null) 'device_id': deviceId,
       if (deviceName != null) 'device_name': deviceName,
       if (ownerName != null) 'owner_name': ownerName,
@@ -4348,6 +4887,7 @@ class IncidentsCompanion extends UpdateCompanion<IncidentData> {
 
   IncidentsCompanion copyWith({
     Value<int>? id,
+    Value<String>? factoryId,
     Value<int>? deviceId,
     Value<String>? deviceName,
     Value<String>? ownerName,
@@ -4366,6 +4906,7 @@ class IncidentsCompanion extends UpdateCompanion<IncidentData> {
   }) {
     return IncidentsCompanion(
       id: id ?? this.id,
+      factoryId: factoryId ?? this.factoryId,
       deviceId: deviceId ?? this.deviceId,
       deviceName: deviceName ?? this.deviceName,
       ownerName: ownerName ?? this.ownerName,
@@ -4389,6 +4930,9 @@ class IncidentsCompanion extends UpdateCompanion<IncidentData> {
     final map = <String, Expression>{};
     if (id.present) {
       map['id'] = Variable<int>(id.value);
+    }
+    if (factoryId.present) {
+      map['factory_id'] = Variable<String>(factoryId.value);
     }
     if (deviceId.present) {
       map['device_id'] = Variable<int>(deviceId.value);
@@ -4442,6 +4986,7 @@ class IncidentsCompanion extends UpdateCompanion<IncidentData> {
   String toString() {
     return (StringBuffer('IncidentsCompanion(')
           ..write('id: $id, ')
+          ..write('factoryId: $factoryId, ')
           ..write('deviceId: $deviceId, ')
           ..write('deviceName: $deviceName, ')
           ..write('ownerName: $ownerName, ')
@@ -4918,6 +5463,18 @@ class $DiscoveryScansTable extends DiscoveryScans
       'PRIMARY KEY AUTOINCREMENT',
     ),
   );
+  static const VerificationMeta _factoryIdMeta = const VerificationMeta(
+    'factoryId',
+  );
+  @override
+  late final GeneratedColumn<String> factoryId = GeneratedColumn<String>(
+    'factory_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('unassigned'),
+  );
   static const VerificationMeta _statusMeta = const VerificationMeta('status');
   @override
   late final GeneratedColumn<String> status = GeneratedColumn<String>(
@@ -5063,6 +5620,7 @@ class $DiscoveryScansTable extends DiscoveryScans
   @override
   List<GeneratedColumn> get $columns => [
     id,
+    factoryId,
     status,
     rangesJson,
     enabledStrategiesJson,
@@ -5090,6 +5648,12 @@ class $DiscoveryScansTable extends DiscoveryScans
     final data = instance.toColumns(true);
     if (data.containsKey('id')) {
       context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('factory_id')) {
+      context.handle(
+        _factoryIdMeta,
+        factoryId.isAcceptableOrUnknown(data['factory_id']!, _factoryIdMeta),
+      );
     }
     if (data.containsKey('status')) {
       context.handle(
@@ -5205,6 +5769,10 @@ class $DiscoveryScansTable extends DiscoveryScans
         DriftSqlType.int,
         data['${effectivePrefix}id'],
       )!,
+      factoryId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}factory_id'],
+      )!,
       status: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}status'],
@@ -5265,6 +5833,7 @@ class $DiscoveryScansTable extends DiscoveryScans
 class DiscoveryScanData extends DataClass
     implements Insertable<DiscoveryScanData> {
   final int id;
+  final String factoryId;
   final String status;
   final String rangesJson;
   final String enabledStrategiesJson;
@@ -5279,6 +5848,7 @@ class DiscoveryScanData extends DataClass
   final String? diagnosticSummary;
   const DiscoveryScanData({
     required this.id,
+    required this.factoryId,
     required this.status,
     required this.rangesJson,
     required this.enabledStrategiesJson,
@@ -5296,6 +5866,7 @@ class DiscoveryScanData extends DataClass
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['id'] = Variable<int>(id);
+    map['factory_id'] = Variable<String>(factoryId);
     map['status'] = Variable<String>(status);
     map['ranges_json'] = Variable<String>(rangesJson);
     map['enabled_strategies_json'] = Variable<String>(enabledStrategiesJson);
@@ -5318,6 +5889,7 @@ class DiscoveryScanData extends DataClass
   DiscoveryScansCompanion toCompanion(bool nullToAbsent) {
     return DiscoveryScansCompanion(
       id: Value(id),
+      factoryId: Value(factoryId),
       status: Value(status),
       rangesJson: Value(rangesJson),
       enabledStrategiesJson: Value(enabledStrategiesJson),
@@ -5344,6 +5916,7 @@ class DiscoveryScanData extends DataClass
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return DiscoveryScanData(
       id: serializer.fromJson<int>(json['id']),
+      factoryId: serializer.fromJson<String>(json['factoryId']),
       status: serializer.fromJson<String>(json['status']),
       rangesJson: serializer.fromJson<String>(json['rangesJson']),
       enabledStrategiesJson: serializer.fromJson<String>(
@@ -5367,6 +5940,7 @@ class DiscoveryScanData extends DataClass
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
       'id': serializer.toJson<int>(id),
+      'factoryId': serializer.toJson<String>(factoryId),
       'status': serializer.toJson<String>(status),
       'rangesJson': serializer.toJson<String>(rangesJson),
       'enabledStrategiesJson': serializer.toJson<String>(enabledStrategiesJson),
@@ -5384,6 +5958,7 @@ class DiscoveryScanData extends DataClass
 
   DiscoveryScanData copyWith({
     int? id,
+    String? factoryId,
     String? status,
     String? rangesJson,
     String? enabledStrategiesJson,
@@ -5398,6 +5973,7 @@ class DiscoveryScanData extends DataClass
     Value<String?> diagnosticSummary = const Value.absent(),
   }) => DiscoveryScanData(
     id: id ?? this.id,
+    factoryId: factoryId ?? this.factoryId,
     status: status ?? this.status,
     rangesJson: rangesJson ?? this.rangesJson,
     enabledStrategiesJson: enabledStrategiesJson ?? this.enabledStrategiesJson,
@@ -5416,6 +5992,7 @@ class DiscoveryScanData extends DataClass
   DiscoveryScanData copyWithCompanion(DiscoveryScansCompanion data) {
     return DiscoveryScanData(
       id: data.id.present ? data.id.value : this.id,
+      factoryId: data.factoryId.present ? data.factoryId.value : this.factoryId,
       status: data.status.present ? data.status.value : this.status,
       rangesJson: data.rangesJson.present
           ? data.rangesJson.value
@@ -5455,6 +6032,7 @@ class DiscoveryScanData extends DataClass
   String toString() {
     return (StringBuffer('DiscoveryScanData(')
           ..write('id: $id, ')
+          ..write('factoryId: $factoryId, ')
           ..write('status: $status, ')
           ..write('rangesJson: $rangesJson, ')
           ..write('enabledStrategiesJson: $enabledStrategiesJson, ')
@@ -5474,6 +6052,7 @@ class DiscoveryScanData extends DataClass
   @override
   int get hashCode => Object.hash(
     id,
+    factoryId,
     status,
     rangesJson,
     enabledStrategiesJson,
@@ -5492,6 +6071,7 @@ class DiscoveryScanData extends DataClass
       identical(this, other) ||
       (other is DiscoveryScanData &&
           other.id == this.id &&
+          other.factoryId == this.factoryId &&
           other.status == this.status &&
           other.rangesJson == this.rangesJson &&
           other.enabledStrategiesJson == this.enabledStrategiesJson &&
@@ -5508,6 +6088,7 @@ class DiscoveryScanData extends DataClass
 
 class DiscoveryScansCompanion extends UpdateCompanion<DiscoveryScanData> {
   final Value<int> id;
+  final Value<String> factoryId;
   final Value<String> status;
   final Value<String> rangesJson;
   final Value<String> enabledStrategiesJson;
@@ -5522,6 +6103,7 @@ class DiscoveryScansCompanion extends UpdateCompanion<DiscoveryScanData> {
   final Value<String?> diagnosticSummary;
   const DiscoveryScansCompanion({
     this.id = const Value.absent(),
+    this.factoryId = const Value.absent(),
     this.status = const Value.absent(),
     this.rangesJson = const Value.absent(),
     this.enabledStrategiesJson = const Value.absent(),
@@ -5537,6 +6119,7 @@ class DiscoveryScansCompanion extends UpdateCompanion<DiscoveryScanData> {
   });
   DiscoveryScansCompanion.insert({
     this.id = const Value.absent(),
+    this.factoryId = const Value.absent(),
     this.status = const Value.absent(),
     required String rangesJson,
     this.enabledStrategiesJson = const Value.absent(),
@@ -5552,6 +6135,7 @@ class DiscoveryScansCompanion extends UpdateCompanion<DiscoveryScanData> {
   }) : rangesJson = Value(rangesJson);
   static Insertable<DiscoveryScanData> custom({
     Expression<int>? id,
+    Expression<String>? factoryId,
     Expression<String>? status,
     Expression<String>? rangesJson,
     Expression<String>? enabledStrategiesJson,
@@ -5567,6 +6151,7 @@ class DiscoveryScansCompanion extends UpdateCompanion<DiscoveryScanData> {
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
+      if (factoryId != null) 'factory_id': factoryId,
       if (status != null) 'status': status,
       if (rangesJson != null) 'ranges_json': rangesJson,
       if (enabledStrategiesJson != null)
@@ -5585,6 +6170,7 @@ class DiscoveryScansCompanion extends UpdateCompanion<DiscoveryScanData> {
 
   DiscoveryScansCompanion copyWith({
     Value<int>? id,
+    Value<String>? factoryId,
     Value<String>? status,
     Value<String>? rangesJson,
     Value<String>? enabledStrategiesJson,
@@ -5600,6 +6186,7 @@ class DiscoveryScansCompanion extends UpdateCompanion<DiscoveryScanData> {
   }) {
     return DiscoveryScansCompanion(
       id: id ?? this.id,
+      factoryId: factoryId ?? this.factoryId,
       status: status ?? this.status,
       rangesJson: rangesJson ?? this.rangesJson,
       enabledStrategiesJson:
@@ -5621,6 +6208,9 @@ class DiscoveryScansCompanion extends UpdateCompanion<DiscoveryScanData> {
     final map = <String, Expression>{};
     if (id.present) {
       map['id'] = Variable<int>(id.value);
+    }
+    if (factoryId.present) {
+      map['factory_id'] = Variable<String>(factoryId.value);
     }
     if (status.present) {
       map['status'] = Variable<String>(status.value);
@@ -5667,6 +6257,7 @@ class DiscoveryScansCompanion extends UpdateCompanion<DiscoveryScanData> {
   String toString() {
     return (StringBuffer('DiscoveryScansCompanion(')
           ..write('id: $id, ')
+          ..write('factoryId: $factoryId, ')
           ..write('status: $status, ')
           ..write('rangesJson: $rangesJson, ')
           ..write('enabledStrategiesJson: $enabledStrategiesJson, ')
@@ -5711,6 +6302,18 @@ class $DiscoveredDevicesTable extends DiscoveredDevices
     false,
     type: DriftSqlType.int,
     requiredDuringInsert: true,
+  );
+  static const VerificationMeta _factoryIdMeta = const VerificationMeta(
+    'factoryId',
+  );
+  @override
+  late final GeneratedColumn<String> factoryId = GeneratedColumn<String>(
+    'factory_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('unassigned'),
   );
   static const VerificationMeta _ipMeta = const VerificationMeta('ip');
   @override
@@ -5914,6 +6517,7 @@ class $DiscoveredDevicesTable extends DiscoveredDevices
   List<GeneratedColumn> get $columns => [
     id,
     scanId,
+    factoryId,
     ip,
     mac,
     hostname,
@@ -5955,6 +6559,12 @@ class $DiscoveredDevicesTable extends DiscoveredDevices
       );
     } else if (isInserting) {
       context.missing(_scanIdMeta);
+    }
+    if (data.containsKey('factory_id')) {
+      context.handle(
+        _factoryIdMeta,
+        factoryId.isAcceptableOrUnknown(data['factory_id']!, _factoryIdMeta),
+      );
     }
     if (data.containsKey('ip')) {
       context.handle(_ipMeta, ip.isAcceptableOrUnknown(data['ip']!, _ipMeta));
@@ -6113,6 +6723,10 @@ class $DiscoveredDevicesTable extends DiscoveredDevices
         DriftSqlType.int,
         data['${effectivePrefix}scan_id'],
       )!,
+      factoryId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}factory_id'],
+      )!,
       ip: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}ip'],
@@ -6198,6 +6812,7 @@ class DiscoveredDeviceData extends DataClass
     implements Insertable<DiscoveredDeviceData> {
   final int id;
   final int scanId;
+  final String factoryId;
   final String ip;
   final String? mac;
   final String? hostname;
@@ -6219,6 +6834,7 @@ class DiscoveredDeviceData extends DataClass
   const DiscoveredDeviceData({
     required this.id,
     required this.scanId,
+    required this.factoryId,
     required this.ip,
     this.mac,
     this.hostname,
@@ -6243,6 +6859,7 @@ class DiscoveredDeviceData extends DataClass
     final map = <String, Expression>{};
     map['id'] = Variable<int>(id);
     map['scan_id'] = Variable<int>(scanId);
+    map['factory_id'] = Variable<String>(factoryId);
     map['ip'] = Variable<String>(ip);
     if (!nullToAbsent || mac != null) {
       map['mac'] = Variable<String>(mac);
@@ -6294,6 +6911,7 @@ class DiscoveredDeviceData extends DataClass
     return DiscoveredDevicesCompanion(
       id: Value(id),
       scanId: Value(scanId),
+      factoryId: Value(factoryId),
       ip: Value(ip),
       mac: mac == null && nullToAbsent ? const Value.absent() : Value(mac),
       hostname: hostname == null && nullToAbsent
@@ -6343,6 +6961,7 @@ class DiscoveredDeviceData extends DataClass
     return DiscoveredDeviceData(
       id: serializer.fromJson<int>(json['id']),
       scanId: serializer.fromJson<int>(json['scanId']),
+      factoryId: serializer.fromJson<String>(json['factoryId']),
       ip: serializer.fromJson<String>(json['ip']),
       mac: serializer.fromJson<String?>(json['mac']),
       hostname: serializer.fromJson<String?>(json['hostname']),
@@ -6381,6 +7000,7 @@ class DiscoveredDeviceData extends DataClass
     return <String, dynamic>{
       'id': serializer.toJson<int>(id),
       'scanId': serializer.toJson<int>(scanId),
+      'factoryId': serializer.toJson<String>(factoryId),
       'ip': serializer.toJson<String>(ip),
       'mac': serializer.toJson<String?>(mac),
       'hostname': serializer.toJson<String?>(hostname),
@@ -6411,6 +7031,7 @@ class DiscoveredDeviceData extends DataClass
   DiscoveredDeviceData copyWith({
     int? id,
     int? scanId,
+    String? factoryId,
     String? ip,
     Value<String?> mac = const Value.absent(),
     Value<String?> hostname = const Value.absent(),
@@ -6432,6 +7053,7 @@ class DiscoveredDeviceData extends DataClass
   }) => DiscoveredDeviceData(
     id: id ?? this.id,
     scanId: scanId ?? this.scanId,
+    factoryId: factoryId ?? this.factoryId,
     ip: ip ?? this.ip,
     mac: mac.present ? mac.value : this.mac,
     hostname: hostname.present ? hostname.value : this.hostname,
@@ -6469,6 +7091,7 @@ class DiscoveredDeviceData extends DataClass
     return DiscoveredDeviceData(
       id: data.id.present ? data.id.value : this.id,
       scanId: data.scanId.present ? data.scanId.value : this.scanId,
+      factoryId: data.factoryId.present ? data.factoryId.value : this.factoryId,
       ip: data.ip.present ? data.ip.value : this.ip,
       mac: data.mac.present ? data.mac.value : this.mac,
       hostname: data.hostname.present ? data.hostname.value : this.hostname,
@@ -6519,6 +7142,7 @@ class DiscoveredDeviceData extends DataClass
     return (StringBuffer('DiscoveredDeviceData(')
           ..write('id: $id, ')
           ..write('scanId: $scanId, ')
+          ..write('factoryId: $factoryId, ')
           ..write('ip: $ip, ')
           ..write('mac: $mac, ')
           ..write('hostname: $hostname, ')
@@ -6542,9 +7166,10 @@ class DiscoveredDeviceData extends DataClass
   }
 
   @override
-  int get hashCode => Object.hash(
+  int get hashCode => Object.hashAll([
     id,
     scanId,
+    factoryId,
     ip,
     mac,
     hostname,
@@ -6563,13 +7188,14 @@ class DiscoveredDeviceData extends DataClass
     adminReviewerId,
     adminReviewTimestamp,
     associatedDeviceId,
-  );
+  ]);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is DiscoveredDeviceData &&
           other.id == this.id &&
           other.scanId == this.scanId &&
+          other.factoryId == this.factoryId &&
           other.ip == this.ip &&
           other.mac == this.mac &&
           other.hostname == this.hostname &&
@@ -6593,6 +7219,7 @@ class DiscoveredDeviceData extends DataClass
 class DiscoveredDevicesCompanion extends UpdateCompanion<DiscoveredDeviceData> {
   final Value<int> id;
   final Value<int> scanId;
+  final Value<String> factoryId;
   final Value<String> ip;
   final Value<String?> mac;
   final Value<String?> hostname;
@@ -6614,6 +7241,7 @@ class DiscoveredDevicesCompanion extends UpdateCompanion<DiscoveredDeviceData> {
   const DiscoveredDevicesCompanion({
     this.id = const Value.absent(),
     this.scanId = const Value.absent(),
+    this.factoryId = const Value.absent(),
     this.ip = const Value.absent(),
     this.mac = const Value.absent(),
     this.hostname = const Value.absent(),
@@ -6636,6 +7264,7 @@ class DiscoveredDevicesCompanion extends UpdateCompanion<DiscoveredDeviceData> {
   DiscoveredDevicesCompanion.insert({
     this.id = const Value.absent(),
     required int scanId,
+    this.factoryId = const Value.absent(),
     required String ip,
     this.mac = const Value.absent(),
     this.hostname = const Value.absent(),
@@ -6659,6 +7288,7 @@ class DiscoveredDevicesCompanion extends UpdateCompanion<DiscoveredDeviceData> {
   static Insertable<DiscoveredDeviceData> custom({
     Expression<int>? id,
     Expression<int>? scanId,
+    Expression<String>? factoryId,
     Expression<String>? ip,
     Expression<String>? mac,
     Expression<String>? hostname,
@@ -6681,6 +7311,7 @@ class DiscoveredDevicesCompanion extends UpdateCompanion<DiscoveredDeviceData> {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (scanId != null) 'scan_id': scanId,
+      if (factoryId != null) 'factory_id': factoryId,
       if (ip != null) 'ip': ip,
       if (mac != null) 'mac': mac,
       if (hostname != null) 'hostname': hostname,
@@ -6712,6 +7343,7 @@ class DiscoveredDevicesCompanion extends UpdateCompanion<DiscoveredDeviceData> {
   DiscoveredDevicesCompanion copyWith({
     Value<int>? id,
     Value<int>? scanId,
+    Value<String>? factoryId,
     Value<String>? ip,
     Value<String?>? mac,
     Value<String?>? hostname,
@@ -6734,6 +7366,7 @@ class DiscoveredDevicesCompanion extends UpdateCompanion<DiscoveredDeviceData> {
     return DiscoveredDevicesCompanion(
       id: id ?? this.id,
       scanId: scanId ?? this.scanId,
+      factoryId: factoryId ?? this.factoryId,
       ip: ip ?? this.ip,
       mac: mac ?? this.mac,
       hostname: hostname ?? this.hostname,
@@ -6765,6 +7398,9 @@ class DiscoveredDevicesCompanion extends UpdateCompanion<DiscoveredDeviceData> {
     }
     if (scanId.present) {
       map['scan_id'] = Variable<int>(scanId.value);
+    }
+    if (factoryId.present) {
+      map['factory_id'] = Variable<String>(factoryId.value);
     }
     if (ip.present) {
       map['ip'] = Variable<String>(ip.value);
@@ -6840,6 +7476,7 @@ class DiscoveredDevicesCompanion extends UpdateCompanion<DiscoveredDeviceData> {
     return (StringBuffer('DiscoveredDevicesCompanion(')
           ..write('id: $id, ')
           ..write('scanId: $scanId, ')
+          ..write('factoryId: $factoryId, ')
           ..write('ip: $ip, ')
           ..write('mac: $mac, ')
           ..write('hostname: $hostname, ')
@@ -7354,6 +7991,18 @@ class $InfrastructureDevicesTable extends InfrastructureDevices
       'PRIMARY KEY AUTOINCREMENT',
     ),
   );
+  static const VerificationMeta _factoryIdMeta = const VerificationMeta(
+    'factoryId',
+  );
+  @override
+  late final GeneratedColumn<String> factoryId = GeneratedColumn<String>(
+    'factory_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('unassigned'),
+  );
   static const VerificationMeta _nameMeta = const VerificationMeta('name');
   @override
   late final GeneratedColumn<String> name = GeneratedColumn<String>(
@@ -7371,7 +8020,6 @@ class $InfrastructureDevicesTable extends InfrastructureDevices
     false,
     type: DriftSqlType.string,
     requiredDuringInsert: true,
-    defaultConstraints: GeneratedColumn.constraintIsAlways('UNIQUE'),
   );
   static const VerificationMeta _macMeta = const VerificationMeta('mac');
   @override
@@ -7525,6 +8173,7 @@ class $InfrastructureDevicesTable extends InfrastructureDevices
   @override
   List<GeneratedColumn> get $columns => [
     id,
+    factoryId,
     name,
     ip,
     mac,
@@ -7554,6 +8203,12 @@ class $InfrastructureDevicesTable extends InfrastructureDevices
     final data = instance.toColumns(true);
     if (data.containsKey('id')) {
       context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('factory_id')) {
+      context.handle(
+        _factoryIdMeta,
+        factoryId.isAcceptableOrUnknown(data['factory_id']!, _factoryIdMeta),
+      );
     }
     if (data.containsKey('name')) {
       context.handle(
@@ -7671,6 +8326,10 @@ class $InfrastructureDevicesTable extends InfrastructureDevices
         DriftSqlType.int,
         data['${effectivePrefix}id'],
       )!,
+      factoryId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}factory_id'],
+      )!,
       name: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}name'],
@@ -7739,6 +8398,7 @@ class $InfrastructureDevicesTable extends InfrastructureDevices
 class InfrastructureDeviceData extends DataClass
     implements Insertable<InfrastructureDeviceData> {
   final int id;
+  final String factoryId;
   final String name;
   final String ip;
   final String? mac;
@@ -7755,6 +8415,7 @@ class InfrastructureDeviceData extends DataClass
   final DateTime? updatedAt;
   const InfrastructureDeviceData({
     required this.id,
+    required this.factoryId,
     required this.name,
     required this.ip,
     this.mac,
@@ -7774,6 +8435,7 @@ class InfrastructureDeviceData extends DataClass
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['id'] = Variable<int>(id);
+    map['factory_id'] = Variable<String>(factoryId);
     map['name'] = Variable<String>(name);
     map['ip'] = Variable<String>(ip);
     if (!nullToAbsent || mac != null) {
@@ -7806,6 +8468,7 @@ class InfrastructureDeviceData extends DataClass
   InfrastructureDevicesCompanion toCompanion(bool nullToAbsent) {
     return InfrastructureDevicesCompanion(
       id: Value(id),
+      factoryId: Value(factoryId),
       name: Value(name),
       ip: Value(ip),
       mac: mac == null && nullToAbsent ? const Value.absent() : Value(mac),
@@ -7836,6 +8499,7 @@ class InfrastructureDeviceData extends DataClass
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return InfrastructureDeviceData(
       id: serializer.fromJson<int>(json['id']),
+      factoryId: serializer.fromJson<String>(json['factoryId']),
       name: serializer.fromJson<String>(json['name']),
       ip: serializer.fromJson<String>(json['ip']),
       mac: serializer.fromJson<String?>(json['mac']),
@@ -7861,6 +8525,7 @@ class InfrastructureDeviceData extends DataClass
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
       'id': serializer.toJson<int>(id),
+      'factoryId': serializer.toJson<String>(factoryId),
       'name': serializer.toJson<String>(name),
       'ip': serializer.toJson<String>(ip),
       'mac': serializer.toJson<String?>(mac),
@@ -7884,6 +8549,7 @@ class InfrastructureDeviceData extends DataClass
 
   InfrastructureDeviceData copyWith({
     int? id,
+    String? factoryId,
     String? name,
     String? ip,
     Value<String?> mac = const Value.absent(),
@@ -7900,6 +8566,7 @@ class InfrastructureDeviceData extends DataClass
     Value<DateTime?> updatedAt = const Value.absent(),
   }) => InfrastructureDeviceData(
     id: id ?? this.id,
+    factoryId: factoryId ?? this.factoryId,
     name: name ?? this.name,
     ip: ip ?? this.ip,
     mac: mac.present ? mac.value : this.mac,
@@ -7924,6 +8591,7 @@ class InfrastructureDeviceData extends DataClass
   ) {
     return InfrastructureDeviceData(
       id: data.id.present ? data.id.value : this.id,
+      factoryId: data.factoryId.present ? data.factoryId.value : this.factoryId,
       name: data.name.present ? data.name.value : this.name,
       ip: data.ip.present ? data.ip.value : this.ip,
       mac: data.mac.present ? data.mac.value : this.mac,
@@ -7955,6 +8623,7 @@ class InfrastructureDeviceData extends DataClass
   String toString() {
     return (StringBuffer('InfrastructureDeviceData(')
           ..write('id: $id, ')
+          ..write('factoryId: $factoryId, ')
           ..write('name: $name, ')
           ..write('ip: $ip, ')
           ..write('mac: $mac, ')
@@ -7976,6 +8645,7 @@ class InfrastructureDeviceData extends DataClass
   @override
   int get hashCode => Object.hash(
     id,
+    factoryId,
     name,
     ip,
     mac,
@@ -7996,6 +8666,7 @@ class InfrastructureDeviceData extends DataClass
       identical(this, other) ||
       (other is InfrastructureDeviceData &&
           other.id == this.id &&
+          other.factoryId == this.factoryId &&
           other.name == this.name &&
           other.ip == this.ip &&
           other.mac == this.mac &&
@@ -8015,6 +8686,7 @@ class InfrastructureDeviceData extends DataClass
 class InfrastructureDevicesCompanion
     extends UpdateCompanion<InfrastructureDeviceData> {
   final Value<int> id;
+  final Value<String> factoryId;
   final Value<String> name;
   final Value<String> ip;
   final Value<String?> mac;
@@ -8031,6 +8703,7 @@ class InfrastructureDevicesCompanion
   final Value<DateTime?> updatedAt;
   const InfrastructureDevicesCompanion({
     this.id = const Value.absent(),
+    this.factoryId = const Value.absent(),
     this.name = const Value.absent(),
     this.ip = const Value.absent(),
     this.mac = const Value.absent(),
@@ -8048,6 +8721,7 @@ class InfrastructureDevicesCompanion
   });
   InfrastructureDevicesCompanion.insert({
     this.id = const Value.absent(),
+    this.factoryId = const Value.absent(),
     required String name,
     required String ip,
     this.mac = const Value.absent(),
@@ -8066,6 +8740,7 @@ class InfrastructureDevicesCompanion
        ip = Value(ip);
   static Insertable<InfrastructureDeviceData> custom({
     Expression<int>? id,
+    Expression<String>? factoryId,
     Expression<String>? name,
     Expression<String>? ip,
     Expression<String>? mac,
@@ -8083,6 +8758,7 @@ class InfrastructureDevicesCompanion
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
+      if (factoryId != null) 'factory_id': factoryId,
       if (name != null) 'name': name,
       if (ip != null) 'ip': ip,
       if (mac != null) 'mac': mac,
@@ -8104,6 +8780,7 @@ class InfrastructureDevicesCompanion
 
   InfrastructureDevicesCompanion copyWith({
     Value<int>? id,
+    Value<String>? factoryId,
     Value<String>? name,
     Value<String>? ip,
     Value<String?>? mac,
@@ -8121,6 +8798,7 @@ class InfrastructureDevicesCompanion
   }) {
     return InfrastructureDevicesCompanion(
       id: id ?? this.id,
+      factoryId: factoryId ?? this.factoryId,
       name: name ?? this.name,
       ip: ip ?? this.ip,
       mac: mac ?? this.mac,
@@ -8145,6 +8823,9 @@ class InfrastructureDevicesCompanion
     final map = <String, Expression>{};
     if (id.present) {
       map['id'] = Variable<int>(id.value);
+    }
+    if (factoryId.present) {
+      map['factory_id'] = Variable<String>(factoryId.value);
     }
     if (name.present) {
       map['name'] = Variable<String>(name.value);
@@ -8199,6 +8880,7 @@ class InfrastructureDevicesCompanion
   String toString() {
     return (StringBuffer('InfrastructureDevicesCompanion(')
           ..write('id: $id, ')
+          ..write('factoryId: $factoryId, ')
           ..write('name: $name, ')
           ..write('ip: $ip, ')
           ..write('mac: $mac, ')
@@ -8221,6 +8903,7 @@ class InfrastructureDevicesCompanion
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
+  late final $FactoriesTable factories = $FactoriesTable(this);
   late final $UsersTable users = $UsersTable(this);
   late final $AuditLogsTable auditLogs = $AuditLogsTable(this);
   late final $LocationsTable locations = $LocationsTable(this);
@@ -8242,6 +8925,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
   @override
   List<DatabaseSchemaEntity> get allSchemaEntities => [
+    factories,
     users,
     auditLogs,
     locations,
@@ -8257,6 +8941,225 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   ];
 }
 
+typedef $$FactoriesTableCreateCompanionBuilder =
+    FactoriesCompanion Function({
+      required String id,
+      required String code,
+      required String name,
+      Value<bool> isActive,
+      Value<DateTime> createdAt,
+      Value<DateTime?> updatedAt,
+      Value<int> rowid,
+    });
+typedef $$FactoriesTableUpdateCompanionBuilder =
+    FactoriesCompanion Function({
+      Value<String> id,
+      Value<String> code,
+      Value<String> name,
+      Value<bool> isActive,
+      Value<DateTime> createdAt,
+      Value<DateTime?> updatedAt,
+      Value<int> rowid,
+    });
+
+class $$FactoriesTableFilterComposer
+    extends Composer<_$AppDatabase, $FactoriesTable> {
+  $$FactoriesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get code => $composableBuilder(
+    column: $table.code,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isActive => $composableBuilder(
+    column: $table.isActive,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$FactoriesTableOrderingComposer
+    extends Composer<_$AppDatabase, $FactoriesTable> {
+  $$FactoriesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get code => $composableBuilder(
+    column: $table.code,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get isActive => $composableBuilder(
+    column: $table.isActive,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$FactoriesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $FactoriesTable> {
+  $$FactoriesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get code =>
+      $composableBuilder(column: $table.code, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<bool> get isActive =>
+      $composableBuilder(column: $table.isActive, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+}
+
+class $$FactoriesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $FactoriesTable,
+          FactoryData,
+          $$FactoriesTableFilterComposer,
+          $$FactoriesTableOrderingComposer,
+          $$FactoriesTableAnnotationComposer,
+          $$FactoriesTableCreateCompanionBuilder,
+          $$FactoriesTableUpdateCompanionBuilder,
+          (
+            FactoryData,
+            BaseReferences<_$AppDatabase, $FactoriesTable, FactoryData>,
+          ),
+          FactoryData,
+          PrefetchHooks Function()
+        > {
+  $$FactoriesTableTableManager(_$AppDatabase db, $FactoriesTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$FactoriesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$FactoriesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$FactoriesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> code = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<bool> isActive = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime?> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => FactoriesCompanion(
+                id: id,
+                code: code,
+                name: name,
+                isActive: isActive,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String code,
+                required String name,
+                Value<bool> isActive = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime?> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => FactoriesCompanion.insert(
+                id: id,
+                code: code,
+                name: name,
+                isActive: isActive,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$FactoriesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $FactoriesTable,
+      FactoryData,
+      $$FactoriesTableFilterComposer,
+      $$FactoriesTableOrderingComposer,
+      $$FactoriesTableAnnotationComposer,
+      $$FactoriesTableCreateCompanionBuilder,
+      $$FactoriesTableUpdateCompanionBuilder,
+      (
+        FactoryData,
+        BaseReferences<_$AppDatabase, $FactoriesTable, FactoryData>,
+      ),
+      FactoryData,
+      PrefetchHooks Function()
+    >;
 typedef $$UsersTableCreateCompanionBuilder =
     UsersCompanion Function({
       Value<int> id,
@@ -8867,6 +9770,7 @@ typedef $$LocationsTableProcessedTableManager =
 typedef $$DevicesTableCreateCompanionBuilder =
     DevicesCompanion Function({
       Value<int> id,
+      Value<String> factoryId,
       required String name,
       Value<String> type,
       required String ip,
@@ -8889,6 +9793,7 @@ typedef $$DevicesTableCreateCompanionBuilder =
 typedef $$DevicesTableUpdateCompanionBuilder =
     DevicesCompanion Function({
       Value<int> id,
+      Value<String> factoryId,
       Value<String> name,
       Value<String> type,
       Value<String> ip,
@@ -8920,6 +9825,11 @@ class $$DevicesTableFilterComposer
   });
   ColumnFilters<int> get id => $composableBuilder(
     column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get factoryId => $composableBuilder(
+    column: $table.factoryId,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -9028,6 +9938,11 @@ class $$DevicesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get factoryId => $composableBuilder(
+    column: $table.factoryId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get name => $composableBuilder(
     column: $table.name,
     builder: (column) => ColumnOrderings(column),
@@ -9131,6 +10046,9 @@ class $$DevicesTableAnnotationComposer
   GeneratedColumn<int> get id =>
       $composableBuilder(column: $table.id, builder: (column) => column);
 
+  GeneratedColumn<String> get factoryId =>
+      $composableBuilder(column: $table.factoryId, builder: (column) => column);
+
   GeneratedColumn<String> get name =>
       $composableBuilder(column: $table.name, builder: (column) => column);
 
@@ -9227,6 +10145,7 @@ class $$DevicesTableTableManager
           updateCompanionCallback:
               ({
                 Value<int> id = const Value.absent(),
+                Value<String> factoryId = const Value.absent(),
                 Value<String> name = const Value.absent(),
                 Value<String> type = const Value.absent(),
                 Value<String> ip = const Value.absent(),
@@ -9247,6 +10166,7 @@ class $$DevicesTableTableManager
                 Value<DateTime?> updatedAt = const Value.absent(),
               }) => DevicesCompanion(
                 id: id,
+                factoryId: factoryId,
                 name: name,
                 type: type,
                 ip: ip,
@@ -9269,6 +10189,7 @@ class $$DevicesTableTableManager
           createCompanionCallback:
               ({
                 Value<int> id = const Value.absent(),
+                Value<String> factoryId = const Value.absent(),
                 required String name,
                 Value<String> type = const Value.absent(),
                 required String ip,
@@ -9289,6 +10210,7 @@ class $$DevicesTableTableManager
                 Value<DateTime?> updatedAt = const Value.absent(),
               }) => DevicesCompanion.insert(
                 id: id,
+                factoryId: factoryId,
                 name: name,
                 type: type,
                 ip: ip,
@@ -9333,6 +10255,7 @@ typedef $$DevicesTableProcessedTableManager =
 typedef $$CheckResultsTableCreateCompanionBuilder =
     CheckResultsCompanion Function({
       Value<int> id,
+      Value<String> factoryId,
       required int deviceId,
       Value<String?> assetId,
       required String targetIp,
@@ -9346,6 +10269,7 @@ typedef $$CheckResultsTableCreateCompanionBuilder =
 typedef $$CheckResultsTableUpdateCompanionBuilder =
     CheckResultsCompanion Function({
       Value<int> id,
+      Value<String> factoryId,
       Value<int> deviceId,
       Value<String?> assetId,
       Value<String> targetIp,
@@ -9368,6 +10292,11 @@ class $$CheckResultsTableFilterComposer
   });
   ColumnFilters<int> get id => $composableBuilder(
     column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get factoryId => $composableBuilder(
+    column: $table.factoryId,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -9431,6 +10360,11 @@ class $$CheckResultsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get factoryId => $composableBuilder(
+    column: $table.factoryId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get deviceId => $composableBuilder(
     column: $table.deviceId,
     builder: (column) => ColumnOrderings(column),
@@ -9488,6 +10422,9 @@ class $$CheckResultsTableAnnotationComposer
   });
   GeneratedColumn<int> get id =>
       $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get factoryId =>
+      $composableBuilder(column: $table.factoryId, builder: (column) => column);
 
   GeneratedColumn<int> get deviceId =>
       $composableBuilder(column: $table.deviceId, builder: (column) => column);
@@ -9553,6 +10490,7 @@ class $$CheckResultsTableTableManager
           updateCompanionCallback:
               ({
                 Value<int> id = const Value.absent(),
+                Value<String> factoryId = const Value.absent(),
                 Value<int> deviceId = const Value.absent(),
                 Value<String?> assetId = const Value.absent(),
                 Value<String> targetIp = const Value.absent(),
@@ -9564,6 +10502,7 @@ class $$CheckResultsTableTableManager
                 Value<DateTime> timestamp = const Value.absent(),
               }) => CheckResultsCompanion(
                 id: id,
+                factoryId: factoryId,
                 deviceId: deviceId,
                 assetId: assetId,
                 targetIp: targetIp,
@@ -9577,6 +10516,7 @@ class $$CheckResultsTableTableManager
           createCompanionCallback:
               ({
                 Value<int> id = const Value.absent(),
+                Value<String> factoryId = const Value.absent(),
                 required int deviceId,
                 Value<String?> assetId = const Value.absent(),
                 required String targetIp,
@@ -9588,6 +10528,7 @@ class $$CheckResultsTableTableManager
                 Value<DateTime> timestamp = const Value.absent(),
               }) => CheckResultsCompanion.insert(
                 id: id,
+                factoryId: factoryId,
                 deviceId: deviceId,
                 assetId: assetId,
                 targetIp: targetIp,
@@ -9956,6 +10897,7 @@ typedef $$DeviceStatusesTableProcessedTableManager =
 typedef $$IncidentsTableCreateCompanionBuilder =
     IncidentsCompanion Function({
       Value<int> id,
+      Value<String> factoryId,
       required int deviceId,
       required String deviceName,
       required String ownerName,
@@ -9975,6 +10917,7 @@ typedef $$IncidentsTableCreateCompanionBuilder =
 typedef $$IncidentsTableUpdateCompanionBuilder =
     IncidentsCompanion Function({
       Value<int> id,
+      Value<String> factoryId,
       Value<int> deviceId,
       Value<String> deviceName,
       Value<String> ownerName,
@@ -10003,6 +10946,11 @@ class $$IncidentsTableFilterComposer
   });
   ColumnFilters<int> get id => $composableBuilder(
     column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get factoryId => $composableBuilder(
+    column: $table.factoryId,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -10096,6 +11044,11 @@ class $$IncidentsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get factoryId => $composableBuilder(
+    column: $table.factoryId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get deviceId => $composableBuilder(
     column: $table.deviceId,
     builder: (column) => ColumnOrderings(column),
@@ -10183,6 +11136,9 @@ class $$IncidentsTableAnnotationComposer
   });
   GeneratedColumn<int> get id =>
       $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get factoryId =>
+      $composableBuilder(column: $table.factoryId, builder: (column) => column);
 
   GeneratedColumn<int> get deviceId =>
       $composableBuilder(column: $table.deviceId, builder: (column) => column);
@@ -10276,6 +11232,7 @@ class $$IncidentsTableTableManager
           updateCompanionCallback:
               ({
                 Value<int> id = const Value.absent(),
+                Value<String> factoryId = const Value.absent(),
                 Value<int> deviceId = const Value.absent(),
                 Value<String> deviceName = const Value.absent(),
                 Value<String> ownerName = const Value.absent(),
@@ -10293,6 +11250,7 @@ class $$IncidentsTableTableManager
                 Value<String?> correlationMessage = const Value.absent(),
               }) => IncidentsCompanion(
                 id: id,
+                factoryId: factoryId,
                 deviceId: deviceId,
                 deviceName: deviceName,
                 ownerName: ownerName,
@@ -10312,6 +11270,7 @@ class $$IncidentsTableTableManager
           createCompanionCallback:
               ({
                 Value<int> id = const Value.absent(),
+                Value<String> factoryId = const Value.absent(),
                 required int deviceId,
                 required String deviceName,
                 required String ownerName,
@@ -10329,6 +11288,7 @@ class $$IncidentsTableTableManager
                 Value<String?> correlationMessage = const Value.absent(),
               }) => IncidentsCompanion.insert(
                 id: id,
+                factoryId: factoryId,
                 deviceId: deviceId,
                 deviceName: deviceName,
                 ownerName: ownerName,
@@ -10613,6 +11573,7 @@ typedef $$DiscoveryConfigurationsTableProcessedTableManager =
 typedef $$DiscoveryScansTableCreateCompanionBuilder =
     DiscoveryScansCompanion Function({
       Value<int> id,
+      Value<String> factoryId,
       Value<String> status,
       required String rangesJson,
       Value<String> enabledStrategiesJson,
@@ -10629,6 +11590,7 @@ typedef $$DiscoveryScansTableCreateCompanionBuilder =
 typedef $$DiscoveryScansTableUpdateCompanionBuilder =
     DiscoveryScansCompanion Function({
       Value<int> id,
+      Value<String> factoryId,
       Value<String> status,
       Value<String> rangesJson,
       Value<String> enabledStrategiesJson,
@@ -10654,6 +11616,11 @@ class $$DiscoveryScansTableFilterComposer
   });
   ColumnFilters<int> get id => $composableBuilder(
     column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get factoryId => $composableBuilder(
+    column: $table.factoryId,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -10732,6 +11699,11 @@ class $$DiscoveryScansTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get factoryId => $composableBuilder(
+    column: $table.factoryId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get status => $composableBuilder(
     column: $table.status,
     builder: (column) => ColumnOrderings(column),
@@ -10804,6 +11776,9 @@ class $$DiscoveryScansTableAnnotationComposer
   });
   GeneratedColumn<int> get id =>
       $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get factoryId =>
+      $composableBuilder(column: $table.factoryId, builder: (column) => column);
 
   GeneratedColumn<String> get status =>
       $composableBuilder(column: $table.status, builder: (column) => column);
@@ -10900,6 +11875,7 @@ class $$DiscoveryScansTableTableManager
           updateCompanionCallback:
               ({
                 Value<int> id = const Value.absent(),
+                Value<String> factoryId = const Value.absent(),
                 Value<String> status = const Value.absent(),
                 Value<String> rangesJson = const Value.absent(),
                 Value<String> enabledStrategiesJson = const Value.absent(),
@@ -10914,6 +11890,7 @@ class $$DiscoveryScansTableTableManager
                 Value<String?> diagnosticSummary = const Value.absent(),
               }) => DiscoveryScansCompanion(
                 id: id,
+                factoryId: factoryId,
                 status: status,
                 rangesJson: rangesJson,
                 enabledStrategiesJson: enabledStrategiesJson,
@@ -10930,6 +11907,7 @@ class $$DiscoveryScansTableTableManager
           createCompanionCallback:
               ({
                 Value<int> id = const Value.absent(),
+                Value<String> factoryId = const Value.absent(),
                 Value<String> status = const Value.absent(),
                 required String rangesJson,
                 Value<String> enabledStrategiesJson = const Value.absent(),
@@ -10944,6 +11922,7 @@ class $$DiscoveryScansTableTableManager
                 Value<String?> diagnosticSummary = const Value.absent(),
               }) => DiscoveryScansCompanion.insert(
                 id: id,
+                factoryId: factoryId,
                 status: status,
                 rangesJson: rangesJson,
                 enabledStrategiesJson: enabledStrategiesJson,
@@ -10986,6 +11965,7 @@ typedef $$DiscoveredDevicesTableCreateCompanionBuilder =
     DiscoveredDevicesCompanion Function({
       Value<int> id,
       required int scanId,
+      Value<String> factoryId,
       required String ip,
       Value<String?> mac,
       Value<String?> hostname,
@@ -11009,6 +11989,7 @@ typedef $$DiscoveredDevicesTableUpdateCompanionBuilder =
     DiscoveredDevicesCompanion Function({
       Value<int> id,
       Value<int> scanId,
+      Value<String> factoryId,
       Value<String> ip,
       Value<String?> mac,
       Value<String?> hostname,
@@ -11045,6 +12026,11 @@ class $$DiscoveredDevicesTableFilterComposer
 
   ColumnFilters<int> get scanId => $composableBuilder(
     column: $table.scanId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get factoryId => $composableBuilder(
+    column: $table.factoryId,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -11158,6 +12144,11 @@ class $$DiscoveredDevicesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get factoryId => $composableBuilder(
+    column: $table.factoryId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get ip => $composableBuilder(
     column: $table.ip,
     builder: (column) => ColumnOrderings(column),
@@ -11263,6 +12254,9 @@ class $$DiscoveredDevicesTableAnnotationComposer
 
   GeneratedColumn<int> get scanId =>
       $composableBuilder(column: $table.scanId, builder: (column) => column);
+
+  GeneratedColumn<String> get factoryId =>
+      $composableBuilder(column: $table.factoryId, builder: (column) => column);
 
   GeneratedColumn<String> get ip =>
       $composableBuilder(column: $table.ip, builder: (column) => column);
@@ -11385,6 +12379,7 @@ class $$DiscoveredDevicesTableTableManager
               ({
                 Value<int> id = const Value.absent(),
                 Value<int> scanId = const Value.absent(),
+                Value<String> factoryId = const Value.absent(),
                 Value<String> ip = const Value.absent(),
                 Value<String?> mac = const Value.absent(),
                 Value<String?> hostname = const Value.absent(),
@@ -11406,6 +12401,7 @@ class $$DiscoveredDevicesTableTableManager
               }) => DiscoveredDevicesCompanion(
                 id: id,
                 scanId: scanId,
+                factoryId: factoryId,
                 ip: ip,
                 mac: mac,
                 hostname: hostname,
@@ -11429,6 +12425,7 @@ class $$DiscoveredDevicesTableTableManager
               ({
                 Value<int> id = const Value.absent(),
                 required int scanId,
+                Value<String> factoryId = const Value.absent(),
                 required String ip,
                 Value<String?> mac = const Value.absent(),
                 Value<String?> hostname = const Value.absent(),
@@ -11450,6 +12447,7 @@ class $$DiscoveredDevicesTableTableManager
               }) => DiscoveredDevicesCompanion.insert(
                 id: id,
                 scanId: scanId,
+                factoryId: factoryId,
                 ip: ip,
                 mac: mac,
                 hostname: hostname,
@@ -11752,6 +12750,7 @@ typedef $$DiscoveryEvidencesTableProcessedTableManager =
 typedef $$InfrastructureDevicesTableCreateCompanionBuilder =
     InfrastructureDevicesCompanion Function({
       Value<int> id,
+      Value<String> factoryId,
       required String name,
       required String ip,
       Value<String?> mac,
@@ -11770,6 +12769,7 @@ typedef $$InfrastructureDevicesTableCreateCompanionBuilder =
 typedef $$InfrastructureDevicesTableUpdateCompanionBuilder =
     InfrastructureDevicesCompanion Function({
       Value<int> id,
+      Value<String> factoryId,
       Value<String> name,
       Value<String> ip,
       Value<String?> mac,
@@ -11797,6 +12797,11 @@ class $$InfrastructureDevicesTableFilterComposer
   });
   ColumnFilters<int> get id => $composableBuilder(
     column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get factoryId => $composableBuilder(
+    column: $table.factoryId,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -11885,6 +12890,11 @@ class $$InfrastructureDevicesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get factoryId => $composableBuilder(
+    column: $table.factoryId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get name => $composableBuilder(
     column: $table.name,
     builder: (column) => ColumnOrderings(column),
@@ -11967,6 +12977,9 @@ class $$InfrastructureDevicesTableAnnotationComposer
   });
   GeneratedColumn<int> get id =>
       $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get factoryId =>
+      $composableBuilder(column: $table.factoryId, builder: (column) => column);
 
   GeneratedColumn<String> get name =>
       $composableBuilder(column: $table.name, builder: (column) => column);
@@ -12068,6 +13081,7 @@ class $$InfrastructureDevicesTableTableManager
           updateCompanionCallback:
               ({
                 Value<int> id = const Value.absent(),
+                Value<String> factoryId = const Value.absent(),
                 Value<String> name = const Value.absent(),
                 Value<String> ip = const Value.absent(),
                 Value<String?> mac = const Value.absent(),
@@ -12084,6 +13098,7 @@ class $$InfrastructureDevicesTableTableManager
                 Value<DateTime?> updatedAt = const Value.absent(),
               }) => InfrastructureDevicesCompanion(
                 id: id,
+                factoryId: factoryId,
                 name: name,
                 ip: ip,
                 mac: mac,
@@ -12102,6 +13117,7 @@ class $$InfrastructureDevicesTableTableManager
           createCompanionCallback:
               ({
                 Value<int> id = const Value.absent(),
+                Value<String> factoryId = const Value.absent(),
                 required String name,
                 required String ip,
                 Value<String?> mac = const Value.absent(),
@@ -12118,6 +13134,7 @@ class $$InfrastructureDevicesTableTableManager
                 Value<DateTime?> updatedAt = const Value.absent(),
               }) => InfrastructureDevicesCompanion.insert(
                 id: id,
+                factoryId: factoryId,
                 name: name,
                 ip: ip,
                 mac: mac,
@@ -12166,6 +13183,8 @@ typedef $$InfrastructureDevicesTableProcessedTableManager =
 class $AppDatabaseManager {
   final _$AppDatabase _db;
   $AppDatabaseManager(this._db);
+  $$FactoriesTableTableManager get factories =>
+      $$FactoriesTableTableManager(_db, _db.factories);
   $$UsersTableTableManager get users =>
       $$UsersTableTableManager(_db, _db.users);
   $$AuditLogsTableTableManager get auditLogs =>

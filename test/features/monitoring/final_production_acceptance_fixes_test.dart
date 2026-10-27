@@ -58,9 +58,14 @@ class FakeDeviceRepository implements DeviceRepository {
   bool shouldFail = false;
 
   @override
-  Future<Result<List<DeviceEntity>>> getDevices() async {
+  Future<Result<List<DeviceEntity>>> getDevices({String? factoryId}) async {
     if (shouldFail) {
       return Result.failure(const DatabaseFailure('Simulated DB failure'));
+    }
+    if (factoryId != null) {
+      return Result.success(
+        devices.where((d) => d.factoryId == factoryId).toList(),
+      );
     }
     return Result.success(devices);
   }
@@ -118,10 +123,17 @@ class FakeInfrastructureRepository implements InfrastructureRepository {
   bool shouldFail = false;
 
   @override
-  Future<Result<List<UniFiDeviceEntity>>> getInfrastructureDevices() async {
+  Future<Result<List<UniFiDeviceEntity>>> getInfrastructureDevices({
+    String? factoryId,
+  }) async {
     if (shouldFail) {
       return Result.failure(
         const DatabaseFailure('Simulated Infra DB failure'),
+      );
+    }
+    if (factoryId != null) {
+      return Result.success(
+        infraDevices.where((d) => d.factoryId == factoryId).toList(),
       );
     }
     return Result.success(infraDevices);
@@ -134,8 +146,15 @@ class FakeInfrastructureRepository implements InfrastructureRepository {
   }
 
   @override
-  Future<Result<UniFiDeviceEntity?>> getDeviceByIp(String ip) async {
-    final match = infraDevices.where((d) => d.ip == ip).firstOrNull;
+  Future<Result<UniFiDeviceEntity?>> getDeviceByIp(
+    String ip, {
+    String? factoryId,
+  }) async {
+    final match = infraDevices
+        .where(
+          (d) => d.ip == ip && (factoryId == null || d.factoryId == factoryId),
+        )
+        .firstOrNull;
     return Result.success(match);
   }
 
@@ -164,8 +183,13 @@ class FakeInfrastructureRepository implements InfrastructureRepository {
       Result.success(null);
 
   @override
-  Stream<List<UniFiDeviceEntity>> watchInfrastructureDevices() =>
-      Stream.value(infraDevices);
+  Stream<List<UniFiDeviceEntity>> watchInfrastructureDevices({
+    String? factoryId,
+  }) => Stream.value(
+    factoryId != null
+        ? infraDevices.where((d) => d.factoryId == factoryId).toList()
+        : infraDevices,
+  );
 }
 
 class FakeMonitoringRepository implements MonitoringRepository {

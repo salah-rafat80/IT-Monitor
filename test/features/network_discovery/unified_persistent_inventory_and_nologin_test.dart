@@ -37,6 +37,7 @@ class FakeDiscoveryCoordinator implements DiscoveryCoordinator {
 
   @override
   Future<Result<DiscoveryScanJob>> startScan({
+    String? factoryId,
     List<String>? requestedRanges,
     List<String>? enabledStrategies,
     int? maxConcurrency,

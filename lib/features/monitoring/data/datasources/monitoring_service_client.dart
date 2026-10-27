@@ -181,11 +181,7 @@ class MonitoringServiceClient {
   SecurityContext? _tryResolveLoopbackSecurityContext() {
     final programData = Platform.environment['ProgramData'];
     if (programData != null) {
-      final publicCert = p.join(
-        programData,
-        'ITNetworkMonitor',
-        'server.crt',
-      );
+      final publicCert = p.join(programData, 'ITNetworkMonitor', 'server.crt');
       if (File(publicCert).existsSync()) {
         try {
           final testSec = SecurityContext(withTrustedRoots: false);
@@ -611,10 +607,15 @@ class MonitoringServiceClient {
   }
 
   /// Fetch devices and their authoritative statuses.
-  Future<ServiceApiResponse<List<Map<String, dynamic>>>> getDevices() async {
+  Future<ServiceApiResponse<List<Map<String, dynamic>>>> getDevices({
+    String? factoryId,
+  }) async {
+    final query = factoryId != null && factoryId.isNotEmpty
+        ? '?factoryId=${Uri.encodeComponent(factoryId)}'
+        : '';
     final response = await _sendRequest(
       method: 'GET',
-      endpoint: '/api/devices',
+      endpoint: '/api/devices$query',
       requireAuth: true,
     );
     if (response.isSuccess) {
@@ -778,10 +779,16 @@ class MonitoringServiceClient {
   }
 
   /// Export historical availability report as CSV.
-  Future<ServiceApiResponse<String>> exportReportCsv(String period) async {
+  Future<ServiceApiResponse<String>> exportReportCsv(
+    String period, {
+    String? factoryId,
+  }) async {
+    final factoryQuery = factoryId != null && factoryId.isNotEmpty
+        ? '&factoryId=${Uri.encodeComponent(factoryId)}'
+        : '';
     final response = await _sendRequest(
       method: 'GET',
-      endpoint: '/api/reports/export-csv?period=$period',
+      endpoint: '/api/reports/export-csv?period=$period$factoryQuery',
       requireAuth: true,
     );
     if (response.isSuccess && response.data is Map) {
@@ -835,10 +842,15 @@ class MonitoringServiceClient {
   }
 
   /// Fetch active incidents and incident history from the service.
-  Future<ServiceApiResponse<Map<String, dynamic>>> getIncidents() async {
+  Future<ServiceApiResponse<Map<String, dynamic>>> getIncidents({
+    String? factoryId,
+  }) async {
+    final query = factoryId != null && factoryId.isNotEmpty
+        ? '?factoryId=${Uri.encodeComponent(factoryId)}'
+        : '';
     final response = await _sendRequest(
       method: 'GET',
-      endpoint: '/api/incidents',
+      endpoint: '/api/incidents$query',
       requireAuth: true,
     );
     if (response.isSuccess && response.data is Map) {
@@ -889,10 +901,13 @@ class MonitoringServiceClient {
 
   /// Fetch infrastructure devices (UniFi gateways, switches, APs) from the service.
   Future<ServiceApiResponse<List<Map<String, dynamic>>>>
-  getInfrastructureDevices() async {
+  getInfrastructureDevices({String? factoryId}) async {
+    final query = factoryId != null && factoryId.isNotEmpty
+        ? '?factoryId=${Uri.encodeComponent(factoryId)}'
+        : '';
     final response = await _sendRequest(
       method: 'GET',
-      endpoint: '/api/infrastructure/unifi/devices',
+      endpoint: '/api/infrastructure/unifi/devices$query',
       requireAuth: true,
     );
     if (response.isSuccess && response.data is Map) {
@@ -929,11 +944,15 @@ class MonitoringServiceClient {
 
   /// Generate a reporting summary from authoritative historical checks.
   Future<ServiceApiResponse<Map<String, dynamic>>> getReportSummary(
-    String period,
-  ) async {
+    String period, {
+    String? factoryId,
+  }) async {
+    final factoryQuery = factoryId != null && factoryId.isNotEmpty
+        ? '&factoryId=${Uri.encodeComponent(factoryId)}'
+        : '';
     final response = await _sendRequest(
       method: 'GET',
-      endpoint: '/api/reports/summary?period=$period',
+      endpoint: '/api/reports/summary?period=$period$factoryQuery',
       requireAuth: true,
     );
     if (response.isSuccess && response.data is Map) {
@@ -946,10 +965,15 @@ class MonitoringServiceClient {
   }
 
   /// Fetch discovery scan status and latest job info.
-  Future<ServiceApiResponse<Map<String, dynamic>>> getDiscoveryStatus() async {
+  Future<ServiceApiResponse<Map<String, dynamic>>> getDiscoveryStatus({
+    String? factoryId,
+  }) async {
+    final query = factoryId != null && factoryId.isNotEmpty
+        ? '?factoryId=${Uri.encodeComponent(factoryId)}'
+        : '';
     final response = await _sendRequest(
       method: 'GET',
-      endpoint: '/api/discovery/status',
+      endpoint: '/api/discovery/status$query',
       requireAuth: true,
     );
     if (response.isSuccess && response.data is Map) {
@@ -964,10 +988,15 @@ class MonitoringServiceClient {
   /// Fetch discovered devices from scan results.
   Future<ServiceApiResponse<List<Map<String, dynamic>>>> getDiscoveryDevices([
     int? scanId,
+    String? factoryId,
   ]) async {
-    final endpoint = scanId != null
-        ? '/api/discovery/devices?scanId=$scanId'
-        : '/api/discovery/devices';
+    final params = <String>[];
+    if (scanId != null) params.add('scanId=$scanId');
+    if (factoryId != null && factoryId.isNotEmpty) {
+      params.add('factoryId=${Uri.encodeComponent(factoryId)}');
+    }
+    final query = params.isNotEmpty ? '?${params.join('&')}' : '';
+    final endpoint = '/api/discovery/devices$query';
     final response = await _sendRequest(
       method: 'GET',
       endpoint: endpoint,
@@ -992,11 +1021,13 @@ class MonitoringServiceClient {
     List<String>? strategies,
     int? concurrency,
     int? timeoutSeconds,
+    String? factoryId,
   }) async {
     final response = await _sendRequest(
       method: 'POST',
       endpoint: '/api/discovery/start',
       body: {
+        if (factoryId != null) 'factoryId': factoryId,
         if (ranges != null) 'ranges': ranges,
         if (strategies != null) 'strategies': strategies,
         if (concurrency != null) 'concurrency': concurrency,
@@ -1104,11 +1135,15 @@ class MonitoringServiceClient {
   }
 
   /// Fetch all configured network ranges from authoritative service.
-  Future<ServiceApiResponse<List<Map<String, dynamic>>>>
-  getNetworkRanges() async {
+  Future<ServiceApiResponse<List<Map<String, dynamic>>>> getNetworkRanges({
+    String? factoryId,
+  }) async {
+    final query = factoryId != null && factoryId.isNotEmpty
+        ? '?factoryId=${Uri.encodeComponent(factoryId)}'
+        : '';
     final response = await _sendRequest(
       method: 'GET',
-      endpoint: '/api/discovery/ranges',
+      endpoint: '/api/discovery/ranges$query',
       requireAuth: true,
     );
     if (response.isSuccess && response.data is Map) {
@@ -1119,6 +1154,90 @@ class MonitoringServiceClient {
               .toList() ??
           [];
       return ServiceApiResponse.success(list);
+    }
+    return ServiceApiResponse.failure(
+      response.errorMessage,
+      statusCode: response.statusCode,
+    );
+  }
+
+  /// Fetch factories from the authoritative service.
+  Future<ServiceApiResponse<List<Map<String, dynamic>>>> getFactories({
+    bool includeInactive = false,
+  }) async {
+    final query = includeInactive ? '?includeInactive=true' : '';
+    final response = await _sendRequest(
+      method: 'GET',
+      endpoint: '/api/factories$query',
+      requireAuth: true,
+    );
+    if (response.isSuccess && response.data is Map) {
+      final json = response.data as Map<String, dynamic>;
+      final list =
+          (json['factories'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ??
+          [];
+      return ServiceApiResponse.success(list);
+    }
+    return ServiceApiResponse.failure(
+      response.errorMessage,
+      statusCode: response.statusCode,
+    );
+  }
+
+  /// Create a new factory on the authoritative service.
+  Future<ServiceApiResponse<Map<String, dynamic>>> createFactory(
+    Map<String, dynamic> factoryData,
+  ) async {
+    final response = await _sendRequest(
+      method: 'POST',
+      endpoint: '/api/factories',
+      body: factoryData,
+      requireAuth: true,
+    );
+    if (response.isSuccess && response.data is Map) {
+      final json = response.data as Map<String, dynamic>;
+      return ServiceApiResponse.success(
+        json['factory'] as Map<String, dynamic>? ?? factoryData,
+      );
+    }
+    return ServiceApiResponse.failure(
+      response.errorMessage,
+      statusCode: response.statusCode,
+    );
+  }
+
+  /// Update a factory on the authoritative service.
+  Future<ServiceApiResponse<Map<String, dynamic>>> updateFactory(
+    String factoryId,
+    Map<String, dynamic> factoryData,
+  ) async {
+    final response = await _sendRequest(
+      method: 'PUT',
+      endpoint: '/api/factories/$factoryId',
+      body: factoryData,
+      requireAuth: true,
+    );
+    if (response.isSuccess && response.data is Map) {
+      final json = response.data as Map<String, dynamic>;
+      return ServiceApiResponse.success(
+        json['factory'] as Map<String, dynamic>? ?? factoryData,
+      );
+    }
+    return ServiceApiResponse.failure(
+      response.errorMessage,
+      statusCode: response.statusCode,
+    );
+  }
+
+  /// Delete/deactivate a factory on the authoritative service.
+  Future<ServiceApiResponse<void>> deleteFactory(String factoryId) async {
+    final response = await _sendRequest(
+      method: 'DELETE',
+      endpoint: '/api/factories/$factoryId',
+      requireAuth: true,
+    );
+    if (response.isSuccess) {
+      return const ServiceApiResponse.success(null);
     }
     return ServiceApiResponse.failure(
       response.errorMessage,

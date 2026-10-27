@@ -22,6 +22,11 @@ import '../../features/devices/data/repositories/device_repository_impl.dart'
 import '../../features/devices/domain/repositories/device_repository.dart'
     as _i1071;
 import '../../features/devices/presentation/bloc/devices_cubit.dart' as _i264;
+import '../../features/factories/data/repositories/factory_repository_impl.dart'
+    as _i801;
+import '../../features/factories/domain/repositories/factory_repository.dart'
+    as _i911;
+import '../../features/factories/presentation/bloc/factory_cubit.dart' as _i418;
 import '../../features/incidents/data/repositories/incident_repository_impl.dart'
     as _i723;
 import '../../features/incidents/data/services/desktop_notification_service.dart'
@@ -161,6 +166,12 @@ extension GetItInjectableX on _i174.GetIt {
         gh<_i63.MonitoringServiceClient>(),
       ),
     );
+    gh.lazySingleton<_i911.FactoryRepository>(
+      () => _i801.FactoryRepositoryImpl(
+        gh<_i982.AppDatabase>(),
+        gh<_i63.MonitoringServiceClient>(),
+      ),
+    );
     gh.lazySingleton<_i365.MonitoringRepository>(
       () => _i592.MonitoringRepositoryImpl(
         gh<_i982.AppDatabase>(),
@@ -176,6 +187,9 @@ extension GetItInjectableX on _i174.GetIt {
         gh<_i64.AuditLogRepository>(),
         gh<_i63.MonitoringServiceClient>(),
       ),
+    );
+    gh.lazySingleton<_i418.FactoryCubit>(
+      () => _i418.FactoryCubit(gh<_i911.FactoryRepository>()),
     );
     gh.lazySingleton<_i787.AuthRepository>(
       () => _i153.AuthRepositoryImpl(

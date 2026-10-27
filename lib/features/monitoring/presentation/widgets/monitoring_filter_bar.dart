@@ -109,7 +109,8 @@ class MonitoringFilterBar extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
-                          color: (state.isEngineRunning && !state.isEnginePaused)
+                          color:
+                              (state.isEngineRunning && !state.isEnginePaused)
                               ? const Color(0xFF10B981)
                               : Colors.orange,
                         ),
@@ -175,10 +176,7 @@ class MonitoringFilterBar extends StatelessWidget {
                       runSpacing: 10,
                       alignment: WrapAlignment.spaceBetween,
                       crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        engineStatus,
-                        wallDisplayBtn,
-                      ],
+                      children: [engineStatus, wallDisplayBtn],
                     ),
                   ],
                 );

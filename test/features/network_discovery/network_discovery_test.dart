@@ -37,8 +37,14 @@ class FakeDeviceRepository implements DeviceRepository {
   }
 
   @override
-  Future<Result<List<DeviceEntity>>> getDevices() async =>
-      Result.success(List.from(_devices));
+  Future<Result<List<DeviceEntity>>> getDevices({String? factoryId}) async {
+    if (factoryId != null) {
+      return Result.success(
+        _devices.where((d) => d.factoryId == factoryId).toList(),
+      );
+    }
+    return Result.success(List.from(_devices));
+  }
 
   @override
   Future<Result<DeviceEntity>> getDeviceById(int id) async {

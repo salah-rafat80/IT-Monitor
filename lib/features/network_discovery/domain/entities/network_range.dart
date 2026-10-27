@@ -4,7 +4,8 @@ import 'package:equatable/equatable.dart';
 import 'reachability_status.dart';
 
 class NetworkRange extends Equatable {
-  final String id; // Stable unique identifier, e.g. 'range_10_10_0_0_24'
+  final String id; // Stable unique identifier, e.g. 'range_bnf_10_10_0_0_24'
+  final String factoryId; // Required factory ownership, e.g. 'bnf', 'rnf'
   final String? name; // Optional human-readable name, e.g. 'Core Office VLAN'
   final String cidr; // e.g., '192.168.27.0/24'
   final String baseIp; // e.g., '192.168.27.0'
@@ -19,6 +20,7 @@ class NetworkRange extends Equatable {
 
   const NetworkRange({
     required this.id,
+    this.factoryId = 'unassigned',
     this.name,
     required this.cidr,
     required this.baseIp,
@@ -32,14 +34,18 @@ class NetworkRange extends Equatable {
     this.updatedAt,
   });
 
-  /// Deterministic ID generator from canonical normalized CIDR
-  static String generateId(String normalizedCidr) {
-    return 'range_${normalizedCidr.replaceAll('.', '_').replaceAll('/', '_')}';
+  /// Deterministic ID generator from canonical normalized CIDR and factory identifier
+  static String generateId(String normalizedCidr, [String? factoryId]) {
+    final cleanFactory = (factoryId != null && factoryId.trim().isNotEmpty)
+        ? '${factoryId.trim().toLowerCase()}_'
+        : '';
+    return 'range_$cleanFactory${normalizedCidr.replaceAll('.', '_').replaceAll('/', '_')}';
   }
 
   static NetworkRange? tryParse(
     String cidrStr, {
     String? id,
+    String? factoryId,
     String? name,
     bool isEnabled = true,
     ReachabilityStatus status = ReachabilityStatus.reachabilityNotTested,
@@ -49,6 +55,7 @@ class NetworkRange extends Equatable {
   }) => parse(
     cidrStr,
     id: id,
+    factoryId: factoryId,
     name: name,
     isEnabled: isEnabled,
     status: status,
@@ -60,6 +67,7 @@ class NetworkRange extends Equatable {
   static NetworkRange? parse(
     String cidrStr, {
     String? id,
+    String? factoryId,
     String? name,
     bool isEnabled = true,
     ReachabilityStatus status = ReachabilityStatus.reachabilityNotTested,
@@ -108,12 +116,16 @@ class NetworkRange extends Equatable {
     ];
     final normalizedBaseIp = baseOctets.join('.');
     final normalizedCidr = '$normalizedBaseIp/$prefix';
+    final effectiveFactory = (factoryId != null && factoryId.trim().isNotEmpty)
+        ? factoryId.trim()
+        : 'unassigned';
     final effectiveId = (id != null && id.trim().isNotEmpty)
         ? id.trim()
-        : generateId(normalizedCidr);
+        : generateId(normalizedCidr, effectiveFactory);
 
     return NetworkRange(
       id: effectiveId,
+      factoryId: effectiveFactory,
       name: (name != null && name.trim().isNotEmpty) ? name.trim() : null,
       cidr: normalizedCidr,
       baseIp: normalizedBaseIp,
@@ -186,6 +198,7 @@ class NetworkRange extends Equatable {
 
   NetworkRange copyWith({
     String? id,
+    String? factoryId,
     String? name,
     String? cidr,
     String? baseIp,
@@ -200,6 +213,7 @@ class NetworkRange extends Equatable {
   }) {
     return NetworkRange(
       id: id ?? this.id,
+      factoryId: factoryId ?? this.factoryId,
       name: name ?? this.name,
       cidr: cidr ?? this.cidr,
       baseIp: baseIp ?? this.baseIp,
@@ -216,6 +230,7 @@ class NetworkRange extends Equatable {
 
   Map<String, dynamic> toJson() => {
     'id': id,
+    'factoryId': factoryId,
     'name': name,
     'cidr': cidr,
     'baseIp': baseIp,
@@ -233,10 +248,12 @@ class NetworkRange extends Equatable {
     final cidrStr = json['cidr'] as String;
     final prefix = json['prefixLength'] as int? ?? 24;
     final base = json['baseIp'] as String? ?? cidrStr.split('/').first;
-    final effectiveId = json['id'] as String? ?? generateId(cidrStr);
+    final factoryId = json['factoryId'] as String? ?? 'unassigned';
+    final effectiveId = json['id'] as String? ?? generateId(cidrStr, factoryId);
 
     return NetworkRange(
       id: effectiveId,
+      factoryId: factoryId,
       name: json['name'] as String?,
       cidr: cidrStr,
       baseIp: base,
@@ -258,6 +275,7 @@ class NetworkRange extends Equatable {
   @override
   List<Object?> get props => [
     id,
+    factoryId,
     name,
     cidr,
     baseIp,

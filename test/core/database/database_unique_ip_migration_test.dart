@@ -236,6 +236,9 @@ void main() {
 
         // Drop unique index to simulate pre-v10 legacy state
         await db.customStatement('DROP INDEX IF EXISTS idx_devices_ip;');
+        await db.customStatement(
+          'DROP INDEX IF EXISTS idx_devices_factory_ip;',
+        );
 
         // Insert legacy data WITH duplicate IP in devices
         final nowMs = DateTime.now().millisecondsSinceEpoch;

@@ -136,6 +136,7 @@ enum DeviceType {
 
 class DeviceEntity extends Equatable {
   final int id;
+  final String factoryId;
   final String name;
   final DeviceType type;
   final String ip;
@@ -157,6 +158,7 @@ class DeviceEntity extends Equatable {
 
   const DeviceEntity({
     required this.id,
+    this.factoryId = 'unassigned',
     required this.name,
     required this.type,
     required this.ip,
@@ -195,6 +197,7 @@ class DeviceEntity extends Equatable {
 
   DeviceEntity copyWith({
     int? id,
+    String? factoryId,
     String? name,
     DeviceType? type,
     String? ip,
@@ -216,6 +219,7 @@ class DeviceEntity extends Equatable {
   }) {
     return DeviceEntity(
       id: id ?? this.id,
+      factoryId: factoryId ?? this.factoryId,
       name: name ?? this.name,
       type: type ?? this.type,
       ip: ip ?? this.ip,
@@ -240,6 +244,7 @@ class DeviceEntity extends Equatable {
   Map<String, dynamic> toJson() {
     return {
       'id': id,
+      'factoryId': factoryId,
       'name': name,
       'type': type.toValue(),
       'ip': ip,
@@ -266,6 +271,7 @@ class DeviceEntity extends Equatable {
       id: json['id'] is int
           ? json['id'] as int
           : int.tryParse(json['id']?.toString() ?? '0') ?? 0,
+      factoryId: json['factoryId']?.toString() ?? 'unassigned',
       name: json['name']?.toString() ?? '',
       type: DeviceType.fromString(json['type']?.toString() ?? 'pc'),
       ip: json['ip']?.toString() ?? '',
@@ -296,6 +302,7 @@ class DeviceEntity extends Equatable {
   @override
   List<Object?> get props => [
     id,
+    factoryId,
     name,
     type,
     ip,

@@ -16,6 +16,7 @@ import '../di/injection.dart';
 import '../presentation/widgets/desktop_shell.dart';
 import '../../features/wall_display/presentation/pages/wall_display_page.dart';
 import '../../features/infrastructure/presentation/pages/infrastructure_page.dart';
+import '../../features/inventory/presentation/pages/inventory_page.dart';
 
 final GlobalKey<NavigatorState> _rootNavigatorKey = GlobalKey<NavigatorState>();
 final GlobalKey<NavigatorState> _shellNavigatorKey =
@@ -66,6 +67,10 @@ class AppRouter {
           GoRoute(
             path: '/devices',
             builder: (context, state) => const DevicesPage(),
+          ),
+          GoRoute(
+            path: '/inventory',
+            builder: (context, state) => const InventoryPage(),
           ),
           GoRoute(
             path: '/infrastructure',

@@ -745,6 +745,85 @@ class MonitoringServiceClient {
     );
   }
 
+  /// Reassign a list of devices to a target factory on the authoritative service.
+  Future<ServiceApiResponse<int>> reassignDevicesFactory({
+    required List<int> deviceIds,
+    required String targetFactoryId,
+  }) async {
+    final response = await _sendRequest(
+      method: 'POST',
+      endpoint: '/api/devices/reassign-factory',
+      body: {'deviceIds': deviceIds, 'factoryId': targetFactoryId},
+      requireAuth: true,
+    );
+    if (response.isSuccess && response.data is Map) {
+      final json = response.data as Map<String, dynamic>;
+      return ServiceApiResponse.success(
+        json['reassignedCount'] as int? ?? deviceIds.length,
+      );
+    }
+    return ServiceApiResponse.failure(
+      response.errorMessage,
+      statusCode: response.statusCode,
+    );
+  }
+
+  /// Delete multiple devices from the authoritative service.
+  Future<ServiceApiResponse<int>> deleteDevices(List<int> deviceIds) async {
+    final response = await _sendRequest(
+      method: 'POST',
+      endpoint: '/api/devices/bulk-delete',
+      body: {'deviceIds': deviceIds},
+      requireAuth: true,
+    );
+    if (response.isSuccess && response.data is Map) {
+      final json = response.data as Map<String, dynamic>;
+      return ServiceApiResponse.success(
+        json['deletedCount'] as int? ?? deviceIds.length,
+      );
+    }
+    return ServiceApiResponse.failure(
+      response.errorMessage,
+      statusCode: response.statusCode,
+    );
+  }
+
+  /// Bulk update attributes for multiple devices on the authoritative service.
+  Future<ServiceApiResponse<int>> bulkUpdateDevices({
+    required List<int> deviceIds,
+    String? type,
+    String? department,
+    String? officeLocation,
+    String? vendor,
+    bool? isMonitored,
+    bool? isEnabled,
+  }) async {
+    final response = await _sendRequest(
+      method: 'POST',
+      endpoint: '/api/devices/bulk-update',
+      body: {
+        'deviceIds': deviceIds,
+        if (type != null) 'type': type,
+        if (department != null) 'department': department,
+        if (officeLocation != null) 'officeLocation': officeLocation,
+        if (vendor != null) 'vendor': vendor,
+        if (isMonitored != null) 'isMonitored': isMonitored,
+        if (isEnabled != null) 'isEnabled': isEnabled,
+      },
+      requireAuth: true,
+    );
+    if (response.isSuccess && response.data is Map) {
+      final json = response.data as Map<String, dynamic>;
+      return ServiceApiResponse.success(
+        json['updatedCount'] as int? ?? deviceIds.length,
+      );
+    }
+    return ServiceApiResponse.failure(
+      response.errorMessage,
+      statusCode: response.statusCode,
+    );
+  }
+
   /// Delete an infrastructure device from the service.
   Future<ServiceApiResponse<void>> deleteInfrastructureDevice(int id) async {
     final response = await _sendRequest(

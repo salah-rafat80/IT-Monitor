@@ -1713,6 +1713,143 @@ Write-Output 'OK'
                 res.failureOrNull?.message ?? 'Failed to assign device owner',
           }, status: statusCode);
         }
+      } else if (path == '/api/devices/reassign-factory' &&
+          request.method == 'POST') {
+        final session = _authenticateRequest(request);
+        if (session == null) {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': 'Unauthorized: Valid session token required',
+          }, status: HttpStatus.unauthorized);
+          return;
+        }
+        if (!_isAdmin(session)) {
+          await _jsonResponse(request, {
+            'success': false,
+            'error':
+                'Forbidden: Admin role required to reassign device factory',
+          }, status: HttpStatus.forbidden);
+          return;
+        }
+
+        final body = await _readJsonBody(request);
+        final rawIds = body['deviceIds'] as List<dynamic>? ?? [];
+        final deviceIds = rawIds.map((id) => int.parse(id.toString())).toList();
+        final factoryId = body['factoryId']?.toString() ?? 'unassigned';
+
+        final deviceRepo = getIt<DeviceRepository>();
+        final res = await deviceRepo.reassignDevicesFactory(
+          deviceIds: deviceIds,
+          targetFactoryId: factoryId,
+          adminUsername: session.username,
+        );
+
+        if (res.isSuccess) {
+          _broadcastEvent('devices_reassigned_factory', {
+            'count': res.dataOrNull,
+            'targetFactoryId': factoryId,
+          });
+          await _jsonResponse(request, {
+            'success': true,
+            'reassignedCount': res.dataOrNull,
+          });
+        } else {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': res.failureOrNull?.message ?? 'Failed to reassign factory',
+          }, status: 400);
+        }
+      } else if (path == '/api/devices/bulk-delete' &&
+          request.method == 'POST') {
+        final session = _authenticateRequest(request);
+        if (session == null) {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': 'Unauthorized: Valid session token required',
+          }, status: HttpStatus.unauthorized);
+          return;
+        }
+        if (!_isAdmin(session)) {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': 'Forbidden: Admin role required to delete devices',
+          }, status: HttpStatus.forbidden);
+          return;
+        }
+
+        final body = await _readJsonBody(request);
+        final rawIds = body['deviceIds'] as List<dynamic>? ?? [];
+        final deviceIds = rawIds.map((id) => int.parse(id.toString())).toList();
+
+        final deviceRepo = getIt<DeviceRepository>();
+        final res = await deviceRepo.deleteDevices(deviceIds);
+
+        if (res.isSuccess) {
+          _broadcastEvent('devices_deleted', {'count': res.dataOrNull});
+          await _jsonResponse(request, {
+            'success': true,
+            'deletedCount': res.dataOrNull,
+          });
+        } else {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': res.failureOrNull?.message ?? 'Failed to delete devices',
+          }, status: 400);
+        }
+      } else if (path == '/api/devices/bulk-update' &&
+          request.method == 'POST') {
+        final session = _authenticateRequest(request);
+        if (session == null) {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': 'Unauthorized: Valid session token required',
+          }, status: HttpStatus.unauthorized);
+          return;
+        }
+        if (!_isAdmin(session)) {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': 'Forbidden: Admin role required to update devices',
+          }, status: HttpStatus.forbidden);
+          return;
+        }
+
+        final body = await _readJsonBody(request);
+        final rawIds = body['deviceIds'] as List<dynamic>? ?? [];
+        final deviceIds = rawIds.map((id) => int.parse(id.toString())).toList();
+
+        final typeStr = body['type']?.toString();
+        final type = typeStr != null ? DeviceType.fromString(typeStr) : null;
+        final dept = body['department']?.toString();
+        final loc = body['officeLocation']?.toString();
+        final vendor = body['vendor']?.toString();
+        final isMonitored = body['isMonitored'] as bool?;
+        final isEnabled = body['isEnabled'] as bool?;
+
+        final deviceRepo = getIt<DeviceRepository>();
+        final res = await deviceRepo.bulkUpdateDevices(
+          deviceIds: deviceIds,
+          type: type,
+          department: dept,
+          officeLocation: loc,
+          vendor: vendor,
+          isMonitored: isMonitored,
+          isEnabled: isEnabled,
+        );
+
+        if (res.isSuccess) {
+          _broadcastEvent('devices_updated', {'count': res.dataOrNull});
+          await _jsonResponse(request, {
+            'success': true,
+            'updatedCount': res.dataOrNull,
+          });
+        } else {
+          await _jsonResponse(request, {
+            'success': false,
+            'error':
+                res.failureOrNull?.message ?? 'Failed to bulk update devices',
+          }, status: 400);
+        }
       } else if (path == '/api/infrastructure/unifi/devices' &&
           request.method == 'GET') {
         final session = _authenticateRequest(request);

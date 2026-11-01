@@ -130,6 +130,56 @@ class FakeDeviceRepository implements DeviceRepository {
   Future<Result<int>> bootstrapApprovedInventory({bool force = false}) async {
     return Result.success(_devices.length);
   }
+
+  @override
+  Future<Result<int>> reassignDevicesFactory({
+    required List<int> deviceIds,
+    required String targetFactoryId,
+    String? adminUsername,
+  }) async {
+    int updatedCount = 0;
+    for (int i = 0; i < _devices.length; i++) {
+      if (deviceIds.contains(_devices[i].id)) {
+        _devices[i] = _devices[i].copyWith(factoryId: targetFactoryId);
+        updatedCount++;
+      }
+    }
+    return Result.success(updatedCount);
+  }
+
+  @override
+  Future<Result<int>> deleteDevices(List<int> deviceIds) async {
+    final before = _devices.length;
+    _devices.removeWhere((d) => deviceIds.contains(d.id));
+    return Result.success(before - _devices.length);
+  }
+
+  @override
+  Future<Result<int>> bulkUpdateDevices({
+    required List<int> deviceIds,
+    DeviceType? type,
+    String? department,
+    String? officeLocation,
+    String? vendor,
+    bool? isMonitored,
+    bool? isEnabled,
+  }) async {
+    int updatedCount = 0;
+    for (int i = 0; i < _devices.length; i++) {
+      if (deviceIds.contains(_devices[i].id)) {
+        _devices[i] = _devices[i].copyWith(
+          department: department ?? _devices[i].department,
+          officeLocation: officeLocation ?? _devices[i].officeLocation,
+          type: type ?? _devices[i].type,
+          vendor: vendor ?? _devices[i].vendor,
+          isMonitored: isMonitored ?? _devices[i].isMonitored,
+          isEnabled: isEnabled ?? _devices[i].isEnabled,
+        );
+        updatedCount++;
+      }
+    }
+    return Result.success(updatedCount);
+  }
 }
 
 // --- Mock Strategies for Deterministic Testing ---

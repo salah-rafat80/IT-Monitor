@@ -52,6 +52,39 @@ class $FactoriesTable extends Factories
     ),
     defaultValue: const Constant(true),
   );
+  static const VerificationMeta _gatewayIpMeta = const VerificationMeta(
+    'gatewayIp',
+  );
+  @override
+  late final GeneratedColumn<String> gatewayIp = GeneratedColumn<String>(
+    'gateway_ip',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _subnetMaskMeta = const VerificationMeta(
+    'subnetMask',
+  );
+  @override
+  late final GeneratedColumn<String> subnetMask = GeneratedColumn<String>(
+    'subnet_mask',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _expectedCidrMeta = const VerificationMeta(
+    'expectedCidr',
+  );
+  @override
+  late final GeneratedColumn<String> expectedCidr = GeneratedColumn<String>(
+    'expected_cidr',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -81,6 +114,9 @@ class $FactoriesTable extends Factories
     code,
     name,
     isActive,
+    gatewayIp,
+    subnetMask,
+    expectedCidr,
     createdAt,
     updatedAt,
   ];
@@ -123,6 +159,27 @@ class $FactoriesTable extends Factories
         isActive.isAcceptableOrUnknown(data['is_active']!, _isActiveMeta),
       );
     }
+    if (data.containsKey('gateway_ip')) {
+      context.handle(
+        _gatewayIpMeta,
+        gatewayIp.isAcceptableOrUnknown(data['gateway_ip']!, _gatewayIpMeta),
+      );
+    }
+    if (data.containsKey('subnet_mask')) {
+      context.handle(
+        _subnetMaskMeta,
+        subnetMask.isAcceptableOrUnknown(data['subnet_mask']!, _subnetMaskMeta),
+      );
+    }
+    if (data.containsKey('expected_cidr')) {
+      context.handle(
+        _expectedCidrMeta,
+        expectedCidr.isAcceptableOrUnknown(
+          data['expected_cidr']!,
+          _expectedCidrMeta,
+        ),
+      );
+    }
     if (data.containsKey('created_at')) {
       context.handle(
         _createdAtMeta,
@@ -160,6 +217,18 @@ class $FactoriesTable extends Factories
         DriftSqlType.bool,
         data['${effectivePrefix}is_active'],
       )!,
+      gatewayIp: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}gateway_ip'],
+      ),
+      subnetMask: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}subnet_mask'],
+      ),
+      expectedCidr: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}expected_cidr'],
+      ),
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
@@ -182,6 +251,9 @@ class FactoryData extends DataClass implements Insertable<FactoryData> {
   final String code;
   final String name;
   final bool isActive;
+  final String? gatewayIp;
+  final String? subnetMask;
+  final String? expectedCidr;
   final DateTime createdAt;
   final DateTime? updatedAt;
   const FactoryData({
@@ -189,6 +261,9 @@ class FactoryData extends DataClass implements Insertable<FactoryData> {
     required this.code,
     required this.name,
     required this.isActive,
+    this.gatewayIp,
+    this.subnetMask,
+    this.expectedCidr,
     required this.createdAt,
     this.updatedAt,
   });
@@ -199,6 +274,15 @@ class FactoryData extends DataClass implements Insertable<FactoryData> {
     map['code'] = Variable<String>(code);
     map['name'] = Variable<String>(name);
     map['is_active'] = Variable<bool>(isActive);
+    if (!nullToAbsent || gatewayIp != null) {
+      map['gateway_ip'] = Variable<String>(gatewayIp);
+    }
+    if (!nullToAbsent || subnetMask != null) {
+      map['subnet_mask'] = Variable<String>(subnetMask);
+    }
+    if (!nullToAbsent || expectedCidr != null) {
+      map['expected_cidr'] = Variable<String>(expectedCidr);
+    }
     map['created_at'] = Variable<DateTime>(createdAt);
     if (!nullToAbsent || updatedAt != null) {
       map['updated_at'] = Variable<DateTime>(updatedAt);
@@ -212,6 +296,15 @@ class FactoryData extends DataClass implements Insertable<FactoryData> {
       code: Value(code),
       name: Value(name),
       isActive: Value(isActive),
+      gatewayIp: gatewayIp == null && nullToAbsent
+          ? const Value.absent()
+          : Value(gatewayIp),
+      subnetMask: subnetMask == null && nullToAbsent
+          ? const Value.absent()
+          : Value(subnetMask),
+      expectedCidr: expectedCidr == null && nullToAbsent
+          ? const Value.absent()
+          : Value(expectedCidr),
       createdAt: Value(createdAt),
       updatedAt: updatedAt == null && nullToAbsent
           ? const Value.absent()
@@ -229,6 +322,9 @@ class FactoryData extends DataClass implements Insertable<FactoryData> {
       code: serializer.fromJson<String>(json['code']),
       name: serializer.fromJson<String>(json['name']),
       isActive: serializer.fromJson<bool>(json['isActive']),
+      gatewayIp: serializer.fromJson<String?>(json['gatewayIp']),
+      subnetMask: serializer.fromJson<String?>(json['subnetMask']),
+      expectedCidr: serializer.fromJson<String?>(json['expectedCidr']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime?>(json['updatedAt']),
     );
@@ -241,6 +337,9 @@ class FactoryData extends DataClass implements Insertable<FactoryData> {
       'code': serializer.toJson<String>(code),
       'name': serializer.toJson<String>(name),
       'isActive': serializer.toJson<bool>(isActive),
+      'gatewayIp': serializer.toJson<String?>(gatewayIp),
+      'subnetMask': serializer.toJson<String?>(subnetMask),
+      'expectedCidr': serializer.toJson<String?>(expectedCidr),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime?>(updatedAt),
     };
@@ -251,6 +350,9 @@ class FactoryData extends DataClass implements Insertable<FactoryData> {
     String? code,
     String? name,
     bool? isActive,
+    Value<String?> gatewayIp = const Value.absent(),
+    Value<String?> subnetMask = const Value.absent(),
+    Value<String?> expectedCidr = const Value.absent(),
     DateTime? createdAt,
     Value<DateTime?> updatedAt = const Value.absent(),
   }) => FactoryData(
@@ -258,6 +360,9 @@ class FactoryData extends DataClass implements Insertable<FactoryData> {
     code: code ?? this.code,
     name: name ?? this.name,
     isActive: isActive ?? this.isActive,
+    gatewayIp: gatewayIp.present ? gatewayIp.value : this.gatewayIp,
+    subnetMask: subnetMask.present ? subnetMask.value : this.subnetMask,
+    expectedCidr: expectedCidr.present ? expectedCidr.value : this.expectedCidr,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt.present ? updatedAt.value : this.updatedAt,
   );
@@ -267,6 +372,13 @@ class FactoryData extends DataClass implements Insertable<FactoryData> {
       code: data.code.present ? data.code.value : this.code,
       name: data.name.present ? data.name.value : this.name,
       isActive: data.isActive.present ? data.isActive.value : this.isActive,
+      gatewayIp: data.gatewayIp.present ? data.gatewayIp.value : this.gatewayIp,
+      subnetMask: data.subnetMask.present
+          ? data.subnetMask.value
+          : this.subnetMask,
+      expectedCidr: data.expectedCidr.present
+          ? data.expectedCidr.value
+          : this.expectedCidr,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
@@ -279,6 +391,9 @@ class FactoryData extends DataClass implements Insertable<FactoryData> {
           ..write('code: $code, ')
           ..write('name: $name, ')
           ..write('isActive: $isActive, ')
+          ..write('gatewayIp: $gatewayIp, ')
+          ..write('subnetMask: $subnetMask, ')
+          ..write('expectedCidr: $expectedCidr, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -286,8 +401,17 @@ class FactoryData extends DataClass implements Insertable<FactoryData> {
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, code, name, isActive, createdAt, updatedAt);
+  int get hashCode => Object.hash(
+    id,
+    code,
+    name,
+    isActive,
+    gatewayIp,
+    subnetMask,
+    expectedCidr,
+    createdAt,
+    updatedAt,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -296,6 +420,9 @@ class FactoryData extends DataClass implements Insertable<FactoryData> {
           other.code == this.code &&
           other.name == this.name &&
           other.isActive == this.isActive &&
+          other.gatewayIp == this.gatewayIp &&
+          other.subnetMask == this.subnetMask &&
+          other.expectedCidr == this.expectedCidr &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt);
 }
@@ -305,6 +432,9 @@ class FactoriesCompanion extends UpdateCompanion<FactoryData> {
   final Value<String> code;
   final Value<String> name;
   final Value<bool> isActive;
+  final Value<String?> gatewayIp;
+  final Value<String?> subnetMask;
+  final Value<String?> expectedCidr;
   final Value<DateTime> createdAt;
   final Value<DateTime?> updatedAt;
   final Value<int> rowid;
@@ -313,6 +443,9 @@ class FactoriesCompanion extends UpdateCompanion<FactoryData> {
     this.code = const Value.absent(),
     this.name = const Value.absent(),
     this.isActive = const Value.absent(),
+    this.gatewayIp = const Value.absent(),
+    this.subnetMask = const Value.absent(),
+    this.expectedCidr = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -322,6 +455,9 @@ class FactoriesCompanion extends UpdateCompanion<FactoryData> {
     required String code,
     required String name,
     this.isActive = const Value.absent(),
+    this.gatewayIp = const Value.absent(),
+    this.subnetMask = const Value.absent(),
+    this.expectedCidr = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -333,6 +469,9 @@ class FactoriesCompanion extends UpdateCompanion<FactoryData> {
     Expression<String>? code,
     Expression<String>? name,
     Expression<bool>? isActive,
+    Expression<String>? gatewayIp,
+    Expression<String>? subnetMask,
+    Expression<String>? expectedCidr,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
     Expression<int>? rowid,
@@ -342,6 +481,9 @@ class FactoriesCompanion extends UpdateCompanion<FactoryData> {
       if (code != null) 'code': code,
       if (name != null) 'name': name,
       if (isActive != null) 'is_active': isActive,
+      if (gatewayIp != null) 'gateway_ip': gatewayIp,
+      if (subnetMask != null) 'subnet_mask': subnetMask,
+      if (expectedCidr != null) 'expected_cidr': expectedCidr,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (rowid != null) 'rowid': rowid,
@@ -353,6 +495,9 @@ class FactoriesCompanion extends UpdateCompanion<FactoryData> {
     Value<String>? code,
     Value<String>? name,
     Value<bool>? isActive,
+    Value<String?>? gatewayIp,
+    Value<String?>? subnetMask,
+    Value<String?>? expectedCidr,
     Value<DateTime>? createdAt,
     Value<DateTime?>? updatedAt,
     Value<int>? rowid,
@@ -362,6 +507,9 @@ class FactoriesCompanion extends UpdateCompanion<FactoryData> {
       code: code ?? this.code,
       name: name ?? this.name,
       isActive: isActive ?? this.isActive,
+      gatewayIp: gatewayIp ?? this.gatewayIp,
+      subnetMask: subnetMask ?? this.subnetMask,
+      expectedCidr: expectedCidr ?? this.expectedCidr,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       rowid: rowid ?? this.rowid,
@@ -383,6 +531,15 @@ class FactoriesCompanion extends UpdateCompanion<FactoryData> {
     if (isActive.present) {
       map['is_active'] = Variable<bool>(isActive.value);
     }
+    if (gatewayIp.present) {
+      map['gateway_ip'] = Variable<String>(gatewayIp.value);
+    }
+    if (subnetMask.present) {
+      map['subnet_mask'] = Variable<String>(subnetMask.value);
+    }
+    if (expectedCidr.present) {
+      map['expected_cidr'] = Variable<String>(expectedCidr.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
@@ -402,6 +559,9 @@ class FactoriesCompanion extends UpdateCompanion<FactoryData> {
           ..write('code: $code, ')
           ..write('name: $name, ')
           ..write('isActive: $isActive, ')
+          ..write('gatewayIp: $gatewayIp, ')
+          ..write('subnetMask: $subnetMask, ')
+          ..write('expectedCidr: $expectedCidr, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('rowid: $rowid')
@@ -8947,6 +9107,9 @@ typedef $$FactoriesTableCreateCompanionBuilder =
       required String code,
       required String name,
       Value<bool> isActive,
+      Value<String?> gatewayIp,
+      Value<String?> subnetMask,
+      Value<String?> expectedCidr,
       Value<DateTime> createdAt,
       Value<DateTime?> updatedAt,
       Value<int> rowid,
@@ -8957,6 +9120,9 @@ typedef $$FactoriesTableUpdateCompanionBuilder =
       Value<String> code,
       Value<String> name,
       Value<bool> isActive,
+      Value<String?> gatewayIp,
+      Value<String?> subnetMask,
+      Value<String?> expectedCidr,
       Value<DateTime> createdAt,
       Value<DateTime?> updatedAt,
       Value<int> rowid,
@@ -8988,6 +9154,21 @@ class $$FactoriesTableFilterComposer
 
   ColumnFilters<bool> get isActive => $composableBuilder(
     column: $table.isActive,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get gatewayIp => $composableBuilder(
+    column: $table.gatewayIp,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get subnetMask => $composableBuilder(
+    column: $table.subnetMask,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get expectedCidr => $composableBuilder(
+    column: $table.expectedCidr,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -9031,6 +9212,21 @@ class $$FactoriesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get gatewayIp => $composableBuilder(
+    column: $table.gatewayIp,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get subnetMask => $composableBuilder(
+    column: $table.subnetMask,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get expectedCidr => $composableBuilder(
+    column: $table.expectedCidr,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
@@ -9062,6 +9258,19 @@ class $$FactoriesTableAnnotationComposer
 
   GeneratedColumn<bool> get isActive =>
       $composableBuilder(column: $table.isActive, builder: (column) => column);
+
+  GeneratedColumn<String> get gatewayIp =>
+      $composableBuilder(column: $table.gatewayIp, builder: (column) => column);
+
+  GeneratedColumn<String> get subnetMask => $composableBuilder(
+    column: $table.subnetMask,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get expectedCidr => $composableBuilder(
+    column: $table.expectedCidr,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
@@ -9105,6 +9314,9 @@ class $$FactoriesTableTableManager
                 Value<String> code = const Value.absent(),
                 Value<String> name = const Value.absent(),
                 Value<bool> isActive = const Value.absent(),
+                Value<String?> gatewayIp = const Value.absent(),
+                Value<String?> subnetMask = const Value.absent(),
+                Value<String?> expectedCidr = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime?> updatedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
@@ -9113,6 +9325,9 @@ class $$FactoriesTableTableManager
                 code: code,
                 name: name,
                 isActive: isActive,
+                gatewayIp: gatewayIp,
+                subnetMask: subnetMask,
+                expectedCidr: expectedCidr,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 rowid: rowid,
@@ -9123,6 +9338,9 @@ class $$FactoriesTableTableManager
                 required String code,
                 required String name,
                 Value<bool> isActive = const Value.absent(),
+                Value<String?> gatewayIp = const Value.absent(),
+                Value<String?> subnetMask = const Value.absent(),
+                Value<String?> expectedCidr = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime?> updatedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
@@ -9131,6 +9349,9 @@ class $$FactoriesTableTableManager
                 code: code,
                 name: name,
                 isActive: isActive,
+                gatewayIp: gatewayIp,
+                subnetMask: subnetMask,
+                expectedCidr: expectedCidr,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 rowid: rowid,

@@ -116,6 +116,28 @@ class FakeDeviceRepository implements DeviceRepository {
   @override
   Future<Result<int>> bootstrapApprovedInventory({bool force = false}) async =>
       Result.success(0);
+
+  @override
+  Future<Result<int>> reassignDevicesFactory({
+    required List<int> deviceIds,
+    required String targetFactoryId,
+    String? adminUsername,
+  }) async => Result.success(deviceIds.length);
+
+  @override
+  Future<Result<int>> deleteDevices(List<int> deviceIds) async =>
+      Result.success(deviceIds.length);
+
+  @override
+  Future<Result<int>> bulkUpdateDevices({
+    required List<int> deviceIds,
+    DeviceType? type,
+    String? department,
+    String? officeLocation,
+    String? vendor,
+    bool? isMonitored,
+    bool? isEnabled,
+  }) async => Result.success(deviceIds.length);
 }
 
 class FakeInfrastructureRepository implements InfrastructureRepository {

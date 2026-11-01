@@ -60,6 +60,9 @@ class FactoryRepositoryImpl implements FactoryRepository {
       code: row.code,
       name: row.name,
       isActive: row.isActive,
+      gatewayIp: row.gatewayIp,
+      subnetMask: row.subnetMask,
+      expectedCidr: row.expectedCidr,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     );
@@ -186,6 +189,9 @@ class FactoryRepositoryImpl implements FactoryRepository {
         code: Value(normalizedCode),
         name: Value(factory.name.trim()),
         isActive: Value(factory.isActive),
+        gatewayIp: Value(factory.gatewayIp),
+        subnetMask: Value(factory.subnetMask),
+        expectedCidr: Value(factory.expectedCidr),
         createdAt: Value(factory.createdAt),
         updatedAt: Value(factory.updatedAt ?? DateTime.now()),
       );
@@ -227,6 +233,9 @@ class FactoryRepositoryImpl implements FactoryRepository {
       final companion = FactoriesCompanion(
         name: Value(factory.name.trim()),
         isActive: Value(factory.isActive),
+        gatewayIp: Value(factory.gatewayIp),
+        subnetMask: Value(factory.subnetMask),
+        expectedCidr: Value(factory.expectedCidr),
         updatedAt: Value(DateTime.now()),
       );
       await (_db.update(

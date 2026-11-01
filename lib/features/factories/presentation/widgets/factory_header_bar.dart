@@ -196,6 +196,125 @@ class FactoryHeaderBar extends StatelessWidget {
                           ),
                         ),
                       ),
+                      const SizedBox(width: 8),
+                      // Network Detection Status Badge
+                      if (factoryState.isDetectingNetwork) ...[
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.blue.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(
+                              color: Colors.blue.withValues(alpha: 0.3),
+                            ),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              SizedBox(
+                                width: 10,
+                                height: 10,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 1.5,
+                                ),
+                              ),
+                              SizedBox(width: 6),
+                              Text(
+                                'Detecting Network...',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.blue,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ] else if (factoryState.detectionResult != null) ...[
+                        Tooltip(
+                          message: factoryState.detectionResult!.message ?? '',
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: factoryState.detectionResult!.isDetected
+                                  ? const Color(
+                                      0xFF10B981,
+                                    ).withValues(alpha: 0.15)
+                                  : factoryState.detectionResult!.isAmbiguous
+                                  ? Colors.amber.withValues(alpha: 0.15)
+                                  : Colors.grey.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(
+                                color: factoryState.detectionResult!.isDetected
+                                    ? const Color(
+                                        0xFF10B981,
+                                      ).withValues(alpha: 0.4)
+                                    : factoryState.detectionResult!.isAmbiguous
+                                    ? Colors.amber.withValues(alpha: 0.4)
+                                    : Colors.grey.withValues(alpha: 0.4),
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  factoryState.detectionResult!.isDetected
+                                      ? Icons.wifi_find_rounded
+                                      : factoryState
+                                            .detectionResult!
+                                            .isAmbiguous
+                                      ? Icons.warning_amber_rounded
+                                      : Icons.wifi_off_rounded,
+                                  size: 13,
+                                  color:
+                                      factoryState.detectionResult!.isDetected
+                                      ? const Color(0xFF10B981)
+                                      : factoryState
+                                            .detectionResult!
+                                            .isAmbiguous
+                                      ? Colors.amber[400]
+                                      : Colors.grey[400],
+                                ),
+                                const SizedBox(width: 5),
+                                Text(
+                                  factoryState.detectionResult!.isDetected
+                                      ? 'AUTO: ${factoryState.detectionResult!.detectedFactory?.code}'
+                                      : factoryState
+                                            .detectionResult!
+                                            .isAmbiguous
+                                      ? 'AMBIGUOUS LAN'
+                                      : 'UNKNOWN LAN',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                    color:
+                                        factoryState.detectionResult!.isDetected
+                                        ? const Color(0xFF10B981)
+                                        : factoryState
+                                              .detectionResult!
+                                              .isAmbiguous
+                                        ? Colors.amber[400]
+                                        : Colors.grey[400],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                      IconButton(
+                        tooltip: 'Re-detect local network scope',
+                        icon: const Icon(Icons.refresh_rounded, size: 16),
+                        visualDensity: VisualDensity.compact,
+                        onPressed: () => context
+                            .read<FactoryCubit>()
+                            .revalidateNetworkDetection(),
+                      ),
                     ],
                   ),
                   const SizedBox(width: 16),

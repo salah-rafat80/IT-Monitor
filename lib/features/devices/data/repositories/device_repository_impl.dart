@@ -6,6 +6,7 @@ import '../../../../core/config/app_run_mode.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/errors/failures.dart';
+import '../../../../core/utils/ipv4_utils.dart';
 import '../../../../core/utils/result.dart';
 import '../../../auth/domain/entities/user_entity.dart';
 import '../../../auth/domain/repositories/auth_repository.dart';
@@ -781,6 +782,228 @@ class DeviceRepositoryImpl implements DeviceRepository {
       return Result.success(preview.validDevices.length);
     } catch (e) {
       return Result.failure(DatabaseFailure('Bootstrap failed: $e'));
+    }
+  }
+
+  @override
+  Future<Result<int>> reassignDevicesFactory({
+    required List<int> deviceIds,
+    required String targetFactoryId,
+    String? adminUsername,
+  }) async {
+    if (deviceIds.isEmpty) return Result.success(0);
+
+    if (_useAuthoritativeService) {
+      final client = _effectiveClient;
+      if (client == null || !client.isAuthenticated) {
+        return Result.failure(
+          NetworkFailure(
+            'Production client is not authenticated with the authoritative IT Network Monitor Service.',
+          ),
+        );
+      }
+      final res = await client.reassignDevicesFactory(
+        deviceIds: deviceIds,
+        targetFactoryId: targetFactoryId,
+      );
+      if (res.isSuccess) {
+        return Result.success(res.data ?? deviceIds.length);
+      } else {
+        return Result.failure(
+          NetworkFailure(res.errorMessage ?? 'Failed to reassign devices.'),
+        );
+      }
+    }
+
+    try {
+      final now = DateTime.now();
+      int updatedCount = 0;
+
+      await _db.transaction(() async {
+        for (final id in deviceIds) {
+          final currentDev = await (_db.select(
+            _db.devices,
+          )..where((d) => d.id.equals(id))).getSingleOrNull();
+          if (currentDev == null) continue;
+
+          final canonIp = Ipv4Utils.canonicalizeIpv4(currentDev.ip);
+          if (canonIp != null && canonIp.isNotEmpty) {
+            final conflicting =
+                await (_db.select(_db.devices)..where(
+                      (t) =>
+                          t.factoryId.equals(targetFactoryId) &
+                          t.ip.equals(canonIp) &
+                          t.id.equals(id).not(),
+                    ))
+                    .getSingleOrNull();
+            if (conflicting != null) {
+              throw Exception(
+                'Cannot assign device #${currentDev.id} (${currentDev.name}): IP $canonIp already exists in factory $targetFactoryId (${conflicting.name}).',
+              );
+            }
+          }
+
+          // Update device factory_id, preserving all metadata and ID
+          await (_db.update(_db.devices)..where((d) => d.id.equals(id))).write(
+            DevicesCompanion(
+              factoryId: Value(targetFactoryId),
+              updatedAt: Value(now),
+            ),
+          );
+
+          // Update check_results factory_id
+          await (_db.update(_db.checkResults)
+                ..where((r) => r.deviceId.equals(id)))
+              .write(CheckResultsCompanion(factoryId: Value(targetFactoryId)));
+
+          // Update incidents factory_id
+          await (_db.update(_db.incidents)..where((i) => i.deviceId.equals(id)))
+              .write(IncidentsCompanion(factoryId: Value(targetFactoryId)));
+
+          updatedCount++;
+        }
+      });
+
+      final username = adminUsername ?? await _getActiveUsername();
+      await _auditLogRepo.recordLog(
+        username: username,
+        action: 'DEVICES_REASSIGNED_FACTORY',
+        details:
+            'Assigned $updatedCount devices to factory "$targetFactoryId". Original IDs and monitoring history preserved.',
+      );
+
+      return Result.success(updatedCount);
+    } catch (e) {
+      return Result.failure(DatabaseFailure('Failed to reassign factory: $e'));
+    }
+  }
+
+  @override
+  Future<Result<int>> deleteDevices(List<int> deviceIds) async {
+    if (deviceIds.isEmpty) return Result.success(0);
+
+    if (_useAuthoritativeService) {
+      final client = _effectiveClient;
+      if (client == null || !client.isAuthenticated) {
+        return Result.failure(
+          NetworkFailure(
+            'Production client is not authenticated with the authoritative IT Network Monitor Service.',
+          ),
+        );
+      }
+      final res = await client.deleteDevices(deviceIds);
+      if (res.isSuccess) {
+        return Result.success(res.data ?? deviceIds.length);
+      } else {
+        return Result.failure(
+          NetworkFailure(res.errorMessage ?? 'Failed to delete devices.'),
+        );
+      }
+    }
+
+    try {
+      int deletedCount = 0;
+      await _db.transaction(() async {
+        for (final id in deviceIds) {
+          final res = await deleteDevice(id);
+          if (res.isSuccess) {
+            deletedCount++;
+          }
+        }
+      });
+      return Result.success(deletedCount);
+    } catch (e) {
+      return Result.failure(DatabaseFailure('Failed to delete devices: $e'));
+    }
+  }
+
+  @override
+  Future<Result<int>> bulkUpdateDevices({
+    required List<int> deviceIds,
+    DeviceType? type,
+    String? department,
+    String? officeLocation,
+    String? vendor,
+    bool? isMonitored,
+    bool? isEnabled,
+  }) async {
+    if (deviceIds.isEmpty) return Result.success(0);
+
+    if (_useAuthoritativeService) {
+      final client = _effectiveClient;
+      if (client == null || !client.isAuthenticated) {
+        return Result.failure(
+          NetworkFailure(
+            'Production client is not authenticated with the authoritative IT Network Monitor Service.',
+          ),
+        );
+      }
+      final res = await client.bulkUpdateDevices(
+        deviceIds: deviceIds,
+        type: type?.toValue(),
+        department: department,
+        officeLocation: officeLocation,
+        vendor: vendor,
+        isMonitored: isMonitored,
+        isEnabled: isEnabled,
+      );
+      if (res.isSuccess) {
+        return Result.success(res.data ?? deviceIds.length);
+      } else {
+        return Result.failure(
+          NetworkFailure(res.errorMessage ?? 'Failed to bulk update devices.'),
+        );
+      }
+    }
+
+    try {
+      final now = DateTime.now();
+      int count = 0;
+      await _db.transaction(() async {
+        for (final id in deviceIds) {
+          final current = await (_db.select(
+            _db.devices,
+          )..where((d) => d.id.equals(id))).getSingleOrNull();
+          if (current == null) continue;
+
+          await (_db.update(_db.devices)..where((d) => d.id.equals(id))).write(
+            DevicesCompanion(
+              type: type != null ? Value(type.toValue()) : const Value.absent(),
+              department: department != null
+                  ? Value(department.trim())
+                  : const Value.absent(),
+              officeLocation: officeLocation != null
+                  ? Value(officeLocation.trim())
+                  : const Value.absent(),
+              vendor: vendor != null
+                  ? Value(vendor.trim())
+                  : const Value.absent(),
+              isMonitored: isMonitored != null
+                  ? Value(isMonitored)
+                  : const Value.absent(),
+              isEnabled: isEnabled != null
+                  ? Value(isEnabled)
+                  : const Value.absent(),
+              updatedAt: Value(now),
+            ),
+          );
+          count++;
+        }
+      });
+
+      final username = await _getActiveUsername();
+      await _auditLogRepo.recordLog(
+        username: username,
+        action: 'DEVICES_BULK_UPDATED',
+        details:
+            'Bulk updated $count devices (Dept: $department, Loc: $officeLocation, Monitored: $isMonitored).',
+      );
+
+      return Result.success(count);
+    } catch (e) {
+      return Result.failure(
+        DatabaseFailure('Failed to bulk update devices: $e'),
+      );
     }
   }
 }

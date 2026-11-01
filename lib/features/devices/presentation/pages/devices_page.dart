@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../../auth/presentation/bloc/auth_cubit.dart';
@@ -1022,6 +1023,12 @@ class _DevicesPageState extends State<DevicesPage> {
                 },
                 icon: const Icon(Icons.download_rounded, size: 18),
                 label: const Text('Export CSV'),
+              ),
+              const SizedBox(width: 12),
+              OutlinedButton.icon(
+                onPressed: () => context.go('/inventory'),
+                icon: const Icon(Icons.table_chart_outlined, size: 18),
+                label: const Text('Excel Inventory Grid'),
               ),
               const SizedBox(width: 12),
               if (isAdmin) ...[

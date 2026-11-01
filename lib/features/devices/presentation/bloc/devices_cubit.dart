@@ -88,9 +88,6 @@ class DevicesCubit extends Cubit<DevicesState> {
     if (isClosed) return;
     emit(const DevicesLoading());
 
-    await _deviceRepo.bootstrapApprovedInventory();
-    if (isClosed) return;
-
     final res = await _deviceRepo.getDevices(factoryId: _activeFactoryId);
     if (isClosed) return;
 
@@ -255,6 +252,73 @@ class DevicesCubit extends Cubit<DevicesState> {
     res.fold(
       onSuccess: (_) => loadDevices(),
       onFailure: (failure) => emit(DevicesError(failure.message)),
+    );
+  }
+
+  Future<bool> reassignDevicesFactory({
+    required List<int> deviceIds,
+    required String targetFactoryId,
+  }) async {
+    final res = await _deviceRepo.reassignDevicesFactory(
+      deviceIds: deviceIds,
+      targetFactoryId: targetFactoryId,
+    );
+
+    return res.fold(
+      onSuccess: (_) {
+        loadDevices();
+        return true;
+      },
+      onFailure: (failure) {
+        emit(DevicesError(failure.message));
+        return false;
+      },
+    );
+  }
+
+  Future<bool> deleteDevices(List<int> deviceIds) async {
+    final res = await _deviceRepo.deleteDevices(deviceIds);
+
+    return res.fold(
+      onSuccess: (_) {
+        loadDevices();
+        return true;
+      },
+      onFailure: (failure) {
+        emit(DevicesError(failure.message));
+        return false;
+      },
+    );
+  }
+
+  Future<bool> bulkUpdateDevices({
+    required List<int> deviceIds,
+    DeviceType? type,
+    String? department,
+    String? officeLocation,
+    String? vendor,
+    bool? isMonitored,
+    bool? isEnabled,
+  }) async {
+    final res = await _deviceRepo.bulkUpdateDevices(
+      deviceIds: deviceIds,
+      type: type,
+      department: department,
+      officeLocation: officeLocation,
+      vendor: vendor,
+      isMonitored: isMonitored,
+      isEnabled: isEnabled,
+    );
+
+    return res.fold(
+      onSuccess: (_) {
+        loadDevices();
+        return true;
+      },
+      onFailure: (failure) {
+        emit(DevicesError(failure.message));
+        return false;
+      },
     );
   }
 }

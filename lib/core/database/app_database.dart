@@ -17,6 +17,9 @@ class Factories extends Table {
   TextColumn get code => text().unique()();
   TextColumn get name => text()();
   BoolColumn get isActive => boolean().withDefault(const Constant(true))();
+  TextColumn get gatewayIp => text().nullable()();
+  TextColumn get subnetMask => text().nullable()();
+  TextColumn get expectedCidr => text().nullable()();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get updatedAt => dateTime().nullable()();
 
@@ -267,7 +270,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 12;
+  int get schemaVersion => 13;
 
   @override
   MigrationStrategy get migration {
@@ -686,6 +689,49 @@ class AppDatabase extends _$AppDatabase {
             rethrow;
           }
         }
+        if (from < 13 && to >= 13) {
+          try {
+            await transaction(() async {
+              // 1. Add network columns to factories table if they don't exist
+              final factoryCols = await customSelect(
+                "PRAGMA table_info('factories')",
+              ).get();
+              final colNames = factoryCols
+                  .map((r) => r.read<String>('name'))
+                  .toSet();
+
+              if (!colNames.contains('gateway_ip')) {
+                await m.addColumn(factories, factories.gatewayIp);
+              }
+              if (!colNames.contains('subnet_mask')) {
+                await m.addColumn(factories, factories.subnetMask);
+              }
+              if (!colNames.contains('expected_cidr')) {
+                await m.addColumn(factories, factories.expectedCidr);
+              }
+
+              // 2. Configure initial factory network settings:
+              // RNF: Gateway 192.168.22.1, Subnet Mask 255.255.255.0, CIDR 192.168.22.0/24
+              await customStatement(
+                "UPDATE factories SET gateway_ip = '192.168.22.1', subnet_mask = '255.255.255.0', expected_cidr = '192.168.22.0/24' WHERE id = 'rnf' AND (gateway_ip IS NULL OR gateway_ip = '');",
+              );
+              // BNF: Gateway 192.168.21.1, Subnet Mask 255.255.255.0, CIDR 192.168.21.0/24
+              await customStatement(
+                "UPDATE factories SET gateway_ip = '192.168.21.1', subnet_mask = '255.255.255.0', expected_cidr = '192.168.21.0/24' WHERE id = 'bnf' AND (gateway_ip IS NULL OR gateway_ip = '');",
+              );
+
+              // 3. Sync discovery network scopes
+              await _syncFactoryNetworkRangesToDiscoveryConfig();
+            });
+          } catch (e, st) {
+            _logMigrationDiagnostic(
+              'from < 13: factory network settings migration',
+              e,
+              st,
+            );
+            rethrow;
+          }
+        }
       },
       beforeOpen: (details) async {
         await customStatement('PRAGMA foreign_keys = ON;');
@@ -713,6 +759,9 @@ class AppDatabase extends _$AppDatabase {
           code: const Value('BNF'),
           name: const Value('BNF Factory'),
           isActive: const Value(true),
+          gatewayIp: const Value('192.168.21.1'),
+          subnetMask: const Value('255.255.255.0'),
+          expectedCidr: const Value('192.168.21.0/24'),
           createdAt: Value(now),
         ),
         mode: InsertMode.insertOrIgnore,
@@ -723,6 +772,9 @@ class AppDatabase extends _$AppDatabase {
           code: const Value('RNF'),
           name: const Value('RNF Factory'),
           isActive: const Value(true),
+          gatewayIp: const Value('192.168.22.1'),
+          subnetMask: const Value('255.255.255.0'),
+          expectedCidr: const Value('192.168.22.0/24'),
           createdAt: Value(now),
         ),
         mode: InsertMode.insertOrIgnore,
@@ -737,6 +789,75 @@ class AppDatabase extends _$AppDatabase {
         ),
         mode: InsertMode.insertOrIgnore,
       );
+    } catch (_) {}
+  }
+
+  Future<void> _syncFactoryNetworkRangesToDiscoveryConfig() async {
+    try {
+      final configRows = await select(discoveryConfigurations).get();
+      if (configRows.isEmpty) return;
+      for (final cfg in configRows) {
+        final rawList = jsonDecode(cfg.authorizedRangesJson);
+        if (rawList is List) {
+          final ranges = <Map<String, dynamic>>[];
+          for (final item in rawList) {
+            if (item is Map<String, dynamic>) {
+              ranges.add(Map<String, dynamic>.from(item));
+            }
+          }
+
+          bool changed = false;
+          final hasRnf = ranges.any(
+            (r) => r['factoryId'] == 'rnf' && r['cidr'] == '192.168.22.0/24',
+          );
+          if (!hasRnf) {
+            ranges.add({
+              'id': 'range_rnf_192_168_22_0_24',
+              'factoryId': 'rnf',
+              'name': 'RNF Factory LAN Scope',
+              'cidr': '192.168.22.0/24',
+              'baseIp': '192.168.22.0',
+              'prefixLength': 24,
+              'totalHosts': 256,
+              'usableHostsCount': 254,
+              'isEnabled': true,
+              'reachability': 'reachabilityNotTested',
+              'createdAt': DateTime.now().toIso8601String(),
+            });
+            changed = true;
+          }
+
+          final hasBnf = ranges.any(
+            (r) => r['factoryId'] == 'bnf' && r['cidr'] == '192.168.21.0/24',
+          );
+          if (!hasBnf) {
+            ranges.add({
+              'id': 'range_bnf_192_168_21_0_24',
+              'factoryId': 'bnf',
+              'name': 'BNF Factory LAN Scope',
+              'cidr': '192.168.21.0/24',
+              'baseIp': '192.168.21.0',
+              'prefixLength': 24,
+              'totalHosts': 256,
+              'usableHostsCount': 254,
+              'isEnabled': true,
+              'reachability': 'reachabilityNotTested',
+              'createdAt': DateTime.now().toIso8601String(),
+            });
+            changed = true;
+          }
+
+          if (changed) {
+            await (update(
+              discoveryConfigurations,
+            )..where((t) => t.id.equals(cfg.id))).write(
+              DiscoveryConfigurationsCompanion(
+                authorizedRangesJson: Value(jsonEncode(ranges)),
+              ),
+            );
+          }
+        }
+      }
     } catch (_) {}
   }
 

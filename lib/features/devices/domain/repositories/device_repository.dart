@@ -23,4 +23,19 @@ abstract class DeviceRepository {
   );
   Future<Result<int>> commitImport(List<DeviceEntity> validDevices);
   Future<Result<int>> bootstrapApprovedInventory({bool force = false});
+  Future<Result<int>> reassignDevicesFactory({
+    required List<int> deviceIds,
+    required String targetFactoryId,
+    String? adminUsername,
+  });
+  Future<Result<int>> deleteDevices(List<int> deviceIds);
+  Future<Result<int>> bulkUpdateDevices({
+    required List<int> deviceIds,
+    DeviceType? type,
+    String? department,
+    String? officeLocation,
+    String? vendor,
+    bool? isMonitored,
+    bool? isEnabled,
+  });
 }

@@ -26,6 +26,8 @@ import '../../features/factories/data/repositories/factory_repository_impl.dart'
     as _i801;
 import '../../features/factories/domain/repositories/factory_repository.dart'
     as _i911;
+import '../../features/factories/domain/services/network_detection_service.dart'
+    as _i404;
 import '../../features/factories/presentation/bloc/factory_cubit.dart' as _i418;
 import '../../features/incidents/data/repositories/incident_repository_impl.dart'
     as _i723;
@@ -145,6 +147,9 @@ extension GetItInjectableX on _i174.GetIt {
       () => _i578.DesktopNotificationService(),
     );
     gh.lazySingleton<_i217.PingChecker>(() => _i820.PlatformPingChecker());
+    gh.lazySingleton<_i404.NetworkDetectionService>(
+      () => _i404.NetworkDetectionServiceImpl(),
+    );
     gh.lazySingleton<_i64.AuditLogRepository>(
       () => _i1011.AuditLogRepositoryImpl(gh<_i982.AppDatabase>()),
     );
@@ -189,7 +194,10 @@ extension GetItInjectableX on _i174.GetIt {
       ),
     );
     gh.lazySingleton<_i418.FactoryCubit>(
-      () => _i418.FactoryCubit(gh<_i911.FactoryRepository>()),
+      () => _i418.FactoryCubit(
+        gh<_i911.FactoryRepository>(),
+        gh<_i404.NetworkDetectionService>(),
+      ),
     );
     gh.lazySingleton<_i787.AuthRepository>(
       () => _i153.AuthRepositoryImpl(
@@ -283,6 +291,7 @@ extension GetItInjectableX on _i174.GetIt {
         gh<_i241.OnvifDiscoveryStrategy>(),
         gh<_i904.MdnsSsdpDiscoveryStrategy>(),
         gh<_i114.InfrastructureRepository>(),
+        gh<_i911.FactoryRepository>(),
       ),
     );
     gh.factory<_i651.MonitoringCubit>(

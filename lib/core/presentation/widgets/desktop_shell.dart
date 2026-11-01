@@ -100,6 +100,14 @@ class DesktopShell extends StatelessWidget {
                               onTap: () => context.go('/devices'),
                             ),
                             _NavTile(
+                              icon: Icons.table_chart_outlined,
+                              selectedIcon: Icons.table_chart,
+                              label: 'Inventory',
+                              isSelected: location.startsWith('/inventory'),
+                              isCompact: isSidebarCompact,
+                              onTap: () => context.go('/inventory'),
+                            ),
+                            _NavTile(
                               icon: Icons.hub_outlined,
                               selectedIcon: Icons.hub,
                               label: 'Infrastructure',

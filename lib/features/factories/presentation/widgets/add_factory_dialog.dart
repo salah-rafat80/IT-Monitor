@@ -14,13 +14,48 @@ class _AddFactoryDialogState extends State<AddFactoryDialog> {
   final _formKey = GlobalKey<FormState>();
   final _codeController = TextEditingController();
   final _nameController = TextEditingController();
+  final _gatewayController = TextEditingController();
+  final _subnetController = TextEditingController(text: '255.255.255.0');
+  final _cidrController = TextEditingController();
   bool _isSaving = false;
   String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _gatewayController.addListener(_recalculateCidr);
+    _subnetController.addListener(_recalculateCidr);
+  }
+
+  void _recalculateCidr() {
+    final gateway = _gatewayController.text.trim();
+    final mask = _subnetController.text.trim();
+    if (gateway.isEmpty) return;
+
+    final gParts = gateway.split('.').map(int.tryParse).toList();
+    final mParts = mask.split('.').map(int.tryParse).toList();
+    if (gParts.length == 4 &&
+        mParts.length == 4 &&
+        !gParts.contains(null) &&
+        !mParts.contains(null)) {
+      final baseOctets = <int>[];
+      int prefix = 0;
+      for (int i = 0; i < 4; i++) {
+        baseOctets.add(gParts[i]! & mParts[i]!);
+        final binary = mParts[i]!.toRadixString(2).padLeft(8, '0');
+        prefix += binary.split('').where((b) => b == '1').length;
+      }
+      _cidrController.text = '${baseOctets.join(".")}/$prefix';
+    }
+  }
 
   @override
   void dispose() {
     _codeController.dispose();
     _nameController.dispose();
+    _gatewayController.dispose();
+    _subnetController.dispose();
+    _cidrController.dispose();
     super.dispose();
   }
 
@@ -36,6 +71,15 @@ class _AddFactoryDialogState extends State<AddFactoryDialog> {
     final success = await cubit.addFactory(
       code: _codeController.text.trim().toUpperCase(),
       name: _nameController.text.trim(),
+      gatewayIp: _gatewayController.text.trim().isEmpty
+          ? null
+          : _gatewayController.text.trim(),
+      subnetMask: _subnetController.text.trim().isEmpty
+          ? null
+          : _subnetController.text.trim(),
+      expectedCidr: _cidrController.text.trim().isEmpty
+          ? null
+          : _cidrController.text.trim(),
     );
 
     if (!mounted) return;
@@ -153,6 +197,56 @@ class _AddFactoryDialogState extends State<AddFactoryDialog> {
                   if (text.isEmpty) return 'Display name is required';
                   return null;
                 },
+              ),
+              const SizedBox(height: 16),
+              const Divider(),
+              const SizedBox(height: 8),
+              Text(
+                'Factory Network Scope Configuration',
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: const Color(0xFF0F62FE),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextFormField(
+                      controller: _gatewayController,
+                      decoration: const InputDecoration(
+                        labelText: 'Gateway IP',
+                        hintText: 'e.g. 192.168.22.1',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.router_rounded),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextFormField(
+                      controller: _subnetController,
+                      decoration: const InputDecoration(
+                        labelText: 'Subnet Mask',
+                        hintText: 'e.g. 255.255.255.0',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.grid_3x3_rounded),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _cidrController,
+                decoration: const InputDecoration(
+                  labelText: 'Expected Network Scope (CIDR)',
+                  hintText: 'e.g. 192.168.22.0/24',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.lan_rounded),
+                  helperText:
+                      'Auto-calculated from Gateway & Mask or enter custom CIDR',
+                ),
               ),
             ],
           ),

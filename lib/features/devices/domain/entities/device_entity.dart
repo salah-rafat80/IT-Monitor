@@ -17,8 +17,9 @@ enum DeviceType {
   static DeviceType fromString(String value) {
     final normalized = value
         .toLowerCase()
-        .replaceAll('-', '_')
-        .replaceAll(' ', '_');
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+        .replaceAll(RegExp(r'^_+|_+$'), '');
+
     switch (normalized) {
       case 'laptop':
       case 'notebook':
@@ -26,11 +27,13 @@ enum DeviceType {
       case 'pc':
       case 'desktop':
       case 'workstation':
+      case 'pc_workstation':
         return DeviceType.pc;
       case 'mobile':
       case 'phone':
       case 'smartphone':
       case 'tablet':
+      case 'mobile_device':
         return DeviceType.mobile;
       case 'ip_camera':
       case 'camera':
@@ -38,30 +41,73 @@ enum DeviceType {
       case 'nvr':
         return DeviceType.ipCamera;
       case 'printer':
+      case 'scanner':
+      case 'copier':
+      case 'mfp':
         return DeviceType.printer;
       case 'server':
         return DeviceType.server;
       case 'switch':
       case 'switch_device':
+      case 'network_switch':
         return DeviceType.switchDevice;
       case 'router':
       case 'gateway':
+      case 'router_gateway':
         return DeviceType.router;
       case 'access_point':
       case 'ap':
       case 'wireless_access_point':
       case 'wap':
+      case 'wireless_ap':
         return DeviceType.wirelessAccessPoint;
       case 'other_network_device':
       case 'network_device':
+      case 'network_equipment':
         return DeviceType.otherNetworkDevice;
       case 'other':
+      case 'other_asset':
         return DeviceType.other;
       case 'unknown':
         return DeviceType.unknown;
-      default:
-        return DeviceType.pc;
     }
+
+    // Heuristic fallbacks:
+    if (normalized.contains('switch')) {
+      return DeviceType.switchDevice;
+    }
+    if (normalized.contains('router') || normalized.contains('gateway')) {
+      return DeviceType.router;
+    }
+    if (normalized.contains('access_point') ||
+        normalized.contains('wireless') ||
+        normalized.contains('wap')) {
+      return DeviceType.wirelessAccessPoint;
+    }
+    if (normalized.contains('camera') || normalized.contains('cctv')) {
+      return DeviceType.ipCamera;
+    }
+    if (normalized.contains('print') || normalized.contains('scan')) {
+      return DeviceType.printer;
+    }
+    if (normalized.contains('server')) {
+      return DeviceType.server;
+    }
+    if (normalized.contains('laptop') || normalized.contains('notebook')) {
+      return DeviceType.laptop;
+    }
+    if (normalized.contains('phone') ||
+        normalized.contains('mobile') ||
+        normalized.contains('tablet')) {
+      return DeviceType.mobile;
+    }
+    if (normalized.contains('workstation') ||
+        normalized.contains('desktop') ||
+        normalized.contains('pc')) {
+      return DeviceType.pc;
+    }
+
+    return DeviceType.pc;
   }
 
   String toValue() {

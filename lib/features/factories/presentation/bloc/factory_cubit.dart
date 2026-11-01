@@ -66,20 +66,24 @@ class FactoryCubit extends Cubit<FactoryState> {
           .toList();
 
       if (!autoDetect) {
-        if (!isClosed)
+        if (!isClosed) {
           emit(state.copyWith(factories: active, isLoading: false));
+        }
         return;
       }
 
-      if (!isClosed)
+      if (!isClosed) {
         emit(state.copyWith(factories: active, isDetectingNetwork: true));
+      }
 
       final detectionResult = await _networkDetectionService.detectFactory(
         factories: active,
         mockLocalIps: mockLocalIps,
         mockInterfaces: mockInterfaces,
       );
-      if (isClosed) return;
+      if (isClosed) {
+        return;
+      }
 
       FactoryEntity? initial = state.selectedFactory;
       final isManual = state.isManualOverride;

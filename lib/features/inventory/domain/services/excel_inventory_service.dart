@@ -122,6 +122,175 @@ class ExcelInventoryServiceImpl implements ExcelInventoryService {
     'Notes',
   ];
 
+  static String? _resolveHeaderKey(String raw) {
+    final norm = raw
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+
+    if (norm.isEmpty) return null;
+
+    // 1. Exact normalized matches for application export headers
+    switch (norm) {
+      case 'id':
+      case 'device id':
+        return 'id';
+      case 'factory':
+      case 'factory id':
+      case 'factory code':
+        return 'factory';
+      case 'device name':
+      case 'name':
+        return 'name';
+      case 'device type':
+      case 'type':
+        return 'type';
+      case 'ip address':
+      case 'ip':
+      case 'ipv4':
+      case 'ipv4 address':
+        return 'ip';
+      case 'owner name':
+      case 'owner':
+        return 'owner';
+      case 'department':
+      case 'dept':
+        return 'department';
+      case 'office location':
+      case 'office':
+      case 'location':
+        return 'office';
+      case 'mac address':
+      case 'mac':
+        return 'mac';
+      case 'hostname':
+      case 'host name':
+      case 'host':
+        return 'hostname';
+      case 'vendor':
+      case 'manufacturer':
+      case 'make':
+        return 'vendor';
+      case 'model':
+        return 'model';
+      case 'operating system':
+      case 'os':
+        return 'os';
+      case 'parent switch':
+      case 'switch':
+        return 'switch';
+      case 'monitored':
+      case 'is monitored':
+        return 'monitored';
+      case 'enabled':
+      case 'is enabled':
+        return 'enabled';
+      case 'notes':
+      case 'note':
+      case 'comments':
+      case 'comment':
+        return 'notes';
+    }
+
+    // 2. Fallbacks for third-party spreadsheets.
+    // Order matters: check more specific tokens ('type', 'mac') BEFORE broad tokens ('device', 'name', 'address').
+    if (norm.contains('type') || norm.contains('category')) {
+      return 'type';
+    }
+    if (norm.contains('mac')) {
+      return 'mac';
+    }
+    if (norm.contains('ip') ||
+        (norm.contains('address') && !norm.contains('mac'))) {
+      return 'ip';
+    }
+    if (norm.contains('device') ||
+        norm.contains('asset') ||
+        norm.contains('name')) {
+      return 'name';
+    }
+    if (norm.contains('owner') ||
+        norm.contains('user') ||
+        norm.contains('assigned')) {
+      return 'owner';
+    }
+    if (norm.contains('dept') || norm.contains('department')) {
+      return 'department';
+    }
+    if (norm.contains('loc') ||
+        norm.contains('office') ||
+        norm.contains('room')) {
+      return 'office';
+    }
+    if (norm.contains('host')) {
+      return 'hostname';
+    }
+    if (norm.contains('vendor') ||
+        norm.contains('make') ||
+        norm.contains('mfr')) {
+      return 'vendor';
+    }
+    if (norm.contains('model')) {
+      return 'model';
+    }
+    if (norm.contains('os') || norm.contains('operating')) {
+      return 'os';
+    }
+    if (norm.contains('switch')) {
+      return 'switch';
+    }
+    if (norm.contains('monitor')) {
+      return 'monitored';
+    }
+    if (norm.contains('enable')) {
+      return 'enabled';
+    }
+    if (norm.contains('note') || norm.contains('desc')) {
+      return 'notes';
+    }
+    if (norm.contains('id') && !norm.contains('guid')) {
+      return 'id';
+    }
+
+    return null;
+  }
+
+  static Map<String, int> _buildHeaderMap(List<String> rawHeaders) {
+    final headerMap = <String, int>{};
+    for (int c = 0; c < rawHeaders.length; c++) {
+      final key = _resolveHeaderKey(rawHeaders[c]);
+      if (key != null && !headerMap.containsKey(key)) {
+        headerMap[key] = c;
+      }
+    }
+    return headerMap;
+  }
+
+  static bool? _parseNullableBool(String? val) {
+    if (val == null) return null;
+    final cleaned = val.trim().toLowerCase();
+    if (cleaned.isEmpty) return null;
+    if (cleaned == 'yes' ||
+        cleaned == 'y' ||
+        cleaned == 'true' ||
+        cleaned == '1' ||
+        cleaned == 'enabled' ||
+        cleaned == 'monitored') {
+      return true;
+    }
+    if (cleaned == 'no' ||
+        cleaned == 'n' ||
+        cleaned == 'false' ||
+        cleaned == '0' ||
+        cleaned == 'disabled' ||
+        cleaned == 'unmonitored') {
+      return false;
+    }
+    return null;
+  }
+
   @override
   List<int> exportToExcel({
     required List<DeviceEntity> devices,
@@ -270,49 +439,7 @@ class ExcelInventoryServiceImpl implements ExcelInventoryService {
     }
 
     final headerRow = csvRecords.first;
-    final headerMap = <String, int>{};
-    for (int c = 0; c < headerRow.length; c++) {
-      final val = headerRow[c].toLowerCase().trim();
-      if (val.contains('id') && !val.contains('guid')) {
-        headerMap['id'] = c;
-      } else if (val.contains('device') ||
-          val.contains('asset') ||
-          val == 'name') {
-        headerMap['name'] = c;
-      } else if (val.contains('ip')) {
-        headerMap['ip'] = c;
-      } else if (val.contains('owner') ||
-          val.contains('user') ||
-          val.contains('assigned')) {
-        headerMap['owner'] = c;
-      } else if (val.contains('dept') || val.contains('department')) {
-        headerMap['department'] = c;
-      } else if (val.contains('loc') ||
-          val.contains('office') ||
-          val.contains('room')) {
-        headerMap['office'] = c;
-      } else if (val.contains('type') || val.contains('category')) {
-        headerMap['type'] = c;
-      } else if (val.contains('mac')) {
-        headerMap['mac'] = c;
-      } else if (val.contains('host')) {
-        headerMap['hostname'] = c;
-      } else if (val.contains('vendor') || val.contains('make')) {
-        headerMap['vendor'] = c;
-      } else if (val.contains('model')) {
-        headerMap['model'] = c;
-      } else if (val.contains('os') || val.contains('operating')) {
-        headerMap['os'] = c;
-      } else if (val.contains('switch')) {
-        headerMap['switch'] = c;
-      } else if (val.contains('monitor')) {
-        headerMap['monitored'] = c;
-      } else if (val.contains('enable')) {
-        headerMap['enabled'] = c;
-      } else if (val.contains('note')) {
-        headerMap['notes'] = c;
-      }
-    }
+    final headerMap = _buildHeaderMap(headerRow);
 
     for (int r = 1; r < csvRecords.length; r++) {
       final row = csvRecords[r];
@@ -336,6 +463,7 @@ class ExcelInventoryServiceImpl implements ExcelInventoryService {
       rawDataRows.add({
         'rowIndex': (r + 1).toString(),
         'id': getCol('id'),
+        'factory': getCol('factory'),
         'name': name,
         'ip': ip,
         'owner': owner,
@@ -393,51 +521,10 @@ class ExcelInventoryServiceImpl implements ExcelInventoryService {
       final sheet = excel.tables[table];
       if (sheet == null || sheet.maxRows <= 1) continue;
 
-      final headerRow = sheet.rows.first;
-      final headerMap = <String, int>{};
-
-      for (int c = 0; c < headerRow.length; c++) {
-        final val = headerRow[c]?.value?.toString().toLowerCase().trim() ?? '';
-        if (val.contains('id') && !val.contains('guid')) {
-          headerMap['id'] = c;
-        } else if (val.contains('device') ||
-            val.contains('asset') ||
-            val == 'name') {
-          headerMap['name'] = c;
-        } else if (val.contains('ip')) {
-          headerMap['ip'] = c;
-        } else if (val.contains('owner') ||
-            val.contains('user') ||
-            val.contains('assigned')) {
-          headerMap['owner'] = c;
-        } else if (val.contains('dept') || val.contains('department')) {
-          headerMap['department'] = c;
-        } else if (val.contains('loc') ||
-            val.contains('office') ||
-            val.contains('room')) {
-          headerMap['office'] = c;
-        } else if (val.contains('type') || val.contains('category')) {
-          headerMap['type'] = c;
-        } else if (val.contains('mac')) {
-          headerMap['mac'] = c;
-        } else if (val.contains('host')) {
-          headerMap['hostname'] = c;
-        } else if (val.contains('vendor') || val.contains('make')) {
-          headerMap['vendor'] = c;
-        } else if (val.contains('model')) {
-          headerMap['model'] = c;
-        } else if (val.contains('os') || val.contains('operating')) {
-          headerMap['os'] = c;
-        } else if (val.contains('switch')) {
-          headerMap['switch'] = c;
-        } else if (val.contains('monitor')) {
-          headerMap['monitored'] = c;
-        } else if (val.contains('enable')) {
-          headerMap['enabled'] = c;
-        } else if (val.contains('note')) {
-          headerMap['notes'] = c;
-        }
-      }
+      final headerRow = sheet.rows.first
+          .map((c) => c?.value?.toString().trim() ?? '')
+          .toList();
+      final headerMap = _buildHeaderMap(headerRow);
 
       for (int r = 1; r < sheet.rows.length; r++) {
         final row = sheet.rows[r];
@@ -461,6 +548,7 @@ class ExcelInventoryServiceImpl implements ExcelInventoryService {
         rawDataRows.add({
           'rowIndex': (r + 1).toString(),
           'id': getCol('id'),
+          'factory': getCol('factory'),
           'name': name,
           'ip': ip,
           'owner': owner,
@@ -507,42 +595,17 @@ class ExcelInventoryServiceImpl implements ExcelInventoryService {
     }
 
     // Check if first row is header
+    // Check if first row is header
     int startIdx = 0;
-    final firstCells = lines.first
-        .split('\t')
-        .map((c) => c.trim().toLowerCase())
-        .toList();
-    bool hasHeader = firstCells.any(
-      (c) => c.contains('ip') || c.contains('name') || c.contains('owner'),
-    );
-    final headerMap = <String, int>{};
+    final firstCells = lines.first.split('\t').map((c) => c.trim()).toList();
+    bool hasHeader = firstCells.any((c) {
+      final key = _resolveHeaderKey(c);
+      return key == 'ip' || key == 'name' || key == 'owner' || key == 'type';
+    });
+    final headerMap = hasHeader ? _buildHeaderMap(firstCells) : <String, int>{};
 
     if (hasHeader) {
       startIdx = 1;
-      for (int c = 0; c < firstCells.length; c++) {
-        final val = firstCells[c];
-        if (val.contains('id')) {
-          headerMap['id'] = c;
-        } else if (val.contains('device') ||
-            val.contains('asset') ||
-            val == 'name') {
-          headerMap['name'] = c;
-        } else if (val.contains('ip')) {
-          headerMap['ip'] = c;
-        } else if (val.contains('owner') || val.contains('user')) {
-          headerMap['owner'] = c;
-        } else if (val.contains('dept') || val.contains('department')) {
-          headerMap['department'] = c;
-        } else if (val.contains('loc') || val.contains('office')) {
-          headerMap['office'] = c;
-        } else if (val.contains('type')) {
-          headerMap['type'] = c;
-        } else if (val.contains('mac')) {
-          headerMap['mac'] = c;
-        } else if (val.contains('host')) {
-          headerMap['hostname'] = c;
-        }
-      }
     }
 
     for (int i = startIdx; i < lines.length; i++) {
@@ -551,9 +614,9 @@ class ExcelInventoryServiceImpl implements ExcelInventoryService {
       final cells = lines[i].split('\t');
 
       String getByIndexOrHeader(String key, int defaultIndex) {
-        if (hasHeader && headerMap.containsKey(key)) {
-          final idx = headerMap[key]!;
-          if (idx < cells.length) return cells[idx].trim();
+        if (hasHeader) {
+          final idx = headerMap[key];
+          if (idx != null && idx < cells.length) return cells[idx].trim();
           return '';
         }
         if (defaultIndex < cells.length) return cells[defaultIndex].trim();
@@ -565,6 +628,7 @@ class ExcelInventoryServiceImpl implements ExcelInventoryService {
       rawDataRows.add({
         'rowIndex': (i + 1).toString(),
         'id': getByIndexOrHeader('id', 99),
+        'factory': getByIndexOrHeader('factory', 98),
         'name': getByIndexOrHeader('name', 0),
         'ip': getByIndexOrHeader('ip', 1),
         'owner': getByIndexOrHeader('owner', 2),
@@ -789,12 +853,19 @@ class ExcelInventoryServiceImpl implements ExcelInventoryService {
         match = existingIpMap[canonicalIp];
       }
 
-      final isMonitored = r['monitored']?.toLowerCase() != 'no';
-      final isEnabled = r['enabled']?.toLowerCase() != 'no';
-      final type = DeviceType.fromString(r['type'] ?? 'pc');
+      final parsedMonitored = _parseNullableBool(r['monitored']);
+      final parsedEnabled = _parseNullableBool(r['enabled']);
+
+      final rawTypeStr = r['type']?.trim();
+      final type = (rawTypeStr != null && rawTypeStr.isNotEmpty)
+          ? DeviceType.fromString(rawTypeStr)
+          : (match?.type ?? DeviceType.pc);
 
       if (match != null) {
-        // Update row
+        // Update row: unspecified/blank booleans preserve existing DB state
+        final isMonitored = parsedMonitored ?? match.isMonitored;
+        final isEnabled = parsedEnabled ?? match.isEnabled;
+
         final updated = match.copyWith(
           factoryId: targetFactoryId,
           name: rawName,
@@ -836,7 +907,10 @@ class ExcelInventoryServiceImpl implements ExcelInventoryService {
           ),
         );
       } else {
-        // Insert row
+        // Insert row: unspecified booleans default to true; explicit false respected
+        final isMonitored = parsedMonitored ?? true;
+        final isEnabled = parsedEnabled ?? true;
+
         final newDev = DeviceEntity(
           id: 0, // Assigned by DB
           factoryId: targetFactoryId,

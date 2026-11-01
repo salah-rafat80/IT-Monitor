@@ -365,23 +365,29 @@ void main() {
         '1.5: Authoritative Windows Service API (/api/devices/import) processes commit payload with identical semantics',
         () async {
           final getIt = GetIt.instance;
-          if (getIt.isRegistered<AppDatabase>())
+          if (getIt.isRegistered<AppDatabase>()) {
             await getIt.unregister<AppDatabase>();
+          }
           getIt.registerSingleton<AppDatabase>(db);
-          if (getIt.isRegistered<DeviceRepository>())
+          if (getIt.isRegistered<DeviceRepository>()) {
             await getIt.unregister<DeviceRepository>();
+          }
           getIt.registerSingleton<DeviceRepository>(deviceRepo);
-          if (getIt.isRegistered<AuthRepository>())
+          if (getIt.isRegistered<AuthRepository>()) {
             await getIt.unregister<AuthRepository>();
+          }
           getIt.registerSingleton<AuthRepository>(authRepo);
-          if (getIt.isRegistered<AuditLogRepository>())
+          if (getIt.isRegistered<AuditLogRepository>()) {
             await getIt.unregister<AuditLogRepository>();
+          }
           getIt.registerSingleton<AuditLogRepository>(auditRepo);
-          if (getIt.isRegistered<FactoryRepository>())
+          if (getIt.isRegistered<FactoryRepository>()) {
             await getIt.unregister<FactoryRepository>();
+          }
           getIt.registerSingleton<FactoryRepository>(factoryRepo);
-          if (getIt.isRegistered<MonitoringRepository>())
+          if (getIt.isRegistered<MonitoringRepository>()) {
             await getIt.unregister<MonitoringRepository>();
+          }
           getIt.registerSingleton<MonitoringRepository>(monitoringRepo);
 
           final tempDir = Directory.systemTemp.createTempSync('svc_test_');
@@ -474,18 +480,24 @@ void main() {
           } finally {
             client.dispose();
             await server.stop();
-            if (getIt.isRegistered<MonitoringRepository>())
+            if (getIt.isRegistered<MonitoringRepository>()) {
               await getIt.unregister<MonitoringRepository>();
-            if (getIt.isRegistered<FactoryRepository>())
+            }
+            if (getIt.isRegistered<FactoryRepository>()) {
               await getIt.unregister<FactoryRepository>();
-            if (getIt.isRegistered<AuditLogRepository>())
+            }
+            if (getIt.isRegistered<AuditLogRepository>()) {
               await getIt.unregister<AuditLogRepository>();
-            if (getIt.isRegistered<AuthRepository>())
+            }
+            if (getIt.isRegistered<AuthRepository>()) {
               await getIt.unregister<AuthRepository>();
-            if (getIt.isRegistered<DeviceRepository>())
+            }
+            if (getIt.isRegistered<DeviceRepository>()) {
               await getIt.unregister<DeviceRepository>();
-            if (getIt.isRegistered<AppDatabase>())
+            }
+            if (getIt.isRegistered<AppDatabase>()) {
               await getIt.unregister<AppDatabase>();
+            }
             try {
               tempDir.deleteSync(recursive: true);
             } catch (_) {}
@@ -601,6 +613,620 @@ IP,Name,Type,Owner,Department,Location
           expect(
             parseResult.rows.first.rejectionReason,
             contains('Failed to decode spreadsheet file'),
+          );
+        },
+      );
+
+      // ──────────────────────────────────────────────────────────────────────────
+      // Final Regression Suite: Header Mapping, Round-Trips, and Boolean Semantics
+      // ──────────────────────────────────────────────────────────────────────────
+      group(
+        'Final Regression Suite: Header Mapping, Round-Trips, and Boolean Semantics',
+        () {
+          late List<DeviceEntity> roundTripSeedDevices;
+
+          setUp(() {
+            roundTripSeedDevices = [
+              DeviceEntity(
+                id: 101,
+                factoryId: 'rnf',
+                name: 'Core Switch Alpha',
+                type: DeviceType.switchDevice,
+                ip: '192.168.22.1',
+                ownerName: 'Network Ops',
+                department: 'Infrastructure',
+                officeLocation: 'Server Room Rack 1',
+                mac: '00:11:22:33:44:55',
+                hostname: 'sw-core-01',
+                vendor: 'Cisco',
+                model: 'Catalyst 9300',
+                operatingSystem: 'Cisco IOS-XE',
+                parentSwitchName: null,
+                isMonitored: true,
+                isEnabled: true,
+                notes: 'Core distribution switch',
+                createdAt: DateTime(2026, 1, 1),
+              ),
+              DeviceEntity(
+                id: 102,
+                factoryId: 'rnf',
+                name: 'Border Router Gateway',
+                type: DeviceType.router,
+                ip: '192.168.22.254',
+                ownerName: 'Security Team',
+                department: 'CyberSec',
+                officeLocation: 'Edge Gateway Room',
+                mac: 'AA:BB:CC:DD:EE:01',
+                hostname: 'gw-border-01',
+                vendor: 'Fortinet',
+                model: 'FortiGate 100F',
+                operatingSystem: 'FortiOS 7.2',
+                parentSwitchName: 'Core Switch Alpha',
+                isMonitored: true,
+                isEnabled: true,
+                notes: 'Primary firewall & router',
+                createdAt: DateTime(2026, 1, 2),
+              ),
+              DeviceEntity(
+                id: 103,
+                factoryId: 'rnf',
+                name: 'Warehouse AP 03',
+                type: DeviceType.wirelessAccessPoint,
+                ip: '192.168.22.15',
+                ownerName: 'Logistics IT',
+                department: 'Warehouse',
+                officeLocation: 'Aisle 4 High Bay',
+                mac: 'AA:BB:CC:DD:EE:02',
+                hostname: 'ap-wh-03',
+                vendor: 'Aruba',
+                model: 'AP-515',
+                operatingSystem: 'ArubaOS',
+                parentSwitchName: 'Core Switch Alpha',
+                isMonitored: false,
+                isEnabled: true,
+                notes: 'Access point with monitoring disabled',
+                createdAt: DateTime(2026, 1, 3),
+              ),
+              DeviceEntity(
+                id: 104,
+                factoryId: 'rnf',
+                name: 'Finance Laser Printer',
+                type: DeviceType.printer,
+                ip: '192.168.22.50',
+                ownerName: 'Finance Dept',
+                department: 'Accounting',
+                officeLocation: 'Finance Office 201',
+                mac: 'AA:BB:CC:DD:EE:03',
+                hostname: 'prn-fin-m404',
+                vendor: 'HP',
+                model: 'LaserJet Pro M404',
+                operatingSystem: 'FutureSmart',
+                parentSwitchName: 'Core Switch Alpha',
+                isMonitored: true,
+                isEnabled: false,
+                notes: 'Printer disabled for maintenance',
+                createdAt: DateTime(2026, 1, 4),
+              ),
+              DeviceEntity(
+                id: 105,
+                factoryId: 'rnf',
+                name: 'Engineering Workstation 09',
+                type: DeviceType.pc,
+                ip: '192.168.22.109',
+                ownerName: 'Jane Designer',
+                department: 'Engineering',
+                officeLocation: 'Design Lab Desk 9',
+                mac: 'AA:BB:CC:DD:EE:04',
+                hostname: 'ws-cad-09',
+                vendor: 'Dell',
+                model: 'Precision 5820',
+                operatingSystem: 'Windows 11 Pro',
+                parentSwitchName: 'Core Switch Alpha',
+                isMonitored: true,
+                isEnabled: true,
+                notes: 'CAD/CAM workstation',
+                createdAt: DateTime(2026, 1, 5),
+              ),
+              DeviceEntity(
+                id: 106,
+                factoryId: 'rnf',
+                name: 'Executive Laptop',
+                type: DeviceType.laptop,
+                ip: '192.168.22.110',
+                ownerName: 'CEO Office',
+                department: 'Executive',
+                officeLocation: 'Executive Suite 500',
+                mac: 'AA:BB:CC:DD:EE:05',
+                hostname: 'lt-exec-01',
+                vendor: 'Lenovo',
+                model: 'ThinkPad X1 Carbon',
+                operatingSystem: 'Windows 11 Enterprise',
+                parentSwitchName: null,
+                isMonitored: false,
+                isEnabled: false,
+                notes: 'Executive laptop unmonitored and disabled',
+                createdAt: DateTime(2026, 1, 6),
+              ),
+            ];
+          });
+
+          test(
+            'Round-Trip 1: exportToExcel() followed by parseAndValidateExcel() preserves all 17 fields, names, types, and booleans without degradation',
+            () {
+              final excelBytes = excelService.exportToExcel(
+                devices: roundTripSeedDevices,
+                factoryCode: 'RNF',
+              );
+              expect(excelBytes.isNotEmpty, isTrue);
+
+              final summary = excelService.parseAndValidateExcel(
+                bytes: excelBytes,
+                targetFactoryId: 'rnf',
+                existingFactoryDevices: roundTripSeedDevices,
+              );
+
+              expect(summary.invalidCount, equals(0));
+              expect(summary.skippedCount, equals(0));
+              expect(summary.insertCount, equals(0));
+              expect(summary.updateCount, equals(6));
+              expect(summary.validDevices.length, equals(6));
+
+              for (final original in roundTripSeedDevices) {
+                final reimported = summary.validDevices.firstWhere(
+                  (d) => d.id == original.id,
+                );
+                expect(
+                  reimported.name,
+                  equals(original.name),
+                  reason: 'Device name must not be overwritten by device type',
+                );
+                expect(
+                  reimported.type,
+                  equals(original.type),
+                  reason: 'Device type ${original.type} must be preserved',
+                );
+                expect(reimported.ip, equals(original.ip));
+                expect(reimported.factoryId, equals('rnf'));
+                expect(reimported.ownerName, equals(original.ownerName));
+                expect(reimported.department, equals(original.department));
+                expect(
+                  reimported.officeLocation,
+                  equals(original.officeLocation),
+                );
+                expect(reimported.mac, equals(original.mac));
+                expect(reimported.hostname, equals(original.hostname));
+                expect(reimported.vendor, equals(original.vendor));
+                expect(reimported.model, equals(original.model));
+                expect(
+                  reimported.operatingSystem,
+                  equals(original.operatingSystem),
+                );
+                expect(
+                  reimported.parentSwitchName,
+                  equals(original.parentSwitchName),
+                );
+                expect(reimported.isMonitored, equals(original.isMonitored));
+                expect(reimported.isEnabled, equals(original.isEnabled));
+                expect(reimported.notes, equals(original.notes));
+              }
+            },
+          );
+
+          test(
+            'Round-Trip 2: exportToTsv() followed by parseTabularTsv() preserves all fields and maps Device Type correctly',
+            () {
+              final tsvText = excelService.exportToTsv(roundTripSeedDevices);
+              expect(tsvText.isNotEmpty, isTrue);
+
+              final summary = excelService.parseTabularTsv(
+                tsvText: tsvText,
+                targetFactoryId: 'rnf',
+                existingFactoryDevices: roundTripSeedDevices,
+              );
+
+              expect(summary.invalidCount, equals(0));
+              expect(summary.skippedCount, equals(0));
+              expect(summary.insertCount, equals(0));
+              expect(summary.updateCount, equals(6));
+              expect(summary.validDevices.length, equals(6));
+
+              for (final original in roundTripSeedDevices) {
+                final reimported = summary.validDevices.firstWhere(
+                  (d) => d.id == original.id,
+                );
+                expect(
+                  reimported.name,
+                  equals(original.name),
+                  reason: 'TSV: Device name must be preserved',
+                );
+                expect(
+                  reimported.type,
+                  equals(original.type),
+                  reason: 'TSV: Device type ${original.type} must match',
+                );
+                expect(reimported.ip, equals(original.ip));
+                expect(reimported.factoryId, equals('rnf'));
+                expect(reimported.ownerName, equals(original.ownerName));
+                expect(reimported.department, equals(original.department));
+                expect(
+                  reimported.officeLocation,
+                  equals(original.officeLocation),
+                );
+                expect(reimported.mac, equals(original.mac));
+                expect(reimported.hostname, equals(original.hostname));
+                expect(reimported.vendor, equals(original.vendor));
+                expect(reimported.model, equals(original.model));
+                expect(
+                  reimported.operatingSystem,
+                  equals(original.operatingSystem),
+                );
+                expect(
+                  reimported.parentSwitchName,
+                  equals(original.parentSwitchName),
+                );
+                expect(reimported.isMonitored, equals(original.isMonitored));
+                expect(reimported.isEnabled, equals(original.isEnabled));
+                expect(reimported.notes, equals(original.notes));
+              }
+            },
+          );
+
+          test(
+            'Round-Trip 3: CSV parsing with application exported header names maps Device Name and Device Type exclusively',
+            () {
+              final csvLines = [
+                'ID,Factory,Device Name,Device Type,IP Address,Owner Name,Department,Office Location,MAC Address,Hostname,Vendor,Model,Operating System,Parent Switch,Monitored,Enabled,Notes',
+                '201,OTHER_FACTORY,Primary Switch,Network Switch,192.168.22.101,Alice Smith,IT Dept,Server Room,00:11:22:33:44:01,sw-pri,Cisco,C2960,IOS,None,Yes,Yes,Primary Core',
+                '202,OTHER_FACTORY,Distribution Router,Router / Gateway,192.168.22.102,Bob Jones,IT Dept,MDF,00:11:22:33:44:02,rt-dist,Juniper,SRX300,Junos,Primary Switch,No,No,Backup Gateway',
+              ];
+              final csvBytes = utf8.encode(csvLines.join('\n'));
+
+              final summary = excelService.parseAndValidateFile(
+                bytes: csvBytes,
+                fileName: 'exported_inventory.csv',
+                targetFactoryId: 'rnf',
+                existingFactoryDevices: [],
+              );
+
+              expect(summary.invalidCount, equals(0));
+              expect(summary.insertCount, equals(2));
+              final dev1 = summary.validDevices.firstWhere(
+                (d) => d.ip == '192.168.22.101',
+              );
+              final dev2 = summary.validDevices.firstWhere(
+                (d) => d.ip == '192.168.22.102',
+              );
+
+              // Device Name exclusively to name
+              expect(dev1.name, equals('Primary Switch'));
+              expect(dev2.name, equals('Distribution Router'));
+
+              // Device Type exclusively to type
+              expect(dev1.type, equals(DeviceType.switchDevice));
+              expect(dev2.type, equals(DeviceType.router));
+
+              // Target Factory not overridden by spreadsheet factory column
+              expect(dev1.factoryId, equals('rnf'));
+              expect(dev2.factoryId, equals('rnf'));
+
+              // Booleans respected
+              expect(dev1.isMonitored, isTrue);
+              expect(dev1.isEnabled, isTrue);
+              expect(dev2.isMonitored, isFalse);
+              expect(dev2.isEnabled, isFalse);
+            },
+          );
+
+          test(
+            'Boolean Semantics: Existing false booleans remain false with blank cells; explicit Yes/No update appropriately',
+            () async {
+              // 1. Seed existing device with isMonitored=false, isEnabled=false
+              final seedRes = await deviceRepo.addDevice(
+                DeviceEntity(
+                  id: 0,
+                  factoryId: 'rnf',
+                  name: 'Disabled Server',
+                  type: DeviceType.server,
+                  ip: '192.168.22.77',
+                  ownerName: 'Sysadmin',
+                  department: 'IT',
+                  isMonitored: false,
+                  isEnabled: false,
+                  createdAt: DateTime.now(),
+                ),
+              );
+              final existingDev = (seedRes as Success<DeviceEntity>).data;
+              expect(existingDev.isMonitored, isFalse);
+              expect(existingDev.isEnabled, isFalse);
+
+              // 2. Import CSV with BLANK Monitored and Enabled cells -> Must remain false
+              final csvWithBlanks = [
+                'ID,Factory,Device Name,Device Type,IP Address,Owner Name,Department,Monitored,Enabled',
+                '${existingDev.id},RNF,Disabled Server,Server,192.168.22.77,Sysadmin,IT,,',
+              ].join('\n');
+
+              final blankSummary = excelService.parseAndValidateFile(
+                bytes: utf8.encode(csvWithBlanks),
+                fileName: 'blank_booleans.csv',
+                targetFactoryId: 'rnf',
+                existingFactoryDevices: [existingDev],
+              );
+
+              expect(blankSummary.updateCount, equals(1));
+              final updatedWithBlanks = blankSummary.updateDevices.first;
+              expect(
+                updatedWithBlanks.isMonitored,
+                isFalse,
+                reason: 'Blank Monitored cell must preserve existing false',
+              );
+              expect(
+                updatedWithBlanks.isEnabled,
+                isFalse,
+                reason: 'Blank Enabled cell must preserve existing false',
+              );
+
+              // Commit to DB and verify DB preservation
+              final commitRes1 = await deviceRepo.commitImportPayload(
+                blankSummary.toCommitPayload(),
+              );
+              expect(commitRes1.isSuccess, isTrue);
+              final inDb1 =
+                  (await deviceRepo.getDeviceById(existingDev.id)
+                          as Success<DeviceEntity>)
+                      .data;
+              expect(inDb1.isMonitored, isFalse);
+              expect(inDb1.isEnabled, isFalse);
+
+              // 3. Explicit 'Yes' updates to true
+              final csvWithYes = [
+                'ID,Factory,Device Name,Device Type,IP Address,Owner Name,Department,Monitored,Enabled',
+                '${existingDev.id},RNF,Disabled Server,Server,192.168.22.77,Sysadmin,IT,Yes,Yes',
+              ].join('\n');
+              final yesSummary = excelService.parseAndValidateFile(
+                bytes: utf8.encode(csvWithYes),
+                fileName: 'yes_booleans.csv',
+                targetFactoryId: 'rnf',
+                existingFactoryDevices: [inDb1],
+              );
+              expect(yesSummary.updateDevices.first.isMonitored, isTrue);
+              expect(yesSummary.updateDevices.first.isEnabled, isTrue);
+              await deviceRepo.commitImportPayload(
+                yesSummary.toCommitPayload(),
+              );
+              final inDb2 =
+                  (await deviceRepo.getDeviceById(existingDev.id)
+                          as Success<DeviceEntity>)
+                      .data;
+              expect(inDb2.isMonitored, isTrue);
+              expect(inDb2.isEnabled, isTrue);
+
+              // 4. Explicit 'No' updates to false
+              final csvWithNo = [
+                'ID,Factory,Device Name,Device Type,IP Address,Owner Name,Department,Monitored,Enabled',
+                '${existingDev.id},RNF,Disabled Server,Server,192.168.22.77,Sysadmin,IT,No,No',
+              ].join('\n');
+              final noSummary = excelService.parseAndValidateFile(
+                bytes: utf8.encode(csvWithNo),
+                fileName: 'no_booleans.csv',
+                targetFactoryId: 'rnf',
+                existingFactoryDevices: [inDb2],
+              );
+              expect(noSummary.updateDevices.first.isMonitored, isFalse);
+              expect(noSummary.updateDevices.first.isEnabled, isFalse);
+              await deviceRepo.commitImportPayload(noSummary.toCommitPayload());
+              final inDb3 =
+                  (await deviceRepo.getDeviceById(existingDev.id)
+                          as Success<DeviceEntity>)
+                      .data;
+              expect(inDb3.isMonitored, isFalse);
+              expect(inDb3.isEnabled, isFalse);
+            },
+          );
+
+          test(
+            'Boolean Semantics on INSERT: New devices with Monitored=No or Enabled=No are inserted with false in SQLite DB',
+            () async {
+              final csvNewDevices = [
+                'Device Name,Device Type,IP Address,Owner Name,Department,Monitored,Enabled',
+                'Inserted Disabled Device,PC,192.168.22.88,John Disabled,Operations,Yes,No',
+                'Inserted Unmonitored Device,Printer,192.168.22.89,Jane Unmonitored,Operations,No,Yes',
+              ].join('\n');
+
+              final summary = excelService.parseAndValidateFile(
+                bytes: utf8.encode(csvNewDevices),
+                fileName: 'new_disabled_devices.csv',
+                targetFactoryId: 'rnf',
+                existingFactoryDevices: [],
+              );
+
+              expect(summary.insertCount, equals(2));
+              final devDisabled = summary.insertDevices.firstWhere(
+                (d) => d.ip == '192.168.22.88',
+              );
+              final devUnmonitored = summary.insertDevices.firstWhere(
+                (d) => d.ip == '192.168.22.89',
+              );
+
+              expect(devDisabled.isEnabled, isFalse);
+              expect(devDisabled.isMonitored, isTrue);
+              expect(devUnmonitored.isEnabled, isTrue);
+              expect(devUnmonitored.isMonitored, isFalse);
+
+              // Commit to DB and verify SQLite records
+              final commitRes = await deviceRepo.commitImportPayload(
+                summary.toCommitPayload(),
+              );
+              expect(commitRes.isSuccess, isTrue);
+
+              final rnfDevices =
+                  (await deviceRepo.getDevices(factoryId: 'rnf')
+                          as Success<List<DeviceEntity>>)
+                      .data;
+              final dbDisabled = rnfDevices.firstWhere(
+                (d) => d.ip == '192.168.22.88',
+              );
+              final dbUnmonitored = rnfDevices.firstWhere(
+                (d) => d.ip == '192.168.22.89',
+              );
+
+              expect(
+                dbDisabled.isEnabled,
+                isFalse,
+                reason: 'Database must store isEnabled=false',
+              );
+              expect(dbDisabled.isMonitored, isTrue);
+              expect(dbUnmonitored.isEnabled, isTrue);
+              expect(
+                dbUnmonitored.isMonitored,
+                isFalse,
+                reason: 'Database must store isMonitored=false',
+              );
+            },
+          );
+
+          test(
+            'End-to-End Database Round-Trip: Adding devices to DB, exporting to Excel, importing without changes updates existing IDs and preserves relationships',
+            () async {
+              // 1. Add 3 distinct devices to DB in factory BNF
+              final d1Res = await deviceRepo.addDevice(
+                DeviceEntity(
+                  id: 0,
+                  factoryId: 'bnf',
+                  name: 'BNF-SW-MAIN',
+                  type: DeviceType.switchDevice,
+                  ip: '192.168.21.10',
+                  ownerName: 'Plant IT',
+                  department: 'Plant Infra',
+                  officeLocation: 'Line 1 Rack',
+                  vendor: 'Cisco',
+                  model: 'SG350',
+                  isMonitored: true,
+                  isEnabled: true,
+                  notes: 'Main plant switch',
+                  createdAt: DateTime.now(),
+                ),
+              );
+              final swDev = (d1Res as Success<DeviceEntity>).data;
+
+              final d2Res = await deviceRepo.addDevice(
+                DeviceEntity(
+                  id: 0,
+                  factoryId: 'bnf',
+                  name: 'BNF-ROBOT-01',
+                  type: DeviceType.other,
+                  ip: '192.168.21.20',
+                  ownerName: 'Automation Team',
+                  department: 'Robotics',
+                  officeLocation: 'Cell A',
+                  parentSwitchId: swDev.id,
+                  parentSwitchName: 'BNF-SW-MAIN',
+                  vendor: 'Kuka',
+                  model: 'KR C4',
+                  isMonitored: false,
+                  isEnabled: true,
+                  notes: 'Welding robot controller',
+                  createdAt: DateTime.now(),
+                ),
+              );
+              final robotDev = (d2Res as Success<DeviceEntity>).data;
+
+              final d3Res = await deviceRepo.addDevice(
+                DeviceEntity(
+                  id: 0,
+                  factoryId: 'bnf',
+                  name: 'BNF-QC-WORKSTATION',
+                  type: DeviceType.pc,
+                  ip: '192.168.21.30',
+                  ownerName: 'QC Tech',
+                  department: 'Quality',
+                  parentSwitchId: swDev.id,
+                  parentSwitchName: 'BNF-SW-MAIN',
+                  isMonitored: true,
+                  isEnabled: false,
+                  notes: 'Defect logging PC',
+                  createdAt: DateTime.now(),
+                ),
+              );
+              final qcDev = (d3Res as Success<DeviceEntity>).data;
+
+              // 2. Export all BNF devices to Excel
+              final bnfDevices =
+                  (await deviceRepo.getDevices(factoryId: 'bnf')
+                          as Success<List<DeviceEntity>>)
+                      .data;
+              expect(bnfDevices.length, equals(3));
+
+              final excelBytes = excelService.exportToExcel(
+                devices: bnfDevices,
+                factoryCode: 'BNF',
+              );
+
+              // 3. Import without changes
+              final summary = excelService.parseAndValidateExcel(
+                bytes: excelBytes,
+                targetFactoryId: 'bnf',
+                existingFactoryDevices: bnfDevices,
+              );
+
+              expect(summary.invalidCount, equals(0));
+              expect(summary.insertCount, equals(0));
+              expect(summary.updateCount, equals(3));
+
+              // 4. Commit import payload to database
+              final commitRes = await deviceRepo.commitImportPayload(
+                summary.toCommitPayload(),
+              );
+              expect(commitRes.isSuccess, isTrue);
+
+              // 5. Verify database state
+              final bnfDevicesAfter =
+                  (await deviceRepo.getDevices(factoryId: 'bnf')
+                          as Success<List<DeviceEntity>>)
+                      .data;
+              expect(
+                bnfDevicesAfter.length,
+                equals(3),
+                reason: 'No duplicate records inserted',
+              );
+
+              final swAfter = bnfDevicesAfter.firstWhere(
+                (d) => d.id == swDev.id,
+              );
+              final robotAfter = bnfDevicesAfter.firstWhere(
+                (d) => d.id == robotDev.id,
+              );
+              final qcAfter = bnfDevicesAfter.firstWhere(
+                (d) => d.id == qcDev.id,
+              );
+
+              expect(swAfter.name, equals('BNF-SW-MAIN'));
+              expect(swAfter.type, equals(DeviceType.switchDevice));
+              expect(swAfter.isMonitored, isTrue);
+              expect(swAfter.isEnabled, isTrue);
+
+              expect(robotAfter.name, equals('BNF-ROBOT-01'));
+              expect(
+                robotAfter.parentSwitchId,
+                equals(swDev.id),
+                reason: 'Parent switch relationship ID preserved',
+              );
+              expect(robotAfter.parentSwitchName, equals('BNF-SW-MAIN'));
+              expect(
+                robotAfter.isMonitored,
+                isFalse,
+                reason: 'isMonitored=false preserved',
+              );
+              expect(robotAfter.isEnabled, isTrue);
+
+              expect(qcAfter.name, equals('BNF-QC-WORKSTATION'));
+              expect(qcAfter.parentSwitchId, equals(swDev.id));
+              expect(qcAfter.isMonitored, isTrue);
+              expect(
+                qcAfter.isEnabled,
+                isFalse,
+                reason: 'isEnabled=false preserved',
+              );
+            },
           );
         },
       );

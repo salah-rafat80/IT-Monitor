@@ -826,7 +826,7 @@ class DeviceRepositoryImpl implements DeviceRepository {
                   operatingSystem: Value(dev.operatingSystem),
                   notes: Value(dev.notes),
                   isMonitored: Value(dev.isMonitored),
-                  isEnabled: const Value(true),
+                  isEnabled: Value(dev.isEnabled),
                   createdAt: Value(now),
                 ),
               );

@@ -41,6 +41,11 @@ class _InventoryPageState extends State<InventoryPage>
   final Map<int, String?> _rowErrors = {};
   bool _isShowingUnassignedRecovery = false;
 
+  ExcelInventoryService get _excelService =>
+      getIt.isRegistered<ExcelInventoryService>()
+          ? getIt<ExcelInventoryService>()
+          : ExcelInventoryServiceImpl();
+
   @override
   void initState() {
     super.initState();
@@ -774,7 +779,7 @@ class _InventoryPageState extends State<InventoryPage>
     List<DeviceEntity> devices,
     String factoryCode,
   ) async {
-    final excelService = getIt<ExcelInventoryService>();
+    final excelService = _excelService;
     final bytes = excelService.exportToExcel(
       devices: devices,
       factoryCode: factoryCode,
@@ -800,7 +805,7 @@ class _InventoryPageState extends State<InventoryPage>
   }
 
   Future<void> _downloadTemplate(String factoryCode) async {
-    final excelService = getIt<ExcelInventoryService>();
+    final excelService = _excelService;
     final bytes = excelService.generateTemplate(factoryCode: factoryCode);
 
     final dir = await getApplicationDocumentsDirectory();
@@ -832,7 +837,7 @@ class _InventoryPageState extends State<InventoryPage>
     final bytes = await File(files.first.path!).readAsBytes();
     if (!mounted) return;
 
-    final excelService = getIt<ExcelInventoryService>();
+    final excelService = _excelService;
     final currentDevices =
         (context.read<DevicesCubit>().state as DevicesLoaded).allDevices;
 
@@ -860,7 +865,7 @@ class _InventoryPageState extends State<InventoryPage>
   Future<void> _copySelectedToClipboard(
     List<DeviceEntity> selectedDevices,
   ) async {
-    final excelService = getIt<ExcelInventoryService>();
+    final excelService = _excelService;
     final tsv = excelService.exportToTsv(selectedDevices);
     await Clipboard.setData(ClipboardData(text: tsv));
 
@@ -896,7 +901,7 @@ class _InventoryPageState extends State<InventoryPage>
       return;
     }
 
-    final excelService = getIt<ExcelInventoryService>();
+    final excelService = _excelService;
     final currentDevices =
         (context.read<DevicesCubit>().state as DevicesLoaded).allDevices;
 

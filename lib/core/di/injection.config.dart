@@ -48,6 +48,8 @@ import '../../features/infrastructure/domain/repositories/infrastructure_reposit
     as _i114;
 import '../../features/infrastructure/presentation/bloc/infrastructure_cubit.dart'
     as _i236;
+import '../../features/inventory/domain/services/excel_inventory_service.dart'
+    as _i93;
 import '../../features/monitoring/data/datasources/monitoring_service_client.dart'
     as _i63;
 import '../../features/monitoring/data/datasources/platform_ping_checker.dart'
@@ -164,6 +166,9 @@ extension GetItInjectableX on _i174.GetIt {
     );
     gh.lazySingleton<_i547.DeviceClassificationEngine>(
       () => _i547.DeviceClassificationEngine(gh<_i547.MacVendorLookup>()),
+    );
+    gh.lazySingleton<_i93.ExcelInventoryService>(
+      () => _i93.ExcelInventoryServiceImpl(),
     );
     gh.lazySingleton<_i939.ReportRepository>(
       () => _i246.ReportRepositoryImpl(

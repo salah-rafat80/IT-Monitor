@@ -225,7 +225,7 @@ class _UnassignedRecoveryPageState extends State<UnassignedRecoveryPage> {
               final cubit = context.read<DevicesCubit>();
               final messenger = ScaffoldMessenger.of(context);
 
-              final success = await cubit.reassignDevicesFactory(
+              final res = await cubit.reassignDevicesFactory(
                 deviceIds: selectedDevices.map((d) => d.id).toList(),
                 targetFactoryId: targetFactoryId,
               );
@@ -233,21 +233,23 @@ class _UnassignedRecoveryPageState extends State<UnassignedRecoveryPage> {
               if (mounted) {
                 setState(() {
                   _isAssigning = false;
-                  if (success) {
+                  if (res.isSuccess) {
                     _selectedDeviceIds.clear();
                   }
                 });
 
+                final errorMsg = res.failureOrNull?.message;
                 messenger.showSnackBar(
                   SnackBar(
                     content: Text(
-                      success
+                      res.isSuccess
                           ? 'Successfully assigned ${selectedDevices.length} devices to $targetFactoryName.'
-                          : 'Failed to assign devices. Check error log.',
+                          : 'Failed to assign devices: ${errorMsg ?? "Unknown error"}',
                     ),
-                    backgroundColor: success
+                    backgroundColor: res.isSuccess
                         ? const Color(0xFF10B981)
                         : Colors.red,
+                    duration: Duration(seconds: res.isSuccess ? 4 : 8),
                   ),
                 );
               }
@@ -281,6 +283,9 @@ class _UnassignedRecoveryPageState extends State<UnassignedRecoveryPage> {
                   (d) => d.factoryId == 'unassigned' || d.factoryId.isEmpty,
                 )
                 .toList();
+            _selectedDeviceIds.retainWhere(
+              (id) => unassignedList.any((d) => d.id == id),
+            );
           } else {
             unassignedList = [];
           }
@@ -349,11 +354,15 @@ class _UnassignedRecoveryPageState extends State<UnassignedRecoveryPage> {
                                   ),
                                 ),
                                 child: Text(
-                                  '${unassignedList.length} Unassigned',
-                                  style: const TextStyle(
+                                  state is DevicesError
+                                      ? 'Error Loading'
+                                      : '${unassignedList.length} Unassigned',
+                                  style: TextStyle(
                                     fontSize: 12,
                                     fontWeight: FontWeight.bold,
-                                    color: Colors.amber,
+                                    color: state is DevicesError
+                                        ? Colors.red
+                                        : Colors.amber,
                                   ),
                                 ),
                               ),
@@ -514,6 +523,39 @@ class _UnassignedRecoveryPageState extends State<UnassignedRecoveryPage> {
                 Expanded(
                   child: state is DevicesLoading || _isAssigning
                       ? const Center(child: CircularProgressIndicator())
+                      : state is DevicesError
+                      ? Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(
+                                Icons.error_outline_rounded,
+                                size: 48,
+                                color: Colors.red,
+                              ),
+                              const SizedBox(height: 12),
+                              Text(
+                                'Failed to load unassigned inventory:\n${state.message}',
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.red,
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              ElevatedButton.icon(
+                                onPressed: () => context
+                                    .read<DevicesCubit>()
+                                    .loadDevices(factoryId: 'unassigned'),
+                                icon: const Icon(
+                                  Icons.refresh_rounded,
+                                  size: 16,
+                                ),
+                                label: const Text('Retry'),
+                              ),
+                            ],
+                          ),
+                        )
                       : filteredList.isEmpty
                       ? Center(
                           child: Column(

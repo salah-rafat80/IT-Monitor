@@ -6,6 +6,7 @@ import '../../domain/entities/device_entity.dart';
 import '../../domain/entities/device_import_commit_payload.dart';
 import '../../domain/entities/inventory_import_preview.dart';
 import '../../domain/repositories/device_repository.dart';
+import '../../../../core/utils/result.dart';
 
 sealed class DevicesState extends Equatable {
   const DevicesState();
@@ -267,7 +268,7 @@ class DevicesCubit extends Cubit<DevicesState> {
     );
   }
 
-  Future<bool> reassignDevicesFactory({
+  Future<Result<int>> reassignDevicesFactory({
     required List<int> deviceIds,
     required String targetFactoryId,
   }) async {
@@ -277,13 +278,14 @@ class DevicesCubit extends Cubit<DevicesState> {
     );
 
     return res.fold(
-      onSuccess: (_) {
+      onSuccess: (count) {
         loadDevices();
-        return true;
+        return Result.success(count);
       },
       onFailure: (failure) {
-        emit(DevicesError(failure.message));
-        return false;
+        // Do not overwrite current DevicesLoaded state with DevicesError on mutation failure,
+        // so the user does not lose their current inventory view or see misleading empty states.
+        return Result.failure(failure);
       },
     );
   }

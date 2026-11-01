@@ -11,6 +11,7 @@ import 'package:drift/drift.dart' show InsertMode, Value;
 import '../../../../core/di/injection.dart';
 import '../../../../core/errors/failures.dart';
 import '../../../../core/utils/password_hash.dart';
+import '../../../../core/utils/result.dart';
 import '../../../devices/domain/repositories/device_repository.dart';
 import '../../../incidents/domain/entities/incident_entity.dart';
 import '../../../incidents/domain/repositories/incident_repository.dart';
@@ -18,6 +19,7 @@ import '../../../reports/domain/entities/report_entity.dart';
 import '../../../reports/domain/repositories/report_repository.dart';
 import '../../../topology/domain/services/topology_grouper.dart';
 import '../../../devices/domain/entities/device_entity.dart';
+import '../../../devices/domain/entities/device_import_commit_payload.dart';
 import '../../../network_discovery/domain/entities/device_category.dart';
 import '../../../network_discovery/domain/entities/discovery_config_entity.dart';
 import '../../../network_discovery/domain/entities/discovery_progress.dart';
@@ -1633,13 +1635,19 @@ Write-Output 'OK'
         }
 
         final body = await _readJsonBody(request);
-        final rawDevices = body['devices'] as List<dynamic>? ?? [];
-        final devices = rawDevices
-            .map((d) => DeviceEntity.fromJson(d as Map<String, dynamic>))
-            .toList();
-
         final deviceRepo = getIt<DeviceRepository>();
-        final res = await deviceRepo.commitImport(devices);
+        Result<int> res;
+
+        if (body.containsKey('inserts') || body.containsKey('updates')) {
+          final payload = DeviceImportCommitPayload.fromJson(body);
+          res = await deviceRepo.commitImportPayload(payload);
+        } else {
+          final rawDevices = body['devices'] as List<dynamic>? ?? [];
+          final devices = rawDevices
+              .map((d) => DeviceEntity.fromJson(d as Map<String, dynamic>))
+              .toList();
+          res = await deviceRepo.commitImport(devices);
+        }
         if (res.isSuccess) {
           _broadcastEvent('devices_imported', {'count': res.dataOrNull});
           await _jsonResponse(request, {

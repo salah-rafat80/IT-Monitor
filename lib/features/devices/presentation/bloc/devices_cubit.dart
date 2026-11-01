@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:injectable/injectable.dart';
 
 import '../../domain/entities/device_entity.dart';
+import '../../domain/entities/device_import_commit_payload.dart';
 import '../../domain/entities/inventory_import_preview.dart';
 import '../../domain/repositories/device_repository.dart';
 
@@ -240,6 +241,17 @@ class DevicesCubit extends Cubit<DevicesState> {
 
     res.fold(
       onSuccess: (preview) => emit(ImportPreviewState(preview)),
+      onFailure: (failure) => emit(DevicesError(failure.message)),
+    );
+  }
+
+  Future<void> confirmImportPayload(DeviceImportCommitPayload payload) async {
+    emit(const DevicesLoading());
+
+    final res = await _deviceRepo.commitImportPayload(payload);
+
+    res.fold(
+      onSuccess: (_) => loadDevices(),
       onFailure: (failure) => emit(DevicesError(failure.message)),
     );
   }

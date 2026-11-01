@@ -16,6 +16,7 @@ import 'package:it_network_monitor/features/auth/domain/entities/audit_log_entit
 import 'package:it_network_monitor/features/auth/domain/entities/user_entity.dart';
 import 'package:it_network_monitor/features/auth/domain/repositories/auth_repository.dart';
 import 'package:it_network_monitor/features/devices/domain/entities/device_entity.dart';
+import 'package:it_network_monitor/features/devices/domain/entities/device_import_commit_payload.dart';
 import 'package:it_network_monitor/features/devices/domain/entities/inventory_import_preview.dart';
 import 'package:it_network_monitor/features/devices/domain/repositories/device_repository.dart';
 import 'package:it_network_monitor/features/infrastructure/domain/entities/unifi_device_entity.dart';
@@ -146,6 +147,14 @@ class StubDeviceRepository implements DeviceRepository {
     List<int> bytes,
     String filename,
   ) async => throw UnimplementedError();
+
+  @override
+  Future<Result<int>> commitImportPayload(
+    DeviceImportCommitPayload payload,
+  ) async {
+    devicesList.addAll(payload.inserts);
+    return Result.success(payload.totalCount);
+  }
 
   @override
   Future<Result<int>> commitImport(List<DeviceEntity> validDevices) async {

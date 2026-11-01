@@ -4,6 +4,7 @@ import 'package:drift/native.dart';
 import 'package:it_network_monitor/core/database/app_database.dart';
 import 'package:it_network_monitor/core/utils/result.dart';
 import 'package:it_network_monitor/features/devices/domain/entities/device_entity.dart';
+import 'package:it_network_monitor/features/devices/domain/entities/device_import_commit_payload.dart';
 import 'package:it_network_monitor/features/devices/domain/repositories/device_repository.dart';
 import 'package:it_network_monitor/features/devices/domain/entities/inventory_import_preview.dart';
 import 'package:it_network_monitor/features/network_discovery/data/repositories/discovery_repository_impl.dart';
@@ -124,6 +125,19 @@ class FakeDeviceRepository implements DeviceRepository {
   Future<Result<int>> commitImport(List<DeviceEntity> validDevices) async {
     _devices.addAll(validDevices);
     return Result.success(validDevices.length);
+  }
+
+  @override
+  Future<Result<int>> commitImportPayload(
+    DeviceImportCommitPayload payload,
+  ) async {
+    for (final d in payload.inserts) {
+      await addDevice(d);
+    }
+    for (final d in payload.updates) {
+      await updateDevice(d);
+    }
+    return Result.success(payload.inserts.length + payload.updates.length);
   }
 
   @override

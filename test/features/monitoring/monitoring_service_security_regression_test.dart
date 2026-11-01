@@ -12,6 +12,7 @@ import 'package:it_network_monitor/features/auth/domain/entities/user_entity.dar
 import 'package:it_network_monitor/features/auth/domain/repositories/auth_repository.dart';
 import 'package:it_network_monitor/features/auth/presentation/bloc/auth_cubit.dart';
 import 'package:it_network_monitor/features/devices/domain/entities/device_entity.dart';
+import 'package:it_network_monitor/features/devices/domain/entities/device_import_commit_payload.dart';
 import 'package:it_network_monitor/features/devices/domain/entities/inventory_import_preview.dart';
 import 'package:it_network_monitor/features/devices/domain/repositories/device_repository.dart';
 import 'package:it_network_monitor/features/monitoring/domain/entities/check_result.dart';
@@ -84,6 +85,11 @@ class FakeDeviceRepository implements DeviceRepository {
     List<int> bytes,
     String filename,
   ) async => throw UnimplementedError();
+
+  @override
+  Future<Result<int>> commitImportPayload(
+    DeviceImportCommitPayload payload,
+  ) async => Result.success(payload.totalCount);
 
   @override
   Future<Result<int>> commitImport(List<DeviceEntity> validDevices) async =>

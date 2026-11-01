@@ -4,6 +4,7 @@ import 'package:injectable/injectable.dart';
 
 import '../../../../core/utils/ipv4_utils.dart';
 import '../../../devices/domain/entities/device_entity.dart';
+import '../../../devices/domain/entities/device_import_commit_payload.dart';
 
 class ExcelImportRowResult {
   final int rowIndex;
@@ -51,6 +52,22 @@ class ExcelImportSummary {
       .where((r) => r.isValid && r.device != null)
       .map((r) => r.device!)
       .toList();
+
+  List<DeviceEntity> get insertDevices => rows
+      .where((r) => r.action == 'insert' && r.device != null)
+      .map((r) => r.device!)
+      .toList();
+
+  List<DeviceEntity> get updateDevices => rows
+      .where((r) => r.action == 'update' && r.device != null)
+      .map((r) => r.device!)
+      .toList();
+
+  DeviceImportCommitPayload toCommitPayload() => DeviceImportCommitPayload(
+    inserts: insertDevices,
+    updates: updateDevices,
+    targetFactoryId: targetFactoryId,
+  );
 }
 
 abstract class ExcelInventoryService {
@@ -60,6 +77,13 @@ abstract class ExcelInventoryService {
   });
 
   List<int> generateTemplate({required String factoryCode});
+
+  ExcelImportSummary parseAndValidateFile({
+    required List<int> bytes,
+    required String fileName,
+    required String targetFactoryId,
+    required List<DeviceEntity> existingFactoryDevices,
+  });
 
   ExcelImportSummary parseAndValidateExcel({
     required List<int> bytes,
@@ -152,51 +176,189 @@ class ExcelInventoryServiceImpl implements ExcelInventoryService {
       excel.delete('Sheet1');
     }
 
-    // Header row
+    // Header row only — untouched template imports zero devices
     sheet.appendRow(headers.map((h) => TextCellValue(h)).toList());
 
-    // Sample guidance rows
-    sheet.appendRow([
-      TextCellValue('Leave empty for new'),
-      TextCellValue(factoryCode.toUpperCase()),
-      TextCellValue('WS-ENG-01'),
-      TextCellValue('PC / Workstation'),
-      TextCellValue('192.168.22.10'),
-      TextCellValue('Ahmed Mohamed'),
-      TextCellValue('Engineering'),
-      TextCellValue('Bldg A / Room 204'),
-      TextCellValue('00:1B:44:11:3A:B7'),
-      TextCellValue('WS-ENG-01.corp'),
-      TextCellValue('Dell'),
-      TextCellValue('OptiPlex 7090'),
-      TextCellValue('Windows 11 Pro'),
-      TextCellValue('SW-CORE-01'),
-      TextCellValue('Yes'),
-      TextCellValue('Yes'),
-      TextCellValue('Production CAD workstation'),
-    ]);
-
-    sheet.appendRow([
-      TextCellValue('Leave empty for new'),
-      TextCellValue(factoryCode.toUpperCase()),
-      TextCellValue('LP-FIN-02'),
-      TextCellValue('Laptop'),
-      TextCellValue('192.168.22.11'),
-      TextCellValue('Sara Ibrahim'),
-      TextCellValue('Finance'),
-      TextCellValue('HQ / 3rd Floor'),
-      TextCellValue('3C:52:82:4F:19:2E'),
-      TextCellValue('LP-FIN-02.corp'),
-      TextCellValue('Lenovo'),
-      TextCellValue('ThinkPad T14'),
-      TextCellValue('Windows 11 Pro'),
-      TextCellValue('SW-ACC-02'),
-      TextCellValue('Yes'),
-      TextCellValue('Yes'),
-      TextCellValue('Audit reporting laptop'),
-    ]);
-
     return excel.encode() ?? <int>[];
+  }
+
+  @override
+  ExcelImportSummary parseAndValidateFile({
+    required List<int> bytes,
+    required String fileName,
+    required String targetFactoryId,
+    required List<DeviceEntity> existingFactoryDevices,
+  }) {
+    final lower = fileName.toLowerCase().trim();
+    if (lower.endsWith('.csv')) {
+      return _parseAndValidateCsv(
+        bytes: bytes,
+        targetFactoryId: targetFactoryId,
+        existingFactoryDevices: existingFactoryDevices,
+      );
+    }
+
+    if (lower.endsWith('.xls') && !lower.endsWith('.xlsx')) {
+      return ExcelImportSummary(
+        rows: const [
+          ExcelImportRowResult(
+            rowIndex: 1,
+            action: 'invalid',
+            rejectionReason:
+                'Legacy binary .xls format is not supported. Please save or export your file as modern .xlsx or standard .csv.',
+          ),
+        ],
+        targetFactoryId: targetFactoryId,
+        insertCount: 0,
+        updateCount: 0,
+        invalidCount: 1,
+        skippedCount: 0,
+      );
+    }
+
+    return parseAndValidateExcel(
+      bytes: bytes,
+      targetFactoryId: targetFactoryId,
+      existingFactoryDevices: existingFactoryDevices,
+    );
+  }
+
+  ExcelImportSummary _parseAndValidateCsv({
+    required List<int> bytes,
+    required String targetFactoryId,
+    required List<DeviceEntity> existingFactoryDevices,
+  }) {
+    final text = utf8.decode(bytes, allowMalformed: true);
+    final rawLines = text.split(RegExp(r'\r\n|\r|\n'));
+    final rawDataRows = <Map<String, String>>[];
+
+    List<List<String>> csvRecords = [];
+    for (final line in rawLines) {
+      if (line.trim().isEmpty) continue;
+      final record = <String>[];
+      final buffer = StringBuffer();
+      bool inQuotes = false;
+      for (int i = 0; i < line.length; i++) {
+        final c = line[i];
+        if (c == '"') {
+          if (inQuotes && i + 1 < line.length && line[i + 1] == '"') {
+            buffer.write('"');
+            i++;
+          } else {
+            inQuotes = !inQuotes;
+          }
+        } else if ((c == ',' || c == ';') && !inQuotes) {
+          record.add(buffer.toString().trim());
+          buffer.clear();
+        } else {
+          buffer.write(c);
+        }
+      }
+      record.add(buffer.toString().trim());
+      csvRecords.add(record);
+    }
+
+    if (csvRecords.isEmpty) {
+      return ExcelImportSummary(
+        rows: const [],
+        targetFactoryId: targetFactoryId,
+        insertCount: 0,
+        updateCount: 0,
+        invalidCount: 0,
+        skippedCount: 0,
+      );
+    }
+
+    final headerRow = csvRecords.first;
+    final headerMap = <String, int>{};
+    for (int c = 0; c < headerRow.length; c++) {
+      final val = headerRow[c].toLowerCase().trim();
+      if (val.contains('id') && !val.contains('guid')) {
+        headerMap['id'] = c;
+      } else if (val.contains('device') ||
+          val.contains('asset') ||
+          val == 'name') {
+        headerMap['name'] = c;
+      } else if (val.contains('ip')) {
+        headerMap['ip'] = c;
+      } else if (val.contains('owner') ||
+          val.contains('user') ||
+          val.contains('assigned')) {
+        headerMap['owner'] = c;
+      } else if (val.contains('dept') || val.contains('department')) {
+        headerMap['department'] = c;
+      } else if (val.contains('loc') ||
+          val.contains('office') ||
+          val.contains('room')) {
+        headerMap['office'] = c;
+      } else if (val.contains('type') || val.contains('category')) {
+        headerMap['type'] = c;
+      } else if (val.contains('mac')) {
+        headerMap['mac'] = c;
+      } else if (val.contains('host')) {
+        headerMap['hostname'] = c;
+      } else if (val.contains('vendor') || val.contains('make')) {
+        headerMap['vendor'] = c;
+      } else if (val.contains('model')) {
+        headerMap['model'] = c;
+      } else if (val.contains('os') || val.contains('operating')) {
+        headerMap['os'] = c;
+      } else if (val.contains('switch')) {
+        headerMap['switch'] = c;
+      } else if (val.contains('monitor')) {
+        headerMap['monitored'] = c;
+      } else if (val.contains('enable')) {
+        headerMap['enabled'] = c;
+      } else if (val.contains('note')) {
+        headerMap['notes'] = c;
+      }
+    }
+
+    for (int r = 1; r < csvRecords.length; r++) {
+      final row = csvRecords[r];
+      if (row.isEmpty) continue;
+
+      String getCol(String key) {
+        final idx = headerMap[key];
+        if (idx == null || idx >= row.length) return '';
+        return row[idx].trim();
+      }
+
+      final ip = getCol('ip');
+      final name = getCol('name');
+      final owner = getCol('owner');
+      final dept = getCol('department');
+
+      if (ip.isEmpty && name.isEmpty && owner.isEmpty && dept.isEmpty) {
+        continue;
+      }
+
+      rawDataRows.add({
+        'rowIndex': (r + 1).toString(),
+        'id': getCol('id'),
+        'name': name,
+        'ip': ip,
+        'owner': owner,
+        'department': dept,
+        'office': getCol('office'),
+        'type': getCol('type'),
+        'mac': getCol('mac'),
+        'hostname': getCol('hostname'),
+        'vendor': getCol('vendor'),
+        'model': getCol('model'),
+        'os': getCol('os'),
+        'switch': getCol('switch'),
+        'monitored': getCol('monitored'),
+        'enabled': getCol('enabled'),
+        'notes': getCol('notes'),
+      });
+    }
+
+    return _validateRawRows(
+      rawRows: rawDataRows,
+      targetFactoryId: targetFactoryId,
+      existingFactoryDevices: existingFactoryDevices,
+    );
   }
 
   @override
@@ -205,7 +367,26 @@ class ExcelInventoryServiceImpl implements ExcelInventoryService {
     required String targetFactoryId,
     required List<DeviceEntity> existingFactoryDevices,
   }) {
-    final excel = Excel.decodeBytes(bytes);
+    Excel excel;
+    try {
+      excel = Excel.decodeBytes(bytes);
+    } catch (e) {
+      return ExcelImportSummary(
+        rows: [
+          ExcelImportRowResult(
+            rowIndex: 1,
+            action: 'invalid',
+            rejectionReason:
+                'Failed to decode spreadsheet file: ensure the file is a valid, uncorrupted .xlsx workbook. ($e)',
+          ),
+        ],
+        targetFactoryId: targetFactoryId,
+        insertCount: 0,
+        updateCount: 0,
+        invalidCount: 1,
+        skippedCount: 0,
+      );
+    }
     final rawDataRows = <Map<String, String>>[];
 
     for (final table in excel.tables.keys) {
@@ -475,6 +656,30 @@ class ExcelInventoryServiceImpl implements ExcelInventoryService {
       final rawOwner = r['owner']?.trim() ?? '';
       final rawDept = r['department']?.trim() ?? '';
       final rawId = int.tryParse(r['id']?.trim() ?? '');
+
+      // Validation 0: Skip demonstration / template guidance example rows
+      final lowerName = rawName.toLowerCase();
+      final lowerIp = rawIp.toLowerCase();
+      if (lowerName.contains('ws-eng-01') ||
+          lowerName.contains('lp-fin-02') ||
+          lowerName.startsWith('leave empty') ||
+          lowerName.contains('[example]') ||
+          lowerName.contains('sample guidance') ||
+          lowerIp.startsWith('leave empty')) {
+        skippedCount++;
+        results.add(
+          ExcelImportRowResult(
+            rowIndex: rIndex,
+            rawName: rawName,
+            rawIp: rawIp,
+            rawOwner: rawOwner,
+            rawDepartment: rawDept,
+            action: 'skip',
+            rejectionReason: 'Template example/guidance row ignored.',
+          ),
+        );
+        continue;
+      }
 
       // Validation 1: Required fields
       if (rawName.isEmpty) {

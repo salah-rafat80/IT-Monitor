@@ -1,5 +1,6 @@
 import '../../../../core/utils/result.dart';
 import '../entities/device_entity.dart';
+import '../entities/device_import_commit_payload.dart';
 import '../entities/inventory_import_preview.dart';
 
 abstract class DeviceRepository {
@@ -21,6 +22,7 @@ abstract class DeviceRepository {
     List<int> bytes,
     String filename,
   );
+  Future<Result<int>> commitImportPayload(DeviceImportCommitPayload payload);
   Future<Result<int>> commitImport(List<DeviceEntity> validDevices);
   Future<Result<int>> bootstrapApprovedInventory({bool force = false});
   Future<Result<int>> reassignDevicesFactory({

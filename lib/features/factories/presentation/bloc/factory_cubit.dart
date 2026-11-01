@@ -15,6 +15,8 @@ class FactoryCubit extends Cubit<FactoryState> {
   final FactoryRepository _factoryRepository;
   final NetworkDetectionService _networkDetectionService;
   StreamSubscription? _factoriesSub;
+  Timer? _networkPollTimer;
+  Set<String> _lastDetectedIps = {};
 
   FactoryCubit(this._factoryRepository, this._networkDetectionService)
     : super(const FactoryState()) {
@@ -41,6 +43,12 @@ class FactoryCubit extends Cubit<FactoryState> {
         ),
       );
     });
+
+    // Controlled periodic network revalidation (runs every 10s to detect network changes)
+    _networkPollTimer = Timer.periodic(
+      const Duration(seconds: 10),
+      (_) => checkNetworkInterfaces(),
+    );
   }
 
   Future<void> loadFactories({
@@ -48,25 +56,30 @@ class FactoryCubit extends Cubit<FactoryState> {
     List<String>? mockLocalIps,
     List<NetworkInterface>? mockInterfaces,
   }) async {
+    if (isClosed) return;
     emit(state.copyWith(isLoading: true, errorMessage: () => null));
     final res = await _factoryRepository.getFactories(includeInactive: false);
+    if (isClosed) return;
     if (res.isSuccess && res.dataOrNull != null) {
       final active = res.dataOrNull!
           .where((f) => f.id != 'unassigned')
           .toList();
 
       if (!autoDetect) {
-        emit(state.copyWith(factories: active, isLoading: false));
+        if (!isClosed)
+          emit(state.copyWith(factories: active, isLoading: false));
         return;
       }
 
-      emit(state.copyWith(factories: active, isDetectingNetwork: true));
+      if (!isClosed)
+        emit(state.copyWith(factories: active, isDetectingNetwork: true));
 
       final detectionResult = await _networkDetectionService.detectFactory(
         factories: active,
         mockLocalIps: mockLocalIps,
         mockInterfaces: mockInterfaces,
       );
+      if (isClosed) return;
 
       FactoryEntity? initial = state.selectedFactory;
       final isManual = state.isManualOverride;
@@ -90,33 +103,91 @@ class FactoryCubit extends Cubit<FactoryState> {
         ),
       );
     } else {
-      emit(
-        state.copyWith(
-          isLoading: false,
-          errorMessage: () =>
-              res.failureOrNull?.message ?? 'Failed to load factories',
-        ),
-      );
+      if (!isClosed) {
+        emit(
+          state.copyWith(
+            isLoading: false,
+            errorMessage: () =>
+                res.failureOrNull?.message ?? 'Failed to load factories',
+          ),
+        );
+      }
     }
+  }
+
+  Future<void> checkNetworkInterfaces({
+    List<String>? mockLocalIps,
+    List<NetworkInterface>? mockInterfaces,
+  }) async {
+    if (isClosed || state.factories.isEmpty) return;
+
+    final currentIps = mockLocalIps != null
+        ? mockLocalIps.toSet()
+        : (await _networkDetectionService.getLocalIpv4Addresses(
+            mockInterfaces: mockInterfaces,
+          )).toSet();
+    if (isClosed) return;
+
+    // Avoid unnecessary repeated scans if interface IPs have not changed
+    if (_lastDetectedIps.isNotEmpty &&
+        _lastDetectedIps.length == currentIps.length &&
+        _lastDetectedIps.containsAll(currentIps)) {
+      return;
+    }
+
+    _lastDetectedIps = currentIps;
+
+    final detectionResult = await _networkDetectionService.detectFactory(
+      factories: state.factories,
+      mockLocalIps: mockLocalIps ?? currentIps.toList(),
+      mockInterfaces: mockInterfaces,
+    );
+    if (isClosed) return;
+
+    // Preserve administrator manual override behavior until explicitly cleared
+    if (state.isManualOverride) {
+      emit(state.copyWith(detectionResult: () => detectionResult));
+      return;
+    }
+
+    FactoryEntity? newSelected = state.selectedFactory;
+    if (detectionResult.isDetected) {
+      // Confirmed factory change (e.g. movement from RNF to BNF or BNF to RNF)
+      newSelected = detectionResult.detectedFactory;
+    } else {
+      // Do not silently change to All Factories when ambiguous or unknown!
+      // Keep existing selected factory context and display detectionResult badge.
+      newSelected = state.selectedFactory;
+    }
+
+    emit(
+      state.copyWith(
+        detectionResult: () => detectionResult,
+        selectedFactory: () => newSelected,
+      ),
+    );
   }
 
   Future<void> revalidateNetworkDetection({
     List<String>? mockLocalIps,
     List<NetworkInterface>? mockInterfaces,
   }) async {
+    if (isClosed) return;
     emit(state.copyWith(isDetectingNetwork: true));
     final detectionResult = await _networkDetectionService.detectFactory(
       factories: state.factories,
       mockLocalIps: mockLocalIps,
       mockInterfaces: mockInterfaces,
     );
+    if (isClosed) return;
 
     FactoryEntity? newSelected = state.selectedFactory;
     if (!state.isManualOverride) {
       if (detectionResult.isDetected) {
         newSelected = detectionResult.detectedFactory;
       } else {
-        newSelected = null;
+        // Do not silently change to All Factories when ambiguous or unknown!
+        newSelected = state.selectedFactory;
       }
     }
 
@@ -126,6 +197,19 @@ class FactoryCubit extends Cubit<FactoryState> {
         selectedFactory: () => newSelected,
         isDetectingNetwork: false,
       ),
+    );
+  }
+
+  Future<void> clearManualOverride({
+    List<String>? mockLocalIps,
+    List<NetworkInterface>? mockInterfaces,
+  }) async {
+    if (isClosed) return;
+    emit(state.copyWith(isManualOverride: false));
+    _lastDetectedIps.clear();
+    await revalidateNetworkDetection(
+      mockLocalIps: mockLocalIps,
+      mockInterfaces: mockInterfaces,
     );
   }
 
@@ -221,6 +305,7 @@ class FactoryCubit extends Cubit<FactoryState> {
 
   @override
   Future<void> close() {
+    _networkPollTimer?.cancel();
     _factoriesSub?.cancel();
     return super.close();
   }

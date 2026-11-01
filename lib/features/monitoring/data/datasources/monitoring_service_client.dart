@@ -745,6 +745,26 @@ class MonitoringServiceClient {
     );
   }
 
+  /// Import batch of devices using explicit INSERT and UPDATE payload contract.
+  Future<ServiceApiResponse<int>> importDevicesPayload(
+    Map<String, dynamic> payloadJson,
+  ) async {
+    final response = await _sendRequest(
+      method: 'POST',
+      endpoint: '/api/devices/import',
+      body: payloadJson,
+      requireAuth: true,
+    );
+    if (response.isSuccess && response.data is Map) {
+      final json = response.data as Map<String, dynamic>;
+      return ServiceApiResponse.success(json['importedCount'] as int? ?? 0);
+    }
+    return ServiceApiResponse.failure(
+      response.errorMessage,
+      statusCode: response.statusCode,
+    );
+  }
+
   /// Reassign a list of devices to a target factory on the authoritative service.
   Future<ServiceApiResponse<int>> reassignDevicesFactory({
     required List<int> deviceIds,

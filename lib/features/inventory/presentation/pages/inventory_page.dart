@@ -43,8 +43,8 @@ class _InventoryPageState extends State<InventoryPage>
 
   ExcelInventoryService get _excelService =>
       getIt.isRegistered<ExcelInventoryService>()
-          ? getIt<ExcelInventoryService>()
-          : ExcelInventoryServiceImpl();
+      ? getIt<ExcelInventoryService>()
+      : ExcelInventoryServiceImpl();
 
   @override
   void initState() {
@@ -827,7 +827,7 @@ class _InventoryPageState extends State<InventoryPage>
   Future<void> _importExcel(String targetFactoryId, String factoryCode) async {
     final files = await FilePickerPlatform.instance.pickFiles(
       type: FileType.custom,
-      allowedExtensions: ['xlsx', 'xls', 'csv'],
+      allowedExtensions: ['xlsx', 'csv'],
     );
 
     if (files.isEmpty || files.first.path == null) {
@@ -841,8 +841,9 @@ class _InventoryPageState extends State<InventoryPage>
     final currentDevices =
         (context.read<DevicesCubit>().state as DevicesLoaded).allDevices;
 
-    final summary = excelService.parseAndValidateExcel(
+    final summary = excelService.parseAndValidateFile(
       bytes: bytes,
+      fileName: files.first.name,
       targetFactoryId: targetFactoryId,
       existingFactoryDevices: currentDevices,
     );
@@ -856,7 +857,7 @@ class _InventoryPageState extends State<InventoryPage>
         factoryCode: factoryCode,
         onConfirm: () async {
           final cubit = context.read<DevicesCubit>();
-          await cubit.confirmImport(summary.validDevices);
+          await cubit.confirmImportPayload(summary.toCommitPayload());
         },
       ),
     );
@@ -920,7 +921,7 @@ class _InventoryPageState extends State<InventoryPage>
         factoryCode: factoryCode,
         onConfirm: () async {
           final cubit = context.read<DevicesCubit>();
-          await cubit.confirmImport(summary.validDevices);
+          await cubit.confirmImportPayload(summary.toCommitPayload());
         },
       ),
     );
@@ -952,459 +953,481 @@ class _InventoryPageState extends State<InventoryPage>
       );
     }
 
-    return Scaffold(
-      body: BlocConsumer<DevicesCubit, DevicesState>(
-        listener: (context, state) {
-          if (state is DevicesError) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(state.message),
-                backgroundColor: Colors.red,
-              ),
-            );
-          }
-        },
-        builder: (context, state) {
-          final List<DeviceEntity> allDevices;
-          if (state is DevicesLoaded) {
-            allDevices = state.allDevices;
-          } else {
-            allDevices = [];
-          }
-
-          final displayDevices = _sortAndFilter(allDevices);
-          final selectedDevices = allDevices
-              .where((d) => _selectedIds.contains(d.id))
-              .toList();
-
-          final depts = {
-            'All',
-            ...allDevices
-                .map((d) => d.department.trim())
-                .where((d) => d.isNotEmpty),
-          }.toList();
-          final types = {
-            'All',
-            ...allDevices.map((d) => d.type.displayName),
-          }.toList();
-
-          return Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Factory Switcher Tabs
-                Row(
-                  children: [
-                    for (final f in factories) ...[
-                      _FactoryTabButton(
-                        code: f.code,
-                        name: f.name,
-                        isSelected: activeFactoryId == f.id,
-                        onTap: () => _onFactoryTabChanged(f.id),
-                      ),
-                      const SizedBox(width: 8),
-                    ],
-                    _FactoryTabButton(
-                      code: 'ALL',
-                      name: 'All Factories (Consolidated)',
-                      isSelected: isConsolidated,
-                      onTap: () => _onFactoryTabChanged(null),
-                    ),
-                    const Spacer(),
-                    if (isAdmin)
-                      OutlinedButton.icon(
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.amber,
-                          side: const BorderSide(color: Colors.amber),
-                        ),
-                        onPressed: () =>
-                            setState(() => _isShowingUnassignedRecovery = true),
-                        icon: const Icon(Icons.inventory_2_outlined, size: 16),
-                        label: const Text('Legacy Unassigned Recovery'),
-                      ),
-                  ],
+    return BlocListener<FactoryCubit, FactoryState>(
+      listener: (context, fState) {
+        context.read<DevicesCubit>().setFactory(fState.selectedFactoryId);
+        setState(() {
+          _selectedIds.clear();
+          _editingRows.clear();
+          _rowErrors.clear();
+        });
+      },
+      child: Scaffold(
+        body: BlocConsumer<DevicesCubit, DevicesState>(
+          listener: (context, state) {
+            if (state is DevicesError) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(state.message),
+                  backgroundColor: Colors.red,
                 ),
-                const SizedBox(height: 12),
+              );
+            }
+          },
+          builder: (context, state) {
+            final List<DeviceEntity> allDevices;
+            if (state is DevicesLoaded) {
+              allDevices = state.allDevices;
+            } else {
+              allDevices = [];
+            }
 
-                // Main Toolbar
-                Card(
-                  elevation: 0,
-                  color: theme.colorScheme.surface,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    side: BorderSide(
-                      color: theme.dividerColor.withValues(alpha: 0.15),
-                    ),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 8,
-                    ),
-                    child: Wrap(
-                      spacing: 10,
-                      runSpacing: 8,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        // Search box
-                        SizedBox(
-                          width: 220,
-                          height: 36,
-                          child: TextField(
-                            controller: _searchController,
-                            decoration: InputDecoration(
-                              hintText: 'Search $activeFactoryCode devices...',
-                              prefixIcon: const Icon(
-                                Icons.search_rounded,
-                                size: 16,
-                              ),
-                              suffixIcon: _searchQuery.isNotEmpty
-                                  ? IconButton(
-                                      icon: const Icon(Icons.clear, size: 14),
-                                      onPressed: () {
-                                        _searchController.clear();
-                                        setState(() => _searchQuery = '');
-                                      },
-                                    )
-                                  : null,
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 0,
-                              ),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                            ),
-                            onChanged: (val) =>
-                                setState(() => _searchQuery = val.trim()),
-                          ),
+            final displayDevices = _sortAndFilter(allDevices);
+            final selectedDevices = allDevices
+                .where((d) => _selectedIds.contains(d.id))
+                .toList();
+
+            final depts = {
+              'All',
+              ...allDevices
+                  .map((d) => d.department.trim())
+                  .where((d) => d.isNotEmpty),
+            }.toList();
+            final types = {
+              'All',
+              ...allDevices.map((d) => d.type.displayName),
+            }.toList();
+
+            return Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Factory Switcher Tabs
+                  Row(
+                    children: [
+                      for (final f in factories) ...[
+                        _FactoryTabButton(
+                          code: f.code,
+                          name: f.name,
+                          isSelected: activeFactoryId == f.id,
+                          onTap: () => _onFactoryTabChanged(f.id),
                         ),
-
-                        // Dept Filter
-                        DropdownButton<String>(
-                          value: depts.contains(_selectedDeptFilter)
-                              ? _selectedDeptFilter
-                              : 'All',
-                          underline: const SizedBox.shrink(),
-                          items: depts
-                              .map(
-                                (d) => DropdownMenuItem(
-                                  value: d,
-                                  child: Text('Dept: $d'),
-                                ),
-                              )
-                              .toList(),
-                          onChanged: (val) {
-                            if (val != null) {
-                              setState(() => _selectedDeptFilter = val);
-                            }
-                          },
-                        ),
-
-                        // Type Filter
-                        DropdownButton<String>(
-                          value: types.contains(_selectedTypeFilter)
-                              ? _selectedTypeFilter
-                              : 'All',
-                          underline: const SizedBox.shrink(),
-                          items: types
-                              .map(
-                                (t) => DropdownMenuItem(
-                                  value: t,
-                                  child: Text('Type: $t'),
-                                ),
-                              )
-                              .toList(),
-                          onChanged: (val) {
-                            if (val != null) {
-                              setState(() => _selectedTypeFilter = val);
-                            }
-                          },
-                        ),
-
                         const SizedBox(width: 8),
-
-                        // Add Row (only in single factory mode, not consolidated)
-                        if (!isConsolidated)
-                          ElevatedButton.icon(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF0F62FE),
-                              foregroundColor: Colors.white,
-                              visualDensity: VisualDensity.compact,
-                            ),
-                            onPressed: () =>
-                                _showAddNewRowDialog(activeFactoryId),
-                            icon: const Icon(Icons.add, size: 16),
-                            label: const Text('Add Row'),
-                          ),
-
-                        // Delete Selected
-                        if (_selectedIds.isNotEmpty && isAdmin)
-                          ElevatedButton.icon(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.redAccent,
-                              foregroundColor: Colors.white,
-                              visualDensity: VisualDensity.compact,
-                            ),
-                            onPressed: () =>
-                                _showDeleteConfirmation(selectedDevices),
-                            icon: const Icon(Icons.delete_outline, size: 16),
-                            label: Text('Delete (${_selectedIds.length})'),
-                          ),
-
-                        // Bulk Edit Selected
-                        if (_selectedIds.isNotEmpty &&
-                            isAdmin &&
-                            !isConsolidated)
-                          OutlinedButton.icon(
-                            style: OutlinedButton.styleFrom(
-                              visualDensity: VisualDensity.compact,
-                            ),
-                            onPressed: () =>
-                                _showBulkEditDialog(selectedDevices),
-                            icon: const Icon(Icons.edit_note, size: 16),
-                            label: Text('Bulk Edit (${_selectedIds.length})'),
-                          ),
-
-                        // Copy to Clipboard (TSV)
-                        if (_selectedIds.isNotEmpty)
-                          OutlinedButton.icon(
-                            style: OutlinedButton.styleFrom(
-                              visualDensity: VisualDensity.compact,
-                            ),
-                            onPressed: () =>
-                                _copySelectedToClipboard(selectedDevices),
-                            icon: const Icon(Icons.copy_rounded, size: 15),
-                            label: Text('Copy (${_selectedIds.length})'),
-                          ),
-
-                        // Paste from Clipboard (TSV)
-                        if (!isConsolidated && isAdmin)
-                          OutlinedButton.icon(
-                            style: OutlinedButton.styleFrom(
-                              visualDensity: VisualDensity.compact,
-                            ),
-                            onPressed: () => _pasteFromClipboard(
-                              activeFactoryId,
-                              activeFactoryCode,
-                            ),
-                            icon: const Icon(Icons.paste_rounded, size: 15),
-                            label: const Text('Paste Excel'),
-                          ),
-
-                        // Import XLSX
-                        if (!isConsolidated && isAdmin)
-                          OutlinedButton.icon(
-                            style: OutlinedButton.styleFrom(
-                              visualDensity: VisualDensity.compact,
-                            ),
-                            onPressed: () => _importExcel(
-                              activeFactoryId,
-                              activeFactoryCode,
-                            ),
-                            icon: const Icon(
-                              Icons.file_upload_outlined,
-                              size: 16,
-                            ),
-                            label: const Text('Import XLSX'),
-                          ),
-
-                        // Export XLSX
+                      ],
+                      _FactoryTabButton(
+                        code: 'ALL',
+                        name: 'All Factories (Consolidated)',
+                        isSelected: isConsolidated,
+                        onTap: () => _onFactoryTabChanged(null),
+                      ),
+                      const Spacer(),
+                      if (isAdmin)
                         OutlinedButton.icon(
                           style: OutlinedButton.styleFrom(
-                            visualDensity: VisualDensity.compact,
+                            foregroundColor: Colors.amber,
+                            side: const BorderSide(color: Colors.amber),
                           ),
-                          onPressed: displayDevices.isEmpty
-                              ? null
-                              : () => _exportExcel(
-                                  displayDevices,
-                                  activeFactoryCode,
-                                ),
+                          onPressed: () => setState(
+                            () => _isShowingUnassignedRecovery = true,
+                          ),
                           icon: const Icon(
-                            Icons.file_download_outlined,
+                            Icons.inventory_2_outlined,
                             size: 16,
                           ),
-                          label: const Text('Export XLSX'),
+                          label: const Text('Legacy Unassigned Recovery'),
                         ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
 
-                        // Download Template
-                        if (!isConsolidated)
-                          TextButton.icon(
-                            style: TextButton.styleFrom(
+                  // Main Toolbar
+                  Card(
+                    elevation: 0,
+                    color: theme.colorScheme.surface,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      side: BorderSide(
+                        color: theme.dividerColor.withValues(alpha: 0.15),
+                      ),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 8,
+                      ),
+                      child: Wrap(
+                        spacing: 10,
+                        runSpacing: 8,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          // Search box
+                          SizedBox(
+                            width: 220,
+                            height: 36,
+                            child: TextField(
+                              controller: _searchController,
+                              decoration: InputDecoration(
+                                hintText:
+                                    'Search $activeFactoryCode devices...',
+                                prefixIcon: const Icon(
+                                  Icons.search_rounded,
+                                  size: 16,
+                                ),
+                                suffixIcon: _searchQuery.isNotEmpty
+                                    ? IconButton(
+                                        icon: const Icon(Icons.clear, size: 14),
+                                        onPressed: () {
+                                          _searchController.clear();
+                                          setState(() => _searchQuery = '');
+                                        },
+                                      )
+                                    : null,
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 0,
+                                ),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                              ),
+                              onChanged: (val) =>
+                                  setState(() => _searchQuery = val.trim()),
+                            ),
+                          ),
+
+                          // Dept Filter
+                          DropdownButton<String>(
+                            value: depts.contains(_selectedDeptFilter)
+                                ? _selectedDeptFilter
+                                : 'All',
+                            underline: const SizedBox.shrink(),
+                            items: depts
+                                .map(
+                                  (d) => DropdownMenuItem(
+                                    value: d,
+                                    child: Text('Dept: $d'),
+                                  ),
+                                )
+                                .toList(),
+                            onChanged: (val) {
+                              if (val != null) {
+                                setState(() => _selectedDeptFilter = val);
+                              }
+                            },
+                          ),
+
+                          // Type Filter
+                          DropdownButton<String>(
+                            value: types.contains(_selectedTypeFilter)
+                                ? _selectedTypeFilter
+                                : 'All',
+                            underline: const SizedBox.shrink(),
+                            items: types
+                                .map(
+                                  (t) => DropdownMenuItem(
+                                    value: t,
+                                    child: Text('Type: $t'),
+                                  ),
+                                )
+                                .toList(),
+                            onChanged: (val) {
+                              if (val != null) {
+                                setState(() => _selectedTypeFilter = val);
+                              }
+                            },
+                          ),
+
+                          const SizedBox(width: 8),
+
+                          // Add Row (only in single factory mode, not consolidated)
+                          if (!isConsolidated)
+                            ElevatedButton.icon(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF0F62FE),
+                                foregroundColor: Colors.white,
+                                visualDensity: VisualDensity.compact,
+                              ),
+                              onPressed: () =>
+                                  _showAddNewRowDialog(activeFactoryId),
+                              icon: const Icon(Icons.add, size: 16),
+                              label: const Text('Add Row'),
+                            ),
+
+                          // Delete Selected
+                          if (_selectedIds.isNotEmpty && isAdmin)
+                            ElevatedButton.icon(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.redAccent,
+                                foregroundColor: Colors.white,
+                                visualDensity: VisualDensity.compact,
+                              ),
+                              onPressed: () =>
+                                  _showDeleteConfirmation(selectedDevices),
+                              icon: const Icon(Icons.delete_outline, size: 16),
+                              label: Text('Delete (${_selectedIds.length})'),
+                            ),
+
+                          // Bulk Edit Selected
+                          if (_selectedIds.isNotEmpty &&
+                              isAdmin &&
+                              !isConsolidated)
+                            OutlinedButton.icon(
+                              style: OutlinedButton.styleFrom(
+                                visualDensity: VisualDensity.compact,
+                              ),
+                              onPressed: () =>
+                                  _showBulkEditDialog(selectedDevices),
+                              icon: const Icon(Icons.edit_note, size: 16),
+                              label: Text('Bulk Edit (${_selectedIds.length})'),
+                            ),
+
+                          // Copy to Clipboard (TSV)
+                          if (_selectedIds.isNotEmpty)
+                            OutlinedButton.icon(
+                              style: OutlinedButton.styleFrom(
+                                visualDensity: VisualDensity.compact,
+                              ),
+                              onPressed: () =>
+                                  _copySelectedToClipboard(selectedDevices),
+                              icon: const Icon(Icons.copy_rounded, size: 15),
+                              label: Text('Copy (${_selectedIds.length})'),
+                            ),
+
+                          // Paste from Clipboard (TSV)
+                          if (!isConsolidated && isAdmin)
+                            OutlinedButton.icon(
+                              style: OutlinedButton.styleFrom(
+                                visualDensity: VisualDensity.compact,
+                              ),
+                              onPressed: () => _pasteFromClipboard(
+                                activeFactoryId,
+                                activeFactoryCode,
+                              ),
+                              icon: const Icon(Icons.paste_rounded, size: 15),
+                              label: const Text('Paste Excel'),
+                            ),
+
+                          // Import XLSX
+                          if (!isConsolidated && isAdmin)
+                            OutlinedButton.icon(
+                              style: OutlinedButton.styleFrom(
+                                visualDensity: VisualDensity.compact,
+                              ),
+                              onPressed: () => _importExcel(
+                                activeFactoryId,
+                                activeFactoryCode,
+                              ),
+                              icon: const Icon(
+                                Icons.file_upload_outlined,
+                                size: 16,
+                              ),
+                              label: const Text('Import XLSX'),
+                            ),
+
+                          // Export XLSX
+                          OutlinedButton.icon(
+                            style: OutlinedButton.styleFrom(
                               visualDensity: VisualDensity.compact,
                             ),
-                            onPressed: () =>
-                                _downloadTemplate(activeFactoryCode),
+                            onPressed: displayDevices.isEmpty
+                                ? null
+                                : () => _exportExcel(
+                                    displayDevices,
+                                    activeFactoryCode,
+                                  ),
                             icon: const Icon(
-                              Icons.description_outlined,
-                              size: 15,
+                              Icons.file_download_outlined,
+                              size: 16,
                             ),
-                            label: const Text('Template'),
+                            label: const Text('Export XLSX'),
+                          ),
+
+                          // Download Template
+                          if (!isConsolidated)
+                            TextButton.icon(
+                              style: TextButton.styleFrom(
+                                visualDensity: VisualDensity.compact,
+                              ),
+                              onPressed: () =>
+                                  _downloadTemplate(activeFactoryCode),
+                              icon: const Icon(
+                                Icons.description_outlined,
+                                size: 15,
+                              ),
+                              label: const Text('Template'),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+
+                  // Device Count Info Bar
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: Row(
+                      children: [
+                        Text(
+                          'Showing ${displayDevices.length} of ${allDevices.length} records in $activeFactoryCode Inventory',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[400],
+                          ),
+                        ),
+                        if (isConsolidated) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 1,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.blue.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: const Text(
+                              'CONSOLIDATED READ-ONLY',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.blue,
+                              ),
+                            ),
+                          ),
+                        ],
+                        const Spacer(),
+                        if (_selectedIds.isNotEmpty)
+                          Text(
+                            '${_selectedIds.length} row(s) selected',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF0F62FE),
+                            ),
                           ),
                       ],
                     ),
                   ),
-                ),
-                const SizedBox(height: 8),
+                  const SizedBox(height: 8),
 
-                // Device Count Info Bar
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  child: Row(
-                    children: [
-                      Text(
-                        'Showing ${displayDevices.length} of ${allDevices.length} records in $activeFactoryCode Inventory',
-                        style: TextStyle(fontSize: 12, color: Colors.grey[400]),
-                      ),
-                      if (isConsolidated) ...[
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 6,
-                            vertical: 1,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.blue.withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: const Text(
-                            'CONSOLIDATED READ-ONLY',
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.blue,
+                  // Data Grid
+                  Expanded(
+                    child: state is DevicesLoading
+                        ? const Center(child: CircularProgressIndicator())
+                        : displayDevices.isEmpty
+                        ? Center(
+                            child: Text(
+                              allDevices.isEmpty
+                                  ? 'No devices registered in $activeFactoryCode yet. Click "+ Add Row" or "Import XLSX".'
+                                  : 'No devices match your filter criteria.',
+                              style: const TextStyle(
+                                fontSize: 15,
+                                color: Colors.grey,
+                              ),
                             ),
-                          ),
-                        ),
-                      ],
-                      const Spacer(),
-                      if (_selectedIds.isNotEmpty)
-                        Text(
-                          '${_selectedIds.length} row(s) selected',
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF0F62FE),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 8),
-
-                // Data Grid
-                Expanded(
-                  child: state is DevicesLoading
-                      ? const Center(child: CircularProgressIndicator())
-                      : displayDevices.isEmpty
-                      ? Center(
-                          child: Text(
-                            allDevices.isEmpty
-                                ? 'No devices registered in $activeFactoryCode yet. Click "+ Add Row" or "Import XLSX".'
-                                : 'No devices match your filter criteria.',
-                            style: const TextStyle(
-                              fontSize: 15,
-                              color: Colors.grey,
+                          )
+                        : Container(
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.surface,
+                              border: Border.all(
+                                color: theme.dividerColor.withValues(
+                                  alpha: 0.2,
+                                ),
+                              ),
+                              borderRadius: BorderRadius.circular(8),
                             ),
-                          ),
-                        )
-                      : Container(
-                          decoration: BoxDecoration(
-                            color: theme.colorScheme.surface,
-                            border: Border.all(
-                              color: theme.dividerColor.withValues(alpha: 0.2),
-                            ),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: SingleChildScrollView(
-                            scrollDirection: Axis.vertical,
                             child: SingleChildScrollView(
-                              scrollDirection: Axis.horizontal,
-                              child: DataTable(
-                                headingRowHeight: 40,
-                                dataRowMinHeight: 38,
-                                dataRowMaxHeight: 52,
-                                horizontalMargin: 12,
-                                columnSpacing: 16,
-                                showCheckboxColumn: false,
-                                columns: [
-                                  // Checkbox Select
-                                  DataColumn(
-                                    label: Checkbox(
-                                      value:
-                                          _selectedIds.length ==
-                                              displayDevices.length &&
-                                          displayDevices.isNotEmpty,
-                                      onChanged: (val) {
-                                        setState(() {
-                                          if (val == true) {
-                                            _selectedIds.addAll(
-                                              displayDevices.map((d) => d.id),
-                                            );
-                                          } else {
-                                            _selectedIds.clear();
-                                          }
-                                        });
-                                      },
+                              scrollDirection: Axis.vertical,
+                              child: SingleChildScrollView(
+                                scrollDirection: Axis.horizontal,
+                                child: DataTable(
+                                  headingRowHeight: 40,
+                                  dataRowMinHeight: 38,
+                                  dataRowMaxHeight: 52,
+                                  horizontalMargin: 12,
+                                  columnSpacing: 16,
+                                  showCheckboxColumn: false,
+                                  columns: [
+                                    // Checkbox Select
+                                    DataColumn(
+                                      label: Checkbox(
+                                        value:
+                                            _selectedIds.length ==
+                                                displayDevices.length &&
+                                            displayDevices.isNotEmpty,
+                                        onChanged: (val) {
+                                          setState(() {
+                                            if (val == true) {
+                                              _selectedIds.addAll(
+                                                displayDevices.map((d) => d.id),
+                                              );
+                                            } else {
+                                              _selectedIds.clear();
+                                            }
+                                          });
+                                        },
+                                      ),
                                     ),
-                                  ),
-                                  DataColumn(
-                                    label: const Text('ID'),
-                                    onSort: (idx, asc) => _sort('id'),
-                                  ),
-                                  DataColumn(
-                                    label: const Text('Device Name *'),
-                                    onSort: (idx, asc) => _sort('name'),
-                                  ),
-                                  DataColumn(
-                                    label: const Text('IP Address *'),
-                                    onSort: (idx, asc) => _sort('ip'),
-                                  ),
-                                  DataColumn(
-                                    label: const Text('Owner Name *'),
-                                    onSort: (idx, asc) => _sort('owner'),
-                                  ),
-                                  DataColumn(
-                                    label: const Text('Department *'),
-                                    onSort: (idx, asc) => _sort('dept'),
-                                  ),
-                                  DataColumn(
-                                    label: const Text('Device Type'),
-                                    onSort: (idx, asc) => _sort('type'),
-                                  ),
-                                  DataColumn(
-                                    label: const Text('Location'),
-                                    onSort: (idx, asc) => _sort('location'),
-                                  ),
-                                  const DataColumn(label: Text('MAC Address')),
-                                  const DataColumn(label: Text('Hostname')),
-                                  const DataColumn(label: Text('Vendor')),
-                                  const DataColumn(label: Text('Model')),
-                                  const DataColumn(label: Text('OS')),
-                                  const DataColumn(
-                                    label: Text('Parent Switch'),
-                                  ),
-                                  const DataColumn(label: Text('Monitored')),
-                                  const DataColumn(label: Text('Enabled')),
-                                  const DataColumn(label: Text('Notes')),
-                                  const DataColumn(label: Text('Actions')),
-                                ],
-                                rows: displayDevices.map((d) {
-                                  final isSelected = _selectedIds.contains(
-                                    d.id,
-                                  );
-                                  final isEditing = _editingRows.containsKey(
-                                    d.id,
-                                  );
-                                  final edits = _editingRows[d.id] ?? {};
-                                  final error = _rowErrors[d.id];
+                                    DataColumn(
+                                      label: const Text('ID'),
+                                      onSort: (idx, asc) => _sort('id'),
+                                    ),
+                                    DataColumn(
+                                      label: const Text('Device Name *'),
+                                      onSort: (idx, asc) => _sort('name'),
+                                    ),
+                                    DataColumn(
+                                      label: const Text('IP Address *'),
+                                      onSort: (idx, asc) => _sort('ip'),
+                                    ),
+                                    DataColumn(
+                                      label: const Text('Owner Name *'),
+                                      onSort: (idx, asc) => _sort('owner'),
+                                    ),
+                                    DataColumn(
+                                      label: const Text('Department *'),
+                                      onSort: (idx, asc) => _sort('dept'),
+                                    ),
+                                    DataColumn(
+                                      label: const Text('Device Type'),
+                                      onSort: (idx, asc) => _sort('type'),
+                                    ),
+                                    DataColumn(
+                                      label: const Text('Location'),
+                                      onSort: (idx, asc) => _sort('location'),
+                                    ),
+                                    const DataColumn(
+                                      label: Text('MAC Address'),
+                                    ),
+                                    const DataColumn(label: Text('Hostname')),
+                                    const DataColumn(label: Text('Vendor')),
+                                    const DataColumn(label: Text('Model')),
+                                    const DataColumn(label: Text('OS')),
+                                    const DataColumn(
+                                      label: Text('Parent Switch'),
+                                    ),
+                                    const DataColumn(label: Text('Monitored')),
+                                    const DataColumn(label: Text('Enabled')),
+                                    const DataColumn(label: Text('Notes')),
+                                    const DataColumn(label: Text('Actions')),
+                                  ],
+                                  rows: displayDevices.map((d) {
+                                    final isSelected = _selectedIds.contains(
+                                      d.id,
+                                    );
+                                    final isEditing = _editingRows.containsKey(
+                                      d.id,
+                                    );
+                                    final edits = _editingRows[d.id] ?? {};
+                                    final error = _rowErrors[d.id];
 
-                                  return DataRow(
-                                    selected: isSelected,
-                                    color:
-                                        WidgetStateProperty.resolveWith<Color?>(
-                                          (states) {
+                                    return DataRow(
+                                      selected: isSelected,
+                                      color:
+                                          WidgetStateProperty.resolveWith<
+                                            Color?
+                                          >((states) {
                                             if (error != null) {
                                               return Colors.red.withValues(
                                                 alpha: 0.1,
@@ -1415,458 +1438,472 @@ class _InventoryPageState extends State<InventoryPage>
                                                   .withValues(alpha: 0.1);
                                             }
                                             return null;
-                                          },
-                                        ),
-                                    cells: [
-                                      // Checkbox
-                                      DataCell(
-                                        Checkbox(
-                                          value: isSelected,
-                                          onChanged: (val) {
-                                            setState(() {
-                                              if (val == true) {
-                                                _selectedIds.add(d.id);
-                                              } else {
-                                                _selectedIds.remove(d.id);
-                                              }
-                                            });
-                                          },
-                                        ),
-                                      ),
-                                      // ID
-                                      DataCell(
-                                        Text(
-                                          '#${d.id}',
-                                          style: const TextStyle(
-                                            fontFamily: 'monospace',
-                                            fontWeight: FontWeight.bold,
+                                          }),
+                                      cells: [
+                                        // Checkbox
+                                        DataCell(
+                                          Checkbox(
+                                            value: isSelected,
+                                            onChanged: (val) {
+                                              setState(() {
+                                                if (val == true) {
+                                                  _selectedIds.add(d.id);
+                                                } else {
+                                                  _selectedIds.remove(d.id);
+                                                }
+                                              });
+                                            },
                                           ),
                                         ),
-                                      ),
-
-                                      // Device Name
-                                      DataCell(
-                                        _EditableTextCell(
-                                          value:
-                                              edits['name'] as String? ??
-                                              d.name,
-                                          isReadOnly:
-                                              isConsolidated || !isAdmin,
-                                          onChanged: (val) {
-                                            _editingRows[d.id] ??= {};
-                                            _editingRows[d.id]!['name'] = val;
-                                          },
-                                          onSubmitted: (val) {
-                                            _editingRows[d.id] ??= {};
-                                            _editingRows[d.id]!['name'] = val;
-                                            _saveEditedRow(
-                                              d,
-                                              _editingRows[d.id]!,
-                                            );
-                                          },
+                                        // ID
+                                        DataCell(
+                                          Text(
+                                            '#${d.id}',
+                                            style: const TextStyle(
+                                              fontFamily: 'monospace',
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
                                         ),
-                                      ),
 
-                                      // IP Address
-                                      DataCell(
-                                        _EditableTextCell(
-                                          value: edits['ip'] as String? ?? d.ip,
-                                          isReadOnly:
-                                              isConsolidated || !isAdmin,
-                                          isMonospace: true,
-                                          onChanged: (val) {
-                                            _editingRows[d.id] ??= {};
-                                            _editingRows[d.id]!['ip'] = val;
-                                          },
-                                          onSubmitted: (val) {
-                                            _editingRows[d.id] ??= {};
-                                            _editingRows[d.id]!['ip'] = val;
-                                            _saveEditedRow(
-                                              d,
-                                              _editingRows[d.id]!,
-                                            );
-                                          },
+                                        // Device Name
+                                        DataCell(
+                                          _EditableTextCell(
+                                            value:
+                                                edits['name'] as String? ??
+                                                d.name,
+                                            isReadOnly:
+                                                isConsolidated || !isAdmin,
+                                            onChanged: (val) {
+                                              _editingRows[d.id] ??= {};
+                                              _editingRows[d.id]!['name'] = val;
+                                            },
+                                            onSubmitted: (val) {
+                                              _editingRows[d.id] ??= {};
+                                              _editingRows[d.id]!['name'] = val;
+                                              _saveEditedRow(
+                                                d,
+                                                _editingRows[d.id]!,
+                                              );
+                                            },
+                                          ),
                                         ),
-                                      ),
 
-                                      // Owner Name
-                                      DataCell(
-                                        _EditableTextCell(
-                                          value:
-                                              edits['ownerName'] as String? ??
-                                              d.ownerName,
-                                          isReadOnly:
-                                              isConsolidated || !isAdmin,
-                                          onChanged: (val) {
-                                            _editingRows[d.id] ??= {};
-                                            _editingRows[d.id]!['ownerName'] =
-                                                val;
-                                          },
-                                          onSubmitted: (val) {
-                                            _editingRows[d.id] ??= {};
-                                            _editingRows[d.id]!['ownerName'] =
-                                                val;
-                                            _saveEditedRow(
-                                              d,
-                                              _editingRows[d.id]!,
-                                            );
-                                          },
+                                        // IP Address
+                                        DataCell(
+                                          _EditableTextCell(
+                                            value:
+                                                edits['ip'] as String? ?? d.ip,
+                                            isReadOnly:
+                                                isConsolidated || !isAdmin,
+                                            isMonospace: true,
+                                            onChanged: (val) {
+                                              _editingRows[d.id] ??= {};
+                                              _editingRows[d.id]!['ip'] = val;
+                                            },
+                                            onSubmitted: (val) {
+                                              _editingRows[d.id] ??= {};
+                                              _editingRows[d.id]!['ip'] = val;
+                                              _saveEditedRow(
+                                                d,
+                                                _editingRows[d.id]!,
+                                              );
+                                            },
+                                          ),
                                         ),
-                                      ),
 
-                                      // Department
-                                      DataCell(
-                                        _EditableTextCell(
-                                          value:
-                                              edits['department'] as String? ??
-                                              d.department,
-                                          isReadOnly:
-                                              isConsolidated || !isAdmin,
-                                          onChanged: (val) {
-                                            _editingRows[d.id] ??= {};
-                                            _editingRows[d.id]!['department'] =
-                                                val;
-                                          },
-                                          onSubmitted: (val) {
-                                            _editingRows[d.id] ??= {};
-                                            _editingRows[d.id]!['department'] =
-                                                val;
-                                            _saveEditedRow(
-                                              d,
-                                              _editingRows[d.id]!,
-                                            );
-                                          },
+                                        // Owner Name
+                                        DataCell(
+                                          _EditableTextCell(
+                                            value:
+                                                edits['ownerName'] as String? ??
+                                                d.ownerName,
+                                            isReadOnly:
+                                                isConsolidated || !isAdmin,
+                                            onChanged: (val) {
+                                              _editingRows[d.id] ??= {};
+                                              _editingRows[d.id]!['ownerName'] =
+                                                  val;
+                                            },
+                                            onSubmitted: (val) {
+                                              _editingRows[d.id] ??= {};
+                                              _editingRows[d.id]!['ownerName'] =
+                                                  val;
+                                              _saveEditedRow(
+                                                d,
+                                                _editingRows[d.id]!,
+                                              );
+                                            },
+                                          ),
                                         ),
-                                      ),
 
-                                      // Device Type
-                                      DataCell(
-                                        isConsolidated || !isAdmin
-                                            ? Text(d.type.displayName)
-                                            : DropdownButtonHideUnderline(
-                                                child: DropdownButton<DeviceType>(
-                                                  value:
-                                                      edits['type']
-                                                          as DeviceType? ??
-                                                      d.type,
-                                                  isDense: true,
-                                                  items: DeviceType.values.map((
-                                                    t,
-                                                  ) {
-                                                    return DropdownMenuItem(
-                                                      value: t,
-                                                      child: Text(
-                                                        t.displayName,
-                                                        style: const TextStyle(
-                                                          fontSize: 13,
-                                                        ),
-                                                      ),
-                                                    );
-                                                  }).toList(),
-                                                  onChanged: (val) {
-                                                    if (val != null) {
-                                                      _editingRows[d.id] ??= {};
-                                                      _editingRows[d
-                                                              .id]!['type'] =
-                                                          val;
-                                                      _saveEditedRow(
-                                                        d,
-                                                        _editingRows[d.id]!,
-                                                      );
-                                                    }
-                                                  },
+                                        // Department
+                                        DataCell(
+                                          _EditableTextCell(
+                                            value:
+                                                edits['department']
+                                                    as String? ??
+                                                d.department,
+                                            isReadOnly:
+                                                isConsolidated || !isAdmin,
+                                            onChanged: (val) {
+                                              _editingRows[d.id] ??= {};
+                                              _editingRows[d
+                                                      .id]!['department'] =
+                                                  val;
+                                            },
+                                            onSubmitted: (val) {
+                                              _editingRows[d.id] ??= {};
+                                              _editingRows[d
+                                                      .id]!['department'] =
+                                                  val;
+                                              _saveEditedRow(
+                                                d,
+                                                _editingRows[d.id]!,
+                                              );
+                                            },
+                                          ),
+                                        ),
+
+                                        // Device Type
+                                        DataCell(
+                                          isConsolidated || !isAdmin
+                                              ? Text(d.type.displayName)
+                                              : DropdownButtonHideUnderline(
+                                                  child: DropdownButton<DeviceType>(
+                                                    value:
+                                                        edits['type']
+                                                            as DeviceType? ??
+                                                        d.type,
+                                                    isDense: true,
+                                                    items: DeviceType.values.map(
+                                                      (t) {
+                                                        return DropdownMenuItem(
+                                                          value: t,
+                                                          child: Text(
+                                                            t.displayName,
+                                                            style:
+                                                                const TextStyle(
+                                                                  fontSize: 13,
+                                                                ),
+                                                          ),
+                                                        );
+                                                      },
+                                                    ).toList(),
+                                                    onChanged: (val) {
+                                                      if (val != null) {
+                                                        _editingRows[d.id] ??=
+                                                            {};
+                                                        _editingRows[d
+                                                                .id]!['type'] =
+                                                            val;
+                                                        _saveEditedRow(
+                                                          d,
+                                                          _editingRows[d.id]!,
+                                                        );
+                                                      }
+                                                    },
+                                                  ),
                                                 ),
-                                              ),
-                                      ),
-
-                                      // Office Location
-                                      DataCell(
-                                        _EditableTextCell(
-                                          value:
-                                              edits['officeLocation']
-                                                  as String? ??
-                                              (d.officeLocation ?? ''),
-                                          isReadOnly:
-                                              isConsolidated || !isAdmin,
-                                          onChanged: (val) {
-                                            _editingRows[d.id] ??= {};
-                                            _editingRows[d
-                                                    .id]!['officeLocation'] =
-                                                val;
-                                          },
-                                          onSubmitted: (val) {
-                                            _editingRows[d.id] ??= {};
-                                            _editingRows[d
-                                                    .id]!['officeLocation'] =
-                                                val;
-                                            _saveEditedRow(
-                                              d,
-                                              _editingRows[d.id]!,
-                                            );
-                                          },
                                         ),
-                                      ),
 
-                                      // MAC Address
-                                      DataCell(
-                                        _EditableTextCell(
-                                          value:
-                                              edits['mac'] as String? ??
-                                              (d.mac ?? ''),
-                                          isReadOnly:
-                                              isConsolidated || !isAdmin,
-                                          isMonospace: true,
-                                          onChanged: (val) {
-                                            _editingRows[d.id] ??= {};
-                                            _editingRows[d.id]!['mac'] = val;
-                                          },
-                                          onSubmitted: (val) {
-                                            _editingRows[d.id] ??= {};
-                                            _editingRows[d.id]!['mac'] = val;
-                                            _saveEditedRow(
-                                              d,
-                                              _editingRows[d.id]!,
-                                            );
-                                          },
+                                        // Office Location
+                                        DataCell(
+                                          _EditableTextCell(
+                                            value:
+                                                edits['officeLocation']
+                                                    as String? ??
+                                                (d.officeLocation ?? ''),
+                                            isReadOnly:
+                                                isConsolidated || !isAdmin,
+                                            onChanged: (val) {
+                                              _editingRows[d.id] ??= {};
+                                              _editingRows[d
+                                                      .id]!['officeLocation'] =
+                                                  val;
+                                            },
+                                            onSubmitted: (val) {
+                                              _editingRows[d.id] ??= {};
+                                              _editingRows[d
+                                                      .id]!['officeLocation'] =
+                                                  val;
+                                              _saveEditedRow(
+                                                d,
+                                                _editingRows[d.id]!,
+                                              );
+                                            },
+                                          ),
                                         ),
-                                      ),
 
-                                      // Hostname
-                                      DataCell(
-                                        _EditableTextCell(
-                                          value:
-                                              edits['hostname'] as String? ??
-                                              (d.hostname ?? ''),
-                                          isReadOnly:
-                                              isConsolidated || !isAdmin,
-                                          onChanged: (val) {
-                                            _editingRows[d.id] ??= {};
-                                            _editingRows[d.id]!['hostname'] =
-                                                val;
-                                          },
-                                          onSubmitted: (val) {
-                                            _editingRows[d.id] ??= {};
-                                            _editingRows[d.id]!['hostname'] =
-                                                val;
-                                            _saveEditedRow(
-                                              d,
-                                              _editingRows[d.id]!,
-                                            );
-                                          },
+                                        // MAC Address
+                                        DataCell(
+                                          _EditableTextCell(
+                                            value:
+                                                edits['mac'] as String? ??
+                                                (d.mac ?? ''),
+                                            isReadOnly:
+                                                isConsolidated || !isAdmin,
+                                            isMonospace: true,
+                                            onChanged: (val) {
+                                              _editingRows[d.id] ??= {};
+                                              _editingRows[d.id]!['mac'] = val;
+                                            },
+                                            onSubmitted: (val) {
+                                              _editingRows[d.id] ??= {};
+                                              _editingRows[d.id]!['mac'] = val;
+                                              _saveEditedRow(
+                                                d,
+                                                _editingRows[d.id]!,
+                                              );
+                                            },
+                                          ),
                                         ),
-                                      ),
 
-                                      // Vendor
-                                      DataCell(
-                                        _EditableTextCell(
-                                          value:
-                                              edits['vendor'] as String? ??
-                                              (d.vendor ?? ''),
-                                          isReadOnly:
-                                              isConsolidated || !isAdmin,
-                                          onChanged: (val) {
-                                            _editingRows[d.id] ??= {};
-                                            _editingRows[d.id]!['vendor'] = val;
-                                          },
-                                          onSubmitted: (val) {
-                                            _editingRows[d.id] ??= {};
-                                            _editingRows[d.id]!['vendor'] = val;
-                                            _saveEditedRow(
-                                              d,
-                                              _editingRows[d.id]!,
-                                            );
-                                          },
+                                        // Hostname
+                                        DataCell(
+                                          _EditableTextCell(
+                                            value:
+                                                edits['hostname'] as String? ??
+                                                (d.hostname ?? ''),
+                                            isReadOnly:
+                                                isConsolidated || !isAdmin,
+                                            onChanged: (val) {
+                                              _editingRows[d.id] ??= {};
+                                              _editingRows[d.id]!['hostname'] =
+                                                  val;
+                                            },
+                                            onSubmitted: (val) {
+                                              _editingRows[d.id] ??= {};
+                                              _editingRows[d.id]!['hostname'] =
+                                                  val;
+                                              _saveEditedRow(
+                                                d,
+                                                _editingRows[d.id]!,
+                                              );
+                                            },
+                                          ),
                                         ),
-                                      ),
 
-                                      // Model
-                                      DataCell(
-                                        _EditableTextCell(
-                                          value:
-                                              edits['model'] as String? ??
-                                              (d.model ?? ''),
-                                          isReadOnly:
-                                              isConsolidated || !isAdmin,
-                                          onChanged: (val) {
-                                            _editingRows[d.id] ??= {};
-                                            _editingRows[d.id]!['model'] = val;
-                                          },
-                                          onSubmitted: (val) {
-                                            _editingRows[d.id] ??= {};
-                                            _editingRows[d.id]!['model'] = val;
-                                            _saveEditedRow(
-                                              d,
-                                              _editingRows[d.id]!,
-                                            );
-                                          },
+                                        // Vendor
+                                        DataCell(
+                                          _EditableTextCell(
+                                            value:
+                                                edits['vendor'] as String? ??
+                                                (d.vendor ?? ''),
+                                            isReadOnly:
+                                                isConsolidated || !isAdmin,
+                                            onChanged: (val) {
+                                              _editingRows[d.id] ??= {};
+                                              _editingRows[d.id]!['vendor'] =
+                                                  val;
+                                            },
+                                            onSubmitted: (val) {
+                                              _editingRows[d.id] ??= {};
+                                              _editingRows[d.id]!['vendor'] =
+                                                  val;
+                                              _saveEditedRow(
+                                                d,
+                                                _editingRows[d.id]!,
+                                              );
+                                            },
+                                          ),
                                         ),
-                                      ),
 
-                                      // OS
-                                      DataCell(
-                                        _EditableTextCell(
-                                          value:
-                                              edits['operatingSystem']
-                                                  as String? ??
-                                              (d.operatingSystem ?? ''),
-                                          isReadOnly:
-                                              isConsolidated || !isAdmin,
-                                          onChanged: (val) {
-                                            _editingRows[d.id] ??= {};
-                                            _editingRows[d
-                                                    .id]!['operatingSystem'] =
-                                                val;
-                                          },
-                                          onSubmitted: (val) {
-                                            _editingRows[d.id] ??= {};
-                                            _editingRows[d
-                                                    .id]!['operatingSystem'] =
-                                                val;
-                                            _saveEditedRow(
-                                              d,
-                                              _editingRows[d.id]!,
-                                            );
-                                          },
+                                        // Model
+                                        DataCell(
+                                          _EditableTextCell(
+                                            value:
+                                                edits['model'] as String? ??
+                                                (d.model ?? ''),
+                                            isReadOnly:
+                                                isConsolidated || !isAdmin,
+                                            onChanged: (val) {
+                                              _editingRows[d.id] ??= {};
+                                              _editingRows[d.id]!['model'] =
+                                                  val;
+                                            },
+                                            onSubmitted: (val) {
+                                              _editingRows[d.id] ??= {};
+                                              _editingRows[d.id]!['model'] =
+                                                  val;
+                                              _saveEditedRow(
+                                                d,
+                                                _editingRows[d.id]!,
+                                              );
+                                            },
+                                          ),
                                         ),
-                                      ),
 
-                                      // Parent Switch
-                                      DataCell(
-                                        _EditableTextCell(
-                                          value:
-                                              edits['parentSwitchName']
-                                                  as String? ??
-                                              (d.parentSwitchName ?? ''),
-                                          isReadOnly:
-                                              isConsolidated || !isAdmin,
-                                          onChanged: (val) {
-                                            _editingRows[d.id] ??= {};
-                                            _editingRows[d
-                                                    .id]!['parentSwitchName'] =
-                                                val;
-                                          },
-                                          onSubmitted: (val) {
-                                            _editingRows[d.id] ??= {};
-                                            _editingRows[d
-                                                    .id]!['parentSwitchName'] =
-                                                val;
-                                            _saveEditedRow(
-                                              d,
-                                              _editingRows[d.id]!,
-                                            );
-                                          },
+                                        // OS
+                                        DataCell(
+                                          _EditableTextCell(
+                                            value:
+                                                edits['operatingSystem']
+                                                    as String? ??
+                                                (d.operatingSystem ?? ''),
+                                            isReadOnly:
+                                                isConsolidated || !isAdmin,
+                                            onChanged: (val) {
+                                              _editingRows[d.id] ??= {};
+                                              _editingRows[d
+                                                      .id]!['operatingSystem'] =
+                                                  val;
+                                            },
+                                            onSubmitted: (val) {
+                                              _editingRows[d.id] ??= {};
+                                              _editingRows[d
+                                                      .id]!['operatingSystem'] =
+                                                  val;
+                                              _saveEditedRow(
+                                                d,
+                                                _editingRows[d.id]!,
+                                              );
+                                            },
+                                          ),
                                         ),
-                                      ),
 
-                                      // Monitored Toggle
-                                      DataCell(
-                                        Switch(
-                                          value:
-                                              edits['isMonitored'] as bool? ??
-                                              d.isMonitored,
-                                          onChanged: isConsolidated || !isAdmin
-                                              ? null
-                                              : (val) {
-                                                  _editingRows[d.id] ??= {};
-                                                  _editingRows[d
-                                                          .id]!['isMonitored'] =
-                                                      val;
-                                                  _saveEditedRow(
-                                                    d,
-                                                    _editingRows[d.id]!,
-                                                  );
-                                                },
+                                        // Parent Switch
+                                        DataCell(
+                                          _EditableTextCell(
+                                            value:
+                                                edits['parentSwitchName']
+                                                    as String? ??
+                                                (d.parentSwitchName ?? ''),
+                                            isReadOnly:
+                                                isConsolidated || !isAdmin,
+                                            onChanged: (val) {
+                                              _editingRows[d.id] ??= {};
+                                              _editingRows[d
+                                                      .id]!['parentSwitchName'] =
+                                                  val;
+                                            },
+                                            onSubmitted: (val) {
+                                              _editingRows[d.id] ??= {};
+                                              _editingRows[d
+                                                      .id]!['parentSwitchName'] =
+                                                  val;
+                                              _saveEditedRow(
+                                                d,
+                                                _editingRows[d.id]!,
+                                              );
+                                            },
+                                          ),
                                         ),
-                                      ),
 
-                                      // Enabled Toggle
-                                      DataCell(
-                                        Switch(
-                                          value:
-                                              edits['isEnabled'] as bool? ??
-                                              d.isEnabled,
-                                          onChanged: isConsolidated || !isAdmin
-                                              ? null
-                                              : (val) {
-                                                  _editingRows[d.id] ??= {};
-                                                  _editingRows[d
-                                                          .id]!['isEnabled'] =
-                                                      val;
-                                                  _saveEditedRow(
-                                                    d,
-                                                    _editingRows[d.id]!,
-                                                  );
-                                                },
-                                        ),
-                                      ),
-
-                                      // Notes
-                                      DataCell(
-                                        _EditableTextCell(
-                                          value:
-                                              edits['notes'] as String? ??
-                                              (d.notes ?? ''),
-                                          isReadOnly:
-                                              isConsolidated || !isAdmin,
-                                          onChanged: (val) {
-                                            _editingRows[d.id] ??= {};
-                                            _editingRows[d.id]!['notes'] = val;
-                                          },
-                                          onSubmitted: (val) {
-                                            _editingRows[d.id] ??= {};
-                                            _editingRows[d.id]!['notes'] = val;
-                                            _saveEditedRow(
-                                              d,
-                                              _editingRows[d.id]!,
-                                            );
-                                          },
-                                        ),
-                                      ),
-
-                                      // Actions
-                                      DataCell(
-                                        Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            if (isEditing)
-                                              IconButton(
-                                                icon: const Icon(
-                                                  Icons.check,
-                                                  color: Color(0xFF10B981),
-                                                  size: 18,
-                                                ),
-                                                tooltip: 'Save edits',
-                                                onPressed: () =>
-                                                    _saveEditedRow(d, edits),
-                                              ),
-                                            if (!isConsolidated && isAdmin)
-                                              IconButton(
-                                                icon: const Icon(
-                                                  Icons.delete_outline,
-                                                  color: Colors.redAccent,
-                                                  size: 18,
-                                                ),
-                                                tooltip: 'Delete device',
-                                                onPressed: () =>
-                                                    _showDeleteConfirmation([
+                                        // Monitored Toggle
+                                        DataCell(
+                                          Switch(
+                                            value:
+                                                edits['isMonitored'] as bool? ??
+                                                d.isMonitored,
+                                            onChanged:
+                                                isConsolidated || !isAdmin
+                                                ? null
+                                                : (val) {
+                                                    _editingRows[d.id] ??= {};
+                                                    _editingRows[d
+                                                            .id]!['isMonitored'] =
+                                                        val;
+                                                    _saveEditedRow(
                                                       d,
-                                                    ]),
-                                              ),
-                                          ],
+                                                      _editingRows[d.id]!,
+                                                    );
+                                                  },
+                                          ),
                                         ),
-                                      ),
-                                    ],
-                                  );
-                                }).toList(),
+
+                                        // Enabled Toggle
+                                        DataCell(
+                                          Switch(
+                                            value:
+                                                edits['isEnabled'] as bool? ??
+                                                d.isEnabled,
+                                            onChanged:
+                                                isConsolidated || !isAdmin
+                                                ? null
+                                                : (val) {
+                                                    _editingRows[d.id] ??= {};
+                                                    _editingRows[d
+                                                            .id]!['isEnabled'] =
+                                                        val;
+                                                    _saveEditedRow(
+                                                      d,
+                                                      _editingRows[d.id]!,
+                                                    );
+                                                  },
+                                          ),
+                                        ),
+
+                                        // Notes
+                                        DataCell(
+                                          _EditableTextCell(
+                                            value:
+                                                edits['notes'] as String? ??
+                                                (d.notes ?? ''),
+                                            isReadOnly:
+                                                isConsolidated || !isAdmin,
+                                            onChanged: (val) {
+                                              _editingRows[d.id] ??= {};
+                                              _editingRows[d.id]!['notes'] =
+                                                  val;
+                                            },
+                                            onSubmitted: (val) {
+                                              _editingRows[d.id] ??= {};
+                                              _editingRows[d.id]!['notes'] =
+                                                  val;
+                                              _saveEditedRow(
+                                                d,
+                                                _editingRows[d.id]!,
+                                              );
+                                            },
+                                          ),
+                                        ),
+
+                                        // Actions
+                                        DataCell(
+                                          Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              if (isEditing)
+                                                IconButton(
+                                                  icon: const Icon(
+                                                    Icons.check,
+                                                    color: Color(0xFF10B981),
+                                                    size: 18,
+                                                  ),
+                                                  tooltip: 'Save edits',
+                                                  onPressed: () =>
+                                                      _saveEditedRow(d, edits),
+                                                ),
+                                              if (!isConsolidated && isAdmin)
+                                                IconButton(
+                                                  icon: const Icon(
+                                                    Icons.delete_outline,
+                                                    color: Colors.redAccent,
+                                                    size: 18,
+                                                  ),
+                                                  tooltip: 'Delete device',
+                                                  onPressed: () =>
+                                                      _showDeleteConfirmation([
+                                                        d,
+                                                      ]),
+                                                ),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    );
+                                  }).toList(),
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                ),
-              ],
-            ),
-          );
-        },
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
       ),
     );
   }

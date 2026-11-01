@@ -15,6 +15,7 @@ import '../../../users/domain/repositories/audit_log_repository.dart';
 import '../../data/datasources/approved_inventory_seed.dart';
 import '../../data/datasources/excel_inventory_parser.dart';
 import '../../domain/entities/device_entity.dart';
+import '../../domain/entities/device_import_commit_payload.dart';
 import '../../domain/entities/inventory_import_preview.dart';
 import '../../domain/repositories/device_repository.dart';
 import '../../domain/services/inventory_validator.dart';
@@ -649,7 +650,9 @@ class DeviceRepositoryImpl implements DeviceRepository {
   }
 
   @override
-  Future<Result<int>> commitImport(List<DeviceEntity> validDevices) async {
+  Future<Result<int>> commitImportPayload(
+    DeviceImportCommitPayload payload,
+  ) async {
     if (_useAuthoritativeService) {
       final client = _effectiveClient;
       if (client == null || !client.isAuthenticated) {
@@ -659,9 +662,7 @@ class DeviceRepositoryImpl implements DeviceRepository {
           ),
         );
       }
-      final res = await client.importDevices(
-        validDevices.map((d) => d.toJson()).toList(),
-      );
+      final res = await client.importDevicesPayload(payload.toJson());
       if (res.isSuccess) {
         return Result.success(res.data ?? 0);
       } else {
@@ -674,74 +675,212 @@ class DeviceRepositoryImpl implements DeviceRepository {
     }
 
     try {
-      int count = 0;
       final now = DateTime.now();
-
-      await _db.batch((batch) {
-        for (final device in validDevices) {
-          batch.insert(
-            _db.devices,
-            DevicesCompanion.insert(
-              factoryId: Value(device.factoryId),
-              name: device.name,
-              type: Value(device.type.toValue()),
-              ip: device.ip,
-              ownerName: device.ownerName,
-              department: device.department,
-              officeLocation: Value(device.officeLocation),
-              parentSwitchId: Value(device.parentSwitchId),
-              parentSwitchName: Value(device.parentSwitchName),
-              vendor: Value(device.vendor),
-              model: Value(device.model),
-              mac: Value(device.mac),
-              hostname: Value(device.hostname),
-              operatingSystem: Value(device.operatingSystem),
-              notes: Value(device.notes),
-              isMonitored: Value(device.isMonitored),
-              isEnabled: const Value(true),
-              createdAt: Value(now),
-            ),
-          );
-          count++;
-        }
-      });
-
-      // Ensure every device has a corresponding initial status record in device_statuses
-      final uninitializedRows = await _db
-          .customSelect(
-            'SELECT d.id FROM devices d LEFT JOIN device_statuses s ON d.id = s.device_id WHERE s.device_id IS NULL',
-          )
-          .get();
-      if (uninitializedRows.isNotEmpty) {
-        await _db.batch((batch) {
-          for (final row in uninitializedRows) {
-            final devId = row.read<int>('id');
-            batch.insert(
-              _db.deviceStatuses,
-              DeviceStatusesCompanion.insert(
-                deviceId: Value(devId),
-                status: const Value('unknown'),
-                statusChangedAt: Value(now),
-              ),
-              mode: InsertMode.insertOrIgnore,
-            );
-          }
-        });
+      final targetFactoryId = payload.targetFactoryId.trim().toLowerCase();
+      if (targetFactoryId.isEmpty) {
+        return Result.failure(
+          ValidationFailure(
+            'Target factory ID must be specified for inventory import.',
+          ),
+        );
       }
 
-      final username = await _getActiveUsername();
-      await _auditLogRepo.recordLog(
-        username: username,
-        action: 'INVENTORY_IMPORTED',
-        details: 'Imported $count monitored end-user devices from inventory.',
-      );
+      // Execute import as an atomic safe database transaction
+      return await _db.transaction(() async {
+        // 1. Revalidate duplicate IP addresses within the incoming payload
+        final allIncomingIps = <String>{};
+        for (final dev in [...payload.inserts, ...payload.updates]) {
+          final canon = Ipv4Utils.canonicalizeIpv4(dev.ip);
+          if (canon != null) {
+            if (allIncomingIps.contains(canon)) {
+              throw Exception(
+                'Duplicate IP "$canon" present multiple times within import payload.',
+              );
+            }
+            allIncomingIps.add(canon);
+          }
+        }
 
-      return Result.success(count);
+        // 2. Fetch all existing devices in targetFactoryId for conflict checking
+        final existingFactoryDevices = await (_db.select(
+          _db.devices,
+        )..where((t) => t.factoryId.equals(targetFactoryId))).get();
+        final existingIpMap = <String, int>{}; // canonicalIp -> deviceId
+        for (final d in existingFactoryDevices) {
+          final canon = Ipv4Utils.canonicalizeIpv4(d.ip);
+          if (canon != null) existingIpMap[canon] = d.id;
+        }
+
+        // 3. Validate & Execute UPDATES
+        int updatedCount = 0;
+        for (final dev in payload.updates) {
+          if (dev.id <= 0) {
+            throw Exception(
+              'Cannot update device without a valid database ID (got ID ${dev.id}).',
+            );
+          }
+          final existing = await (_db.select(
+            _db.devices,
+          )..where((t) => t.id.equals(dev.id))).getSingleOrNull();
+
+          if (existing == null) {
+            throw Exception(
+              'Device #${dev.id} ("${dev.name}") was not found in database to update.',
+            );
+          }
+
+          // Validate device belongs to target factory; reject IDs belonging to another factory
+          if (existing.factoryId.toLowerCase() != targetFactoryId) {
+            throw Exception(
+              'Device #${dev.id} ("${dev.name}") belongs to factory "${existing.factoryId}", '
+              'which cannot be updated under target factory "$targetFactoryId".',
+            );
+          }
+
+          final canonIp = Ipv4Utils.canonicalizeIpv4(dev.ip);
+          if (canonIp != null) {
+            final conflictingId = existingIpMap[canonIp];
+            if (conflictingId != null && conflictingId != dev.id) {
+              throw Exception(
+                'Cannot update device #${dev.id}: IP $canonIp is already in use by existing device #$conflictingId in factory "$targetFactoryId".',
+              );
+            }
+            existingIpMap[canonIp] = dev.id;
+          }
+
+          // Perform UPDATE: strictly preserve ID, factoryId, and createdAt.
+          // Do not overwrite existing fields with empty spreadsheet cells unless explicitly present.
+          await (_db.update(
+            _db.devices,
+          )..where((t) => t.id.equals(dev.id))).write(
+            DevicesCompanion(
+              name: Value(dev.name),
+              type: Value(dev.type.toValue()),
+              ip: Value(canonIp ?? dev.ip),
+              ownerName: Value(dev.ownerName),
+              department: Value(dev.department),
+              officeLocation: dev.officeLocation?.isNotEmpty == true
+                  ? Value(dev.officeLocation)
+                  : Value(existing.officeLocation),
+              parentSwitchId: Value(
+                dev.parentSwitchId ?? existing.parentSwitchId,
+              ),
+              parentSwitchName: dev.parentSwitchName?.isNotEmpty == true
+                  ? Value(dev.parentSwitchName)
+                  : Value(existing.parentSwitchName),
+              vendor: dev.vendor?.isNotEmpty == true
+                  ? Value(dev.vendor)
+                  : Value(existing.vendor),
+              model: dev.model?.isNotEmpty == true
+                  ? Value(dev.model)
+                  : Value(existing.model),
+              mac: dev.mac?.isNotEmpty == true
+                  ? Value(dev.mac)
+                  : Value(existing.mac),
+              hostname: dev.hostname?.isNotEmpty == true
+                  ? Value(dev.hostname)
+                  : Value(existing.hostname),
+              operatingSystem: dev.operatingSystem?.isNotEmpty == true
+                  ? Value(dev.operatingSystem)
+                  : Value(existing.operatingSystem),
+              notes: dev.notes?.isNotEmpty == true
+                  ? Value(dev.notes)
+                  : Value(existing.notes),
+              isMonitored: Value(dev.isMonitored),
+              isEnabled: Value(dev.isEnabled),
+              updatedAt: Value(now),
+            ),
+          );
+          updatedCount++;
+        }
+
+        // 4. Validate & Execute INSERTS
+        int insertedCount = 0;
+        final newInsertedIds = <int>[];
+        for (final dev in payload.inserts) {
+          final canonIp = Ipv4Utils.canonicalizeIpv4(dev.ip);
+          if (canonIp != null && existingIpMap.containsKey(canonIp)) {
+            final existingId = existingIpMap[canonIp]!;
+            throw Exception(
+              'Cannot insert device "${dev.name}": IP $canonIp already exists in factory "$targetFactoryId" (device #$existingId).',
+            );
+          }
+
+          final newId = await _db
+              .into(_db.devices)
+              .insert(
+                DevicesCompanion.insert(
+                  factoryId: Value(targetFactoryId),
+                  name: dev.name,
+                  type: Value(dev.type.toValue()),
+                  ip: canonIp ?? dev.ip,
+                  ownerName: dev.ownerName,
+                  department: dev.department,
+                  officeLocation: Value(dev.officeLocation),
+                  parentSwitchId: Value(dev.parentSwitchId),
+                  parentSwitchName: Value(dev.parentSwitchName),
+                  vendor: Value(dev.vendor),
+                  model: Value(dev.model),
+                  mac: Value(dev.mac),
+                  hostname: Value(dev.hostname),
+                  operatingSystem: Value(dev.operatingSystem),
+                  notes: Value(dev.notes),
+                  isMonitored: Value(dev.isMonitored),
+                  isEnabled: const Value(true),
+                  createdAt: Value(now),
+                ),
+              );
+          if (canonIp != null) existingIpMap[canonIp] = newId;
+          newInsertedIds.add(newId);
+          insertedCount++;
+        }
+
+        // 5. Ensure initial status in device_statuses for newly inserted devices
+        for (final newId in newInsertedIds) {
+          await _db
+              .into(_db.deviceStatuses)
+              .insert(
+                DeviceStatusesCompanion.insert(
+                  deviceId: Value(newId),
+                  status: const Value('unknown'),
+                  statusChangedAt: Value(now),
+                ),
+                mode: InsertMode.insertOrIgnore,
+              );
+        }
+
+        // 6. Audit log
+        final username = await _getActiveUsername();
+        await _auditLogRepo.recordLog(
+          username: username,
+          action: 'INVENTORY_IMPORTED',
+          details:
+              'Committed inventory import for factory "$targetFactoryId": $insertedCount inserted, $updatedCount updated.',
+        );
+
+        return Result.success(insertedCount + updatedCount);
+      });
     } catch (e) {
       return Result.failure(
         DatabaseFailure('Failed to commit inventory import: $e'),
       );
     }
+  }
+
+  @override
+  Future<Result<int>> commitImport(List<DeviceEntity> validDevices) async {
+    final inserts = validDevices.where((d) => d.id <= 0).toList();
+    final updates = validDevices.where((d) => d.id > 0).toList();
+    final factoryId = validDevices.isNotEmpty
+        ? validDevices.first.factoryId
+        : 'unassigned';
+    return commitImportPayload(
+      DeviceImportCommitPayload(
+        inserts: inserts,
+        updates: updates,
+        targetFactoryId: factoryId,
+      ),
+    );
   }
 
   @override

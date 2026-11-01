@@ -6,13 +6,67 @@ import '../../../auth/domain/entities/user_entity.dart';
 import '../../../auth/presentation/bloc/auth_cubit.dart';
 import '../../../devices/domain/entities/device_entity.dart';
 import '../../../devices/presentation/bloc/devices_cubit.dart';
+import '../../../factories/domain/entities/factory_entity.dart';
 import '../../../factories/presentation/bloc/factory_cubit.dart';
 import '../../../network_discovery/domain/entities/network_range.dart';
+
+class FactorySuggestionResult {
+  final String status; // 'single', 'ambiguous', 'none'
+  final FactoryEntity? matchedFactory;
+  final List<FactoryEntity> matchedCandidates;
+
+  const FactorySuggestionResult.single(FactoryEntity factory)
+    : status = 'single',
+      matchedFactory = factory,
+      matchedCandidates = const [];
+
+  const FactorySuggestionResult.ambiguous(List<FactoryEntity> candidates)
+    : status = 'ambiguous',
+      matchedFactory = null,
+      matchedCandidates = candidates;
+
+  const FactorySuggestionResult.none()
+    : status = 'none',
+      matchedFactory = null,
+      matchedCandidates = const [];
+
+  bool get isSingle => status == 'single';
+  bool get isAmbiguous => status == 'ambiguous';
+  bool get isNone => status == 'none';
+}
 
 class UnassignedRecoveryPage extends StatefulWidget {
   final VoidCallback? onBackToInventory;
 
   const UnassignedRecoveryPage({super.key, this.onBackToInventory});
+
+  static FactorySuggestionResult suggestFactoryForIp(
+    String ip,
+    List<FactoryEntity> factories,
+  ) {
+    final canon = Ipv4Utils.canonicalizeIpv4(ip);
+    if (canon == null) return const FactorySuggestionResult.none();
+
+    final matches = <FactoryEntity>[];
+    for (final f in factories) {
+      if (f.id == 'unassigned' || !f.isActive) continue;
+      final cidr = f.expectedCidr;
+      if (cidr != null && cidr.isNotEmpty) {
+        final range = NetworkRange.parse(cidr);
+        if (range != null && range.containsIp(canon)) {
+          matches.add(f);
+        }
+      }
+    }
+
+    if (matches.length == 1) {
+      return FactorySuggestionResult.single(matches.first);
+    } else if (matches.length > 1) {
+      return FactorySuggestionResult.ambiguous(matches);
+    } else {
+      return const FactorySuggestionResult.none();
+    }
+  }
 
   @override
   State<UnassignedRecoveryPage> createState() => _UnassignedRecoveryPageState();
@@ -37,21 +91,10 @@ class _UnassignedRecoveryPageState extends State<UnassignedRecoveryPage> {
     super.dispose();
   }
 
-  String? _suggestFactoryForIp(String ip, List<dynamic> factories) {
-    final canon = Ipv4Utils.canonicalizeIpv4(ip);
-    if (canon == null) return null;
-
-    for (final f in factories) {
-      if (f.id == 'unassigned' || !f.isActive) continue;
-      if (f.expectedCidr != null && (f.expectedCidr as String).isNotEmpty) {
-        final range = NetworkRange.parse(f.expectedCidr as String);
-        if (range != null && range.containsIp(canon)) {
-          return f.id as String;
-        }
-      }
-    }
-    return null;
-  }
+  FactorySuggestionResult _suggestFactoryForIp(
+    String ip,
+    List<FactoryEntity> factories,
+  ) => UnassignedRecoveryPage.suggestFactoryForIp(ip, factories);
 
   void _showAssignmentPreviewDialog({
     required BuildContext context,
@@ -530,14 +573,10 @@ class _UnassignedRecoveryPageState extends State<UnassignedRecoveryPage> {
                                 rows: filteredList.map((d) {
                                   final isSelected = _selectedDeviceIds
                                       .contains(d.id);
-                                  final suggestedFactoryId =
-                                      _suggestFactoryForIp(
-                                        d.ip,
-                                        availableFactories,
-                                      );
-                                  final suggestedFactory = availableFactories
-                                      .where((f) => f.id == suggestedFactoryId)
-                                      .firstOrNull;
+                                  final suggestion = _suggestFactoryForIp(
+                                    d.ip,
+                                    availableFactories,
+                                  );
 
                                   return DataRow(
                                     selected: isSelected,
@@ -585,7 +624,7 @@ class _UnassignedRecoveryPageState extends State<UnassignedRecoveryPage> {
                                       DataCell(Text(d.department)),
                                       DataCell(Text(d.officeLocation ?? '—')),
                                       DataCell(
-                                        suggestedFactory != null
+                                        suggestion.isSingle
                                             ? Container(
                                                 padding:
                                                     const EdgeInsets.symmetric(
@@ -604,7 +643,7 @@ class _UnassignedRecoveryPageState extends State<UnassignedRecoveryPage> {
                                                   ),
                                                 ),
                                                 child: Text(
-                                                  'Matches ${suggestedFactory.code}',
+                                                  'Matches ${suggestion.matchedFactory!.code}',
                                                   style: const TextStyle(
                                                     fontSize: 11,
                                                     fontWeight: FontWeight.bold,
@@ -612,11 +651,62 @@ class _UnassignedRecoveryPageState extends State<UnassignedRecoveryPage> {
                                                   ),
                                                 ),
                                               )
+                                            : suggestion.isAmbiguous
+                                            ? Tooltip(
+                                                message:
+                                                    'IP matches multiple factory subnets (${suggestion.matchedCandidates.map((f) => f.code).join(', ')}). Administrator must select target factory manually.',
+                                                child: Container(
+                                                  padding:
+                                                      const EdgeInsets.symmetric(
+                                                        horizontal: 8,
+                                                        vertical: 2,
+                                                      ),
+                                                  decoration: BoxDecoration(
+                                                    color: Colors.amber
+                                                        .withValues(
+                                                          alpha: 0.15,
+                                                        ),
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          4,
+                                                        ),
+                                                    border: Border.all(
+                                                      color: Colors.amber
+                                                          .withValues(
+                                                            alpha: 0.5,
+                                                          ),
+                                                    ),
+                                                  ),
+                                                  child: Row(
+                                                    mainAxisSize:
+                                                        MainAxisSize.min,
+                                                    children: [
+                                                      const Icon(
+                                                        Icons
+                                                            .warning_amber_rounded,
+                                                        size: 13,
+                                                        color: Colors.amber,
+                                                      ),
+                                                      const SizedBox(width: 4),
+                                                      Text(
+                                                        'Ambiguous (${suggestion.matchedCandidates.map((f) => f.code).join('/')})',
+                                                        style: const TextStyle(
+                                                          fontSize: 11,
+                                                          fontWeight:
+                                                              FontWeight.bold,
+                                                          color: Colors.amber,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                              )
                                             : const Text(
-                                                'Manual match',
+                                                'No Match',
                                                 style: TextStyle(
                                                   fontSize: 11,
                                                   color: Colors.grey,
+                                                  fontStyle: FontStyle.italic,
                                                 ),
                                               ),
                                       ),

@@ -29,7 +29,11 @@ class _DevicesPageState extends State<DevicesPage> {
   @override
   void initState() {
     super.initState();
-    context.read<DevicesCubit>().loadDevices();
+    final initialFactoryId = context
+        .read<FactoryCubit>()
+        .state
+        .selectedFactoryId;
+    context.read<DevicesCubit>().setFactory(initialFactoryId);
   }
 
   @override
@@ -960,527 +964,560 @@ class _DevicesPageState extends State<DevicesPage> {
         ? devicesState.allDevices.length
         : 37;
 
-    return DefaultTabController(
-      length: 2,
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Authoritative Inventory & Infrastructure'),
-          bottom: TabBar(
-            tabs: [
-              Tab(
-                icon: const Icon(Icons.inventory_2_outlined, size: 18),
-                text: 'All Persistent Assets ($totalAssetsCount)',
-              ),
-              Tab(
-                icon: const Icon(Icons.hub_outlined, size: 18),
-                text:
-                    'Network Infrastructure & UniFi APs (${infraState.totalCount})',
-              ),
-            ],
-          ),
-          actions: [
-            ElevatedButton.icon(
-              onPressed: () async {
-                final cubit = context.read<DevicesCubit>();
-                if (cubit.state is DevicesLoaded) {
-                  final loaded = cubit.state as DevicesLoaded;
-                  final buffer = StringBuffer();
-                  buffer.writeln(
-                    'Owner Name,Department,Device Name,IP Address,Category,Location,MAC,Hostname,Monitored,Status',
-                  );
-                  for (final d in loaded.filteredDevices) {
-                    buffer.writeln(
-                      '"${d.ownerName}","${d.department}","${d.name}",${d.ip},"${d.type.displayName}","${d.officeLocation ?? ''}","${d.mac ?? ''}","${d.hostname ?? ''}",${d.isMonitored ? 'Yes' : 'No'},${d.isEnabled ? 'Enabled' : 'Disabled'}',
-                    );
-                  }
-                  final dir =
-                      await getDownloadsDirectory() ??
-                      await getApplicationDocumentsDirectory();
-                  final file = File(
-                    '${dir.path}/Inventory_Assets_${DateTime.now().millisecondsSinceEpoch}.csv',
-                  );
-                  await file.writeAsString(buffer.toString());
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('Assets exported to ${file.path}'),
-                      ),
-                    );
-                  }
-                }
-              },
-              icon: const Icon(Icons.download_rounded, size: 18),
-              label: const Text('Export CSV'),
+    return BlocListener<FactoryCubit, FactoryState>(
+      listener: (context, fState) {
+        context.read<DevicesCubit>().setFactory(fState.selectedFactoryId);
+        context.read<InfrastructureCubit>().setFactory(
+          fState.selectedFactoryId,
+        );
+      },
+      child: DefaultTabController(
+        length: 2,
+        child: Scaffold(
+          appBar: AppBar(
+            title: const Text('Authoritative Inventory & Infrastructure'),
+            bottom: TabBar(
+              tabs: [
+                Tab(
+                  icon: const Icon(Icons.inventory_2_outlined, size: 18),
+                  text: 'All Persistent Assets ($totalAssetsCount)',
+                ),
+                Tab(
+                  icon: const Icon(Icons.hub_outlined, size: 18),
+                  text:
+                      'Network Infrastructure & UniFi APs (${infraState.totalCount})',
+                ),
+              ],
             ),
-            const SizedBox(width: 12),
-            if (isAdmin) ...[
+            actions: [
               ElevatedButton.icon(
-                onPressed: () => _showAddDeviceDialog(context),
-                icon: const Icon(Icons.add),
-                label: const Text('Add Device'),
+                onPressed: () async {
+                  final cubit = context.read<DevicesCubit>();
+                  if (cubit.state is DevicesLoaded) {
+                    final loaded = cubit.state as DevicesLoaded;
+                    final buffer = StringBuffer();
+                    buffer.writeln(
+                      'Owner Name,Department,Device Name,IP Address,Category,Location,MAC,Hostname,Monitored,Status',
+                    );
+                    for (final d in loaded.filteredDevices) {
+                      buffer.writeln(
+                        '"${d.ownerName}","${d.department}","${d.name}",${d.ip},"${d.type.displayName}","${d.officeLocation ?? ''}","${d.mac ?? ''}","${d.hostname ?? ''}",${d.isMonitored ? 'Yes' : 'No'},${d.isEnabled ? 'Enabled' : 'Disabled'}',
+                      );
+                    }
+                    final dir =
+                        await getDownloadsDirectory() ??
+                        await getApplicationDocumentsDirectory();
+                    final file = File(
+                      '${dir.path}/Inventory_Assets_${DateTime.now().millisecondsSinceEpoch}.csv',
+                    );
+                    await file.writeAsString(buffer.toString());
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Assets exported to ${file.path}'),
+                        ),
+                      );
+                    }
+                  }
+                },
+                icon: const Icon(Icons.download_rounded, size: 18),
+                label: const Text('Export CSV'),
               ),
               const SizedBox(width: 12),
+              if (isAdmin) ...[
+                ElevatedButton.icon(
+                  onPressed: () => _showAddDeviceDialog(context),
+                  icon: const Icon(Icons.add),
+                  label: const Text('Add Device'),
+                ),
+                const SizedBox(width: 12),
+              ],
             ],
-          ],
-        ),
-        body: TabBarView(
-          children: [
-            BlocConsumer<DevicesCubit, DevicesState>(
-              listener: (context, state) {
-                if (state is DevicesError) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(state.message),
-                      backgroundColor: Theme.of(context).colorScheme.error,
-                    ),
-                  );
-                } else if (state is ImportPreviewState) {
-                  _showImportPreviewDialog(context, state.preview);
-                }
-              },
-              builder: (context, state) {
-                if (state is DevicesLoading) {
-                  return const Center(child: CircularProgressIndicator());
-                }
+          ),
+          body: TabBarView(
+            children: [
+              BlocConsumer<DevicesCubit, DevicesState>(
+                listener: (context, state) {
+                  if (state is DevicesError) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(state.message),
+                        backgroundColor: Theme.of(context).colorScheme.error,
+                      ),
+                    );
+                  } else if (state is ImportPreviewState) {
+                    _showImportPreviewDialog(context, state.preview);
+                  }
+                },
+                builder: (context, state) {
+                  if (state is DevicesLoading) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
 
-                if (state is DevicesLoaded) {
-                  final departments = {
-                    'All',
-                    ...state.allDevices.map((d) => d.department),
-                  };
-                  final categories = {
-                    'All',
-                    ...state.allDevices.map((d) => d.type.displayName),
-                  };
+                  if (state is DevicesLoaded) {
+                    final departments = {
+                      'All',
+                      ...state.allDevices.map((d) => d.department),
+                    };
+                    final categories = {
+                      'All',
+                      ...state.allDevices.map((d) => d.type.displayName),
+                    };
 
-                  return Column(
-                    children: [
-                      // Top Search & Filter Bar
-                      Padding(
-                        padding: const EdgeInsets.all(16.0),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              flex: 3,
-                              child: TextField(
-                                controller: _searchController,
-                                decoration: const InputDecoration(
-                                  hintText:
-                                      'Search by Owner, Department, Name, IP, MAC, Hostname...',
-                                  prefixIcon: Icon(Icons.search),
-                                  border: OutlineInputBorder(),
-                                  contentPadding: EdgeInsets.symmetric(
-                                    horizontal: 16,
-                                    vertical: 12,
+                    return Column(
+                      children: [
+                        // Top Search & Filter Bar
+                        Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                flex: 3,
+                                child: TextField(
+                                  controller: _searchController,
+                                  decoration: const InputDecoration(
+                                    hintText:
+                                        'Search by Owner, Department, Name, IP, MAC, Hostname...',
+                                    prefixIcon: Icon(Icons.search),
+                                    border: OutlineInputBorder(),
+                                    contentPadding: EdgeInsets.symmetric(
+                                      horizontal: 16,
+                                      vertical: 12,
+                                    ),
                                   ),
+                                  onChanged: (val) {
+                                    context.read<DevicesCubit>().filterDevices(
+                                      query: val,
+                                    );
+                                  },
                                 ),
+                              ),
+                              const SizedBox(width: 12),
+                              DropdownButton<String>(
+                                value:
+                                    categories.contains(state.selectedCategory)
+                                    ? state.selectedCategory
+                                    : 'All',
+                                items: categories
+                                    .map(
+                                      (cat) => DropdownMenuItem(
+                                        value: cat,
+                                        child: Text('Category: $cat'),
+                                      ),
+                                    )
+                                    .toList(),
                                 onChanged: (val) {
-                                  context.read<DevicesCubit>().filterDevices(
-                                    query: val,
-                                  );
+                                  if (val != null) {
+                                    context.read<DevicesCubit>().filterDevices(
+                                      category: val,
+                                    );
+                                  }
                                 },
                               ),
-                            ),
-                            const SizedBox(width: 12),
-                            DropdownButton<String>(
-                              value: categories.contains(state.selectedCategory)
-                                  ? state.selectedCategory
-                                  : 'All',
-                              items: categories
-                                  .map(
-                                    (cat) => DropdownMenuItem(
-                                      value: cat,
-                                      child: Text('Category: $cat'),
-                                    ),
-                                  )
-                                  .toList(),
-                              onChanged: (val) {
-                                if (val != null) {
-                                  context.read<DevicesCubit>().filterDevices(
-                                    category: val,
-                                  );
-                                }
-                              },
-                            ),
-                            const SizedBox(width: 12),
-                            DropdownButton<String>(
-                              value:
-                                  departments.contains(state.selectedDepartment)
-                                  ? state.selectedDepartment
-                                  : 'All',
-                              items: departments
-                                  .map(
-                                    (dept) => DropdownMenuItem(
-                                      value: dept,
-                                      child: Text('Dept: $dept'),
-                                    ),
-                                  )
-                                  .toList(),
-                              onChanged: (val) {
-                                if (val != null) {
-                                  context.read<DevicesCubit>().filterDevices(
-                                    department: val,
-                                  );
-                                }
-                              },
-                            ),
-                            const SizedBox(width: 12),
-                            DropdownButton<String>(
-                              value: state.selectedMonitoring,
-                              items: const [
-                                DropdownMenuItem(
-                                  value: 'All',
-                                  child: Text('Monitoring: All'),
-                                ),
-                                DropdownMenuItem(
-                                  value: 'Monitored',
-                                  child: Text('Monitoring: Monitored'),
-                                ),
-                                DropdownMenuItem(
-                                  value: 'Unmonitored',
-                                  child: Text('Monitoring: Not Monitored'),
-                                ),
-                              ],
-                              onChanged: (val) {
-                                if (val != null) {
-                                  context.read<DevicesCubit>().filterDevices(
-                                    monitoring: val,
-                                  );
-                                }
-                              },
-                            ),
-                            const SizedBox(width: 16),
-                            Text(
-                              'Showing: ${state.filteredDevices.length} / ${state.allDevices.length}',
-                              style: Theme.of(context).textTheme.titleSmall,
-                            ),
-                          ],
-                        ),
-                      ),
-                      const Divider(height: 1),
-                      // Devices Table
-                      Expanded(
-                        child: state.filteredDevices.isEmpty
-                            ? const Center(
-                                child: Text(
-                                  'No persistent assets found matching filter.',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    color: Colors.grey,
+                              const SizedBox(width: 12),
+                              DropdownButton<String>(
+                                value:
+                                    departments.contains(
+                                      state.selectedDepartment,
+                                    )
+                                    ? state.selectedDepartment
+                                    : 'All',
+                                items: departments
+                                    .map(
+                                      (dept) => DropdownMenuItem(
+                                        value: dept,
+                                        child: Text('Dept: $dept'),
+                                      ),
+                                    )
+                                    .toList(),
+                                onChanged: (val) {
+                                  if (val != null) {
+                                    context.read<DevicesCubit>().filterDevices(
+                                      department: val,
+                                    );
+                                  }
+                                },
+                              ),
+                              const SizedBox(width: 12),
+                              DropdownButton<String>(
+                                value: state.selectedMonitoring,
+                                items: const [
+                                  DropdownMenuItem(
+                                    value: 'All',
+                                    child: Text('Monitoring: All'),
                                   ),
-                                ),
-                              )
-                            : SingleChildScrollView(
-                                scrollDirection: Axis.vertical,
-                                child: SingleChildScrollView(
-                                  scrollDirection: Axis.horizontal,
-                                  child: BlocBuilder<MonitoringCubit, MonitoringState>(
-                                    builder: (context, monitoringState) {
-                                      final Map<int, DeviceStatusEntity>
-                                      liveStatusMap = {};
-                                      if (monitoringState is MonitoringActive) {
-                                        for (final s
-                                            in monitoringState.statuses) {
-                                          liveStatusMap[s.deviceId] = s;
+                                  DropdownMenuItem(
+                                    value: 'Monitored',
+                                    child: Text('Monitoring: Monitored'),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: 'Unmonitored',
+                                    child: Text('Monitoring: Not Monitored'),
+                                  ),
+                                ],
+                                onChanged: (val) {
+                                  if (val != null) {
+                                    context.read<DevicesCubit>().filterDevices(
+                                      monitoring: val,
+                                    );
+                                  }
+                                },
+                              ),
+                              const SizedBox(width: 16),
+                              Text(
+                                'Showing: ${state.filteredDevices.length} / ${state.allDevices.length}',
+                                style: Theme.of(context).textTheme.titleSmall,
+                              ),
+                            ],
+                          ),
+                        ),
+                        const Divider(height: 1),
+                        // Devices Table
+                        Expanded(
+                          child: state.filteredDevices.isEmpty
+                              ? const Center(
+                                  child: Text(
+                                    'No persistent assets found matching filter.',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      color: Colors.grey,
+                                    ),
+                                  ),
+                                )
+                              : SingleChildScrollView(
+                                  scrollDirection: Axis.vertical,
+                                  child: SingleChildScrollView(
+                                    scrollDirection: Axis.horizontal,
+                                    child: BlocBuilder<MonitoringCubit, MonitoringState>(
+                                      builder: (context, monitoringState) {
+                                        final Map<int, DeviceStatusEntity>
+                                        liveStatusMap = {};
+                                        if (monitoringState
+                                            is MonitoringActive) {
+                                          for (final s
+                                              in monitoringState.statuses) {
+                                            liveStatusMap[s.deviceId] = s;
+                                          }
                                         }
-                                      }
 
-                                      return DataTable(
-                                        columns: const [
-                                          DataColumn(label: Text('Owner Name')),
-                                          DataColumn(label: Text('Department')),
-                                          DataColumn(
-                                            label: Text('Device Name'),
-                                          ),
-                                          DataColumn(label: Text('IP Address')),
-                                          DataColumn(label: Text('Category')),
-                                          DataColumn(label: Text('Location')),
-                                          DataColumn(label: Text('Status')),
-                                          DataColumn(label: Text('Monitoring')),
-                                          DataColumn(label: Text('Actions')),
-                                        ],
-                                        rows: state.filteredDevices.map((
-                                          device,
-                                        ) {
-                                          final liveStatus =
-                                              liveStatusMap[device.id];
-                                          final DeviceStatusEnum statusEnum =
-                                              liveStatus?.status ??
-                                              DeviceStatusEnum.unknown;
-                                          final bool isMaint =
-                                              liveStatus?.isMaintenance ??
-                                              false;
+                                        return DataTable(
+                                          columns: const [
+                                            DataColumn(
+                                              label: Text('Owner Name'),
+                                            ),
+                                            DataColumn(
+                                              label: Text('Department'),
+                                            ),
+                                            DataColumn(
+                                              label: Text('Device Name'),
+                                            ),
+                                            DataColumn(
+                                              label: Text('IP Address'),
+                                            ),
+                                            DataColumn(label: Text('Category')),
+                                            DataColumn(label: Text('Location')),
+                                            DataColumn(label: Text('Status')),
+                                            DataColumn(
+                                              label: Text('Monitoring'),
+                                            ),
+                                            DataColumn(label: Text('Actions')),
+                                          ],
+                                          rows: state.filteredDevices.map((
+                                            device,
+                                          ) {
+                                            final liveStatus =
+                                                liveStatusMap[device.id];
+                                            final DeviceStatusEnum statusEnum =
+                                                liveStatus?.status ??
+                                                DeviceStatusEnum.unknown;
+                                            final bool isMaint =
+                                                liveStatus?.isMaintenance ??
+                                                false;
 
-                                          return DataRow(
-                                            cells: [
-                                              DataCell(
-                                                InkWell(
-                                                  onTap: isAdmin
-                                                      ? () =>
-                                                            _showAssignOwnerDialog(
-                                                              context,
-                                                              device,
-                                                            )
-                                                      : null,
-                                                  borderRadius:
-                                                      BorderRadius.circular(4),
-                                                  child: Padding(
-                                                    padding:
-                                                        const EdgeInsets.symmetric(
-                                                          vertical: 4,
+                                            return DataRow(
+                                              cells: [
+                                                DataCell(
+                                                  InkWell(
+                                                    onTap: isAdmin
+                                                        ? () =>
+                                                              _showAssignOwnerDialog(
+                                                                context,
+                                                                device,
+                                                              )
+                                                        : null,
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          4,
                                                         ),
-                                                    child: Row(
-                                                      mainAxisSize:
-                                                          MainAxisSize.min,
-                                                      children: [
-                                                        Text(
-                                                          device.displayOwner,
-                                                          style: TextStyle(
-                                                            fontWeight:
-                                                                FontWeight.bold,
-                                                            fontSize: 14,
-                                                            color:
-                                                                device
-                                                                    .isOwnerAssigned
-                                                                ? null
-                                                                : Colors
-                                                                      .orangeAccent,
-                                                            fontStyle:
-                                                                device
-                                                                    .isOwnerAssigned
-                                                                ? FontStyle
-                                                                      .normal
-                                                                : FontStyle
-                                                                      .italic,
+                                                    child: Padding(
+                                                      padding:
+                                                          const EdgeInsets.symmetric(
+                                                            vertical: 4,
                                                           ),
-                                                        ),
-                                                        if (isAdmin) ...[
-                                                          const SizedBox(
-                                                            width: 6,
-                                                          ),
-                                                          Icon(
-                                                            device.isOwnerAssigned
-                                                                ? Icons
-                                                                      .edit_rounded
-                                                                : Icons
-                                                                      .add_circle_outline_rounded,
-                                                            size: 14,
-                                                            color: Theme.of(
-                                                              context,
-                                                            ).primaryColor,
-                                                          ),
-                                                        ],
-                                                      ],
-                                                    ),
-                                                  ),
-                                                ),
-                                              ),
-                                              DataCell(Text(device.department)),
-                                              DataCell(Text(device.name)),
-                                              DataCell(
-                                                Text(
-                                                  device.ip,
-                                                  style: const TextStyle(
-                                                    fontFamily: 'monospace',
-                                                    fontWeight: FontWeight.bold,
-                                                  ),
-                                                ),
-                                              ),
-                                              DataCell(
-                                                Row(
-                                                  mainAxisSize:
-                                                      MainAxisSize.min,
-                                                  children: [
-                                                    Icon(
-                                                      _getCategoryIcon(
-                                                        device.type,
-                                                      ),
-                                                      size: 16,
-                                                      color: Colors.blueGrey,
-                                                    ),
-                                                    const SizedBox(width: 6),
-                                                    Text(
-                                                      device.type.displayName,
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                              DataCell(
-                                                Text(
-                                                  device.officeLocation ?? '—',
-                                                ),
-                                              ),
-                                              DataCell(
-                                                !device.isEnabled
-                                                    ? Container(
-                                                        padding:
-                                                            const EdgeInsets.symmetric(
-                                                              horizontal: 8,
-                                                              vertical: 4,
+                                                      child: Row(
+                                                        mainAxisSize:
+                                                            MainAxisSize.min,
+                                                        children: [
+                                                          Text(
+                                                            device.displayOwner,
+                                                            style: TextStyle(
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .bold,
+                                                              fontSize: 14,
+                                                              color:
+                                                                  device
+                                                                      .isOwnerAssigned
+                                                                  ? null
+                                                                  : Colors
+                                                                        .orangeAccent,
+                                                              fontStyle:
+                                                                  device
+                                                                      .isOwnerAssigned
+                                                                  ? FontStyle
+                                                                        .normal
+                                                                  : FontStyle
+                                                                        .italic,
                                                             ),
-                                                        decoration: BoxDecoration(
-                                                          color: Colors.red
-                                                              .withValues(
-                                                                alpha: 0.12,
+                                                          ),
+                                                          if (isAdmin) ...[
+                                                            const SizedBox(
+                                                              width: 6,
+                                                            ),
+                                                            Icon(
+                                                              device.isOwnerAssigned
+                                                                  ? Icons
+                                                                        .edit_rounded
+                                                                  : Icons
+                                                                        .add_circle_outline_rounded,
+                                                              size: 14,
+                                                              color: Theme.of(
+                                                                context,
+                                                              ).primaryColor,
+                                                            ),
+                                                          ],
+                                                        ],
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ),
+                                                DataCell(
+                                                  Text(device.department),
+                                                ),
+                                                DataCell(Text(device.name)),
+                                                DataCell(
+                                                  Text(
+                                                    device.ip,
+                                                    style: const TextStyle(
+                                                      fontFamily: 'monospace',
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                    ),
+                                                  ),
+                                                ),
+                                                DataCell(
+                                                  Row(
+                                                    mainAxisSize:
+                                                        MainAxisSize.min,
+                                                    children: [
+                                                      Icon(
+                                                        _getCategoryIcon(
+                                                          device.type,
+                                                        ),
+                                                        size: 16,
+                                                        color: Colors.blueGrey,
+                                                      ),
+                                                      const SizedBox(width: 6),
+                                                      Text(
+                                                        device.type.displayName,
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                                DataCell(
+                                                  Text(
+                                                    device.officeLocation ??
+                                                        '—',
+                                                  ),
+                                                ),
+                                                DataCell(
+                                                  !device.isEnabled
+                                                      ? Container(
+                                                          padding:
+                                                              const EdgeInsets.symmetric(
+                                                                horizontal: 8,
+                                                                vertical: 4,
                                                               ),
-                                                          borderRadius:
-                                                              BorderRadius.circular(
-                                                                12,
-                                                              ),
-                                                          border: Border.all(
+                                                          decoration: BoxDecoration(
                                                             color: Colors.red
                                                                 .withValues(
-                                                                  alpha: 0.3,
+                                                                  alpha: 0.12,
                                                                 ),
-                                                          ),
-                                                        ),
-                                                        child: const Text(
-                                                          'Disabled',
-                                                          style: TextStyle(
-                                                            fontSize: 11,
-                                                            fontWeight:
-                                                                FontWeight.bold,
-                                                            color: Colors
-                                                                .redAccent,
-                                                          ),
-                                                        ),
-                                                      )
-                                                    : (device.isMonitored
-                                                          ? DeviceStatusChip(
-                                                              status:
-                                                                  statusEnum,
-                                                              isMaintenance:
-                                                                  isMaint,
-                                                              compact: true,
-                                                            )
-                                                          : Container(
-                                                              padding:
-                                                                  const EdgeInsets.symmetric(
-                                                                    horizontal:
-                                                                        8,
-                                                                    vertical: 4,
+                                                            borderRadius:
+                                                                BorderRadius.circular(
+                                                                  12,
+                                                                ),
+                                                            border: Border.all(
+                                                              color: Colors.red
+                                                                  .withValues(
+                                                                    alpha: 0.3,
                                                                   ),
-                                                              decoration: BoxDecoration(
-                                                                color: Colors
-                                                                    .grey
-                                                                    .withValues(
-                                                                      alpha:
-                                                                          0.15,
+                                                            ),
+                                                          ),
+                                                          child: const Text(
+                                                            'Disabled',
+                                                            style: TextStyle(
+                                                              fontSize: 11,
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .bold,
+                                                              color: Colors
+                                                                  .redAccent,
+                                                            ),
+                                                          ),
+                                                        )
+                                                      : (device.isMonitored
+                                                            ? DeviceStatusChip(
+                                                                status:
+                                                                    statusEnum,
+                                                                isMaintenance:
+                                                                    isMaint,
+                                                                compact: true,
+                                                              )
+                                                            : Container(
+                                                                padding:
+                                                                    const EdgeInsets.symmetric(
+                                                                      horizontal:
+                                                                          8,
+                                                                      vertical:
+                                                                          4,
                                                                     ),
-                                                                borderRadius:
-                                                                    BorderRadius.circular(
-                                                                      12,
-                                                                    ),
-                                                                border: Border.all(
+                                                                decoration: BoxDecoration(
                                                                   color: Colors
                                                                       .grey
                                                                       .withValues(
                                                                         alpha:
-                                                                            0.4,
+                                                                            0.15,
                                                                       ),
+                                                                  borderRadius:
+                                                                      BorderRadius.circular(
+                                                                        12,
+                                                                      ),
+                                                                  border: Border.all(
+                                                                    color: Colors
+                                                                        .grey
+                                                                        .withValues(
+                                                                          alpha:
+                                                                              0.4,
+                                                                        ),
+                                                                  ),
                                                                 ),
-                                                              ),
-                                                              child: const Text(
-                                                                'Not Monitored',
-                                                                style: TextStyle(
-                                                                  fontSize: 11,
-                                                                  fontWeight:
-                                                                      FontWeight
-                                                                          .bold,
-                                                                  color: Colors
-                                                                      .grey,
+                                                                child: const Text(
+                                                                  'Not Monitored',
+                                                                  style: TextStyle(
+                                                                    fontSize:
+                                                                        11,
+                                                                    fontWeight:
+                                                                        FontWeight
+                                                                            .bold,
+                                                                    color: Colors
+                                                                        .grey,
+                                                                  ),
                                                                 ),
-                                                              ),
-                                                            )),
-                                              ),
-                                              DataCell(
-                                                Switch(
-                                                  value: device.isEnabled,
-                                                  onChanged: isAdmin
-                                                      ? (val) {
-                                                          context
-                                                              .read<
-                                                                DevicesCubit
-                                                              >()
-                                                              .toggleMonitoring(
-                                                                device.id,
-                                                                val,
-                                                              );
-                                                        }
-                                                      : null,
+                                                              )),
                                                 ),
-                                              ),
-                                              DataCell(
-                                                Row(
-                                                  mainAxisSize:
-                                                      MainAxisSize.min,
-                                                  children: [
-                                                    IconButton(
-                                                      icon: const Icon(
-                                                        Icons.info_outline,
-                                                        size: 18,
+                                                DataCell(
+                                                  Switch(
+                                                    value: device.isEnabled,
+                                                    onChanged: isAdmin
+                                                        ? (val) {
+                                                            context
+                                                                .read<
+                                                                  DevicesCubit
+                                                                >()
+                                                                .toggleMonitoring(
+                                                                  device.id,
+                                                                  val,
+                                                                );
+                                                          }
+                                                        : null,
+                                                  ),
+                                                ),
+                                                DataCell(
+                                                  Row(
+                                                    mainAxisSize:
+                                                        MainAxisSize.min,
+                                                    children: [
+                                                      IconButton(
+                                                        icon: const Icon(
+                                                          Icons.info_outline,
+                                                          size: 18,
+                                                        ),
+                                                        tooltip: 'Details',
+                                                        onPressed: () =>
+                                                            _showDeviceDetailsDialog(
+                                                              context,
+                                                              device,
+                                                            ),
                                                       ),
-                                                      tooltip: 'Details',
-                                                      onPressed: () =>
-                                                          _showDeviceDetailsDialog(
-                                                            context,
-                                                            device,
+                                                      if (isAdmin) ...[
+                                                        IconButton(
+                                                          icon: const Icon(
+                                                            Icons.edit_outlined,
+                                                            size: 18,
                                                           ),
-                                                    ),
-                                                    if (isAdmin) ...[
-                                                      IconButton(
-                                                        icon: const Icon(
-                                                          Icons.edit_outlined,
-                                                          size: 18,
+                                                          tooltip:
+                                                              'Edit Device',
+                                                          onPressed: () =>
+                                                              _showEditDeviceDialog(
+                                                                context,
+                                                                device,
+                                                              ),
                                                         ),
-                                                        tooltip: 'Edit Device',
-                                                        onPressed: () =>
-                                                            _showEditDeviceDialog(
-                                                              context,
-                                                              device,
-                                                            ),
-                                                      ),
-                                                      IconButton(
-                                                        icon: const Icon(
-                                                          Icons.delete_outline,
-                                                          size: 18,
-                                                          color:
-                                                              Colors.redAccent,
+                                                        IconButton(
+                                                          icon: const Icon(
+                                                            Icons
+                                                                .delete_outline,
+                                                            size: 18,
+                                                            color: Colors
+                                                                .redAccent,
+                                                          ),
+                                                          tooltip:
+                                                              'Delete Asset',
+                                                          onPressed: () =>
+                                                              _showDeleteDeviceDialog(
+                                                                context,
+                                                                device,
+                                                              ),
                                                         ),
-                                                        tooltip: 'Delete Asset',
-                                                        onPressed: () =>
-                                                            _showDeleteDeviceDialog(
-                                                              context,
-                                                              device,
-                                                            ),
-                                                      ),
+                                                      ],
                                                     ],
-                                                  ],
+                                                  ),
                                                 ),
-                                              ),
-                                            ],
-                                          );
-                                        }).toList(),
-                                      );
-                                    },
+                                              ],
+                                            );
+                                          }).toList(),
+                                        );
+                                      },
+                                    ),
                                   ),
                                 ),
-                              ),
-                      ),
-                    ],
-                  );
-                }
+                        ),
+                      ],
+                    );
+                  }
 
-                return const SizedBox.shrink();
-              },
-            ),
+                  return const SizedBox.shrink();
+                },
+              ),
 
-            // Tab 2: Network Infrastructure & UniFi APs
-            const SingleChildScrollView(
-              padding: EdgeInsets.all(24),
-              child: InfrastructureDevicesTable(showHeaderActions: true),
-            ),
-          ],
+              // Tab 2: Network Infrastructure & UniFi APs
+              const SingleChildScrollView(
+                padding: EdgeInsets.all(24),
+                child: InfrastructureDevicesTable(showHeaderActions: true),
+              ),
+            ],
+          ),
         ),
       ),
     );

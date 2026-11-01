@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/di/injection.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../factories/presentation/bloc/factory_cubit.dart';
 import '../bloc/topology_cubit.dart';
 import '../bloc/topology_state.dart';
 import '../widgets/enterprise_device_details_sheet.dart';
@@ -15,9 +16,18 @@ class TopologyPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final initialFactoryId = context
+        .read<FactoryCubit>()
+        .state
+        .selectedFactoryId;
     return BlocProvider<TopologyCubit>(
-      create: (_) => getIt<TopologyCubit>()..init(),
-      child: const _TopologyView(),
+      create: (_) => getIt<TopologyCubit>()..init(initialFactoryId),
+      child: BlocListener<FactoryCubit, FactoryState>(
+        listener: (context, state) {
+          context.read<TopologyCubit>().setFactory(state.selectedFactoryId);
+        },
+        child: const _TopologyView(),
+      ),
     );
   }
 }

@@ -112,160 +112,175 @@ class NetworkDiscoveryPage extends StatelessWidget {
                 );
               }
 
+              final factoryState = context.watch<FactoryCubit>().state;
+              final activeFactoryId = factoryState.selectedFactoryId;
+
               return Padding(
                 padding: const EdgeInsets.only(right: 16),
-                child: ElevatedButton.icon(
-                  onPressed: state is NetworkDiscoveryLoaded
-                      ? () {
-                          if (isAdmin) {
-                            _showStartScanDialog(context, state);
-                          } else {
-                            _showAdminRequiredDialog(context);
+                child: Tooltip(
+                  message: activeFactoryId == null
+                      ? 'Select a specific factory from the top bar to launch a scan'
+                      : 'Configure and launch network discovery scan',
+                  child: ElevatedButton.icon(
+                    onPressed: state is NetworkDiscoveryLoaded
+                        ? () {
+                            if (isAdmin) {
+                              _showStartScanDialog(context, state);
+                            } else {
+                              _showAdminRequiredDialog(context);
+                            }
                           }
-                        }
-                      : null,
-                  icon: const Icon(Icons.play_arrow_rounded),
-                  label: const Text('Launch Scan'),
+                        : null,
+                    icon: const Icon(Icons.play_arrow_rounded),
+                    label: const Text('Launch Scan'),
+                  ),
                 ),
               );
             },
           ),
         ],
       ),
-      body: BlocConsumer<NetworkDiscoveryCubit, NetworkDiscoveryState>(
-        listener: (context, state) {
-          if (state is NetworkDiscoveryLoaded && state.errorMessage != null) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(state.errorMessage!),
-                backgroundColor: Colors.red,
-                duration: const Duration(seconds: 4),
-              ),
-            );
-            context.read<NetworkDiscoveryCubit>().clearErrorMessage();
-          }
+      body: BlocListener<FactoryCubit, FactoryState>(
+        listener: (context, fState) {
+          context.read<NetworkDiscoveryCubit>().setFactory(
+            fState.selectedFactoryId,
+          );
         },
-        builder: (context, state) {
-          if (state is NetworkDiscoveryLoading) {
-            return const Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  CircularProgressIndicator(),
-                  SizedBox(height: 16),
-                  Text('Loading Discovery Engine & Scopes...'),
-                ],
-              ),
-            );
-          }
-
-          if (state is NetworkDiscoveryError) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(
-                    Icons.warning_amber_rounded,
-                    size: 48,
-                    color: Colors.orange,
-                  ),
-                  const SizedBox(height: 16),
-                  Text('Discovery Error: ${state.message}'),
-                  const SizedBox(height: 16),
-                  ElevatedButton(
-                    onPressed: () =>
-                        context.read<NetworkDiscoveryCubit>().init(),
-                    child: const Text('Retry'),
-                  ),
-                ],
-              ),
-            );
-          }
-
-          if (state is NetworkDiscoveryLoaded) {
-            final cubit = context.read<NetworkDiscoveryCubit>();
-
-            return SingleChildScrollView(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Active Scan Progress Banner
-                  if (state.isScanning && state.progress != null) ...[
-                    _ScanProgressBar(progress: state.progress!),
-                    const SizedBox(height: 24),
+        child: BlocConsumer<NetworkDiscoveryCubit, NetworkDiscoveryState>(
+          listener: (context, state) {
+            if (state is NetworkDiscoveryLoaded && state.errorMessage != null) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(state.errorMessage!),
+                  backgroundColor: Colors.red,
+                  duration: const Duration(seconds: 4),
+                ),
+              );
+              context.read<NetworkDiscoveryCubit>().clearErrorMessage();
+            }
+          },
+          builder: (context, state) {
+            if (state is NetworkDiscoveryLoading) {
+              return const Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    CircularProgressIndicator(),
+                    SizedBox(height: 16),
+                    Text('Loading Discovery Engine & Scopes...'),
                   ],
+                ),
+              );
+            }
 
-                  // Authorized Network Scopes
-                  DiscoveryRangesCard(
-                    ranges: state.rangesWithStatus,
-                    activeSubnetFilter: state.subnetFilter,
-                    onSelectSubnet: (cidr) => cubit.setSubnetFilter(cidr),
-                    isAdmin: isAdmin,
-                    onManageScopes: () =>
-                        _showManageRangesDialog(context, isAdmin),
-                  ),
-                  const SizedBox(height: 24),
+            if (state is NetworkDiscoveryError) {
+              return Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(
+                      Icons.warning_amber_rounded,
+                      size: 48,
+                      color: Colors.orange,
+                    ),
+                    const SizedBox(height: 16),
+                    Text('Discovery Error: ${state.message}'),
+                    const SizedBox(height: 16),
+                    ElevatedButton(
+                      onPressed: () =>
+                          context.read<NetworkDiscoveryCubit>().init(),
+                      child: const Text('Retry'),
+                    ),
+                  ],
+                ),
+              );
+            }
 
-                  // Real KPI Summary Cards
-                  DiscoverySummaryCards(state: state),
-                  const SizedBox(height: 24),
+            if (state is NetworkDiscoveryLoaded) {
+              final cubit = context.read<NetworkDiscoveryCubit>();
 
-                  // Filters & Search Bar
-                  _FilterBar(state: state, cubit: cubit),
-                  const SizedBox(height: 16),
+              return SingleChildScrollView(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Active Scan Progress Banner
+                    if (state.isScanning && state.progress != null) ...[
+                      _ScanProgressBar(progress: state.progress!),
+                      const SizedBox(height: 24),
+                    ],
 
-                  // Header and Counter
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Discovered Assets (${state.filteredDevices.length} of ${state.totalDiscovered})',
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      if (state.searchQuery.isNotEmpty ||
-                          state.categoryFilter != null ||
-                          state.reviewFilter != null ||
-                          state.subnetFilter != null)
-                        TextButton.icon(
-                          onPressed: () => cubit.resetFilters(),
-                          icon: const Icon(Icons.clear_all, size: 16),
-                          label: const Text(
-                            'Reset All Filters',
-                            style: TextStyle(fontSize: 12),
+                    // Authorized Network Scopes
+                    DiscoveryRangesCard(
+                      ranges: state.rangesWithStatus,
+                      activeSubnetFilter: state.subnetFilter,
+                      onSelectSubnet: (cidr) => cubit.setSubnetFilter(cidr),
+                      isAdmin: isAdmin,
+                      onManageScopes: () =>
+                          _showManageRangesDialog(context, isAdmin),
+                    ),
+                    const SizedBox(height: 24),
+
+                    // Real KPI Summary Cards
+                    DiscoverySummaryCards(state: state),
+                    const SizedBox(height: 24),
+
+                    // Filters & Search Bar
+                    _FilterBar(state: state, cubit: cubit),
+                    const SizedBox(height: 16),
+
+                    // Header and Counter
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Discovered Assets (${state.filteredDevices.length} of ${state.totalDiscovered})',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
                           ),
                         ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
+                        if (state.searchQuery.isNotEmpty ||
+                            state.categoryFilter != null ||
+                            state.reviewFilter != null ||
+                            state.subnetFilter != null)
+                          TextButton.icon(
+                            onPressed: () => cubit.resetFilters(),
+                            icon: const Icon(Icons.clear_all, size: 16),
+                            label: const Text(
+                              'Reset All Filters',
+                              style: TextStyle(fontSize: 12),
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
 
-                  // Discovered Devices DataTable
-                  DiscoveredDevicesTable(
-                    devices: state.filteredDevices,
-                    userRole: userRole,
-                    onViewEvidence: (d) => _showEvidenceDialog(context, d),
-                    onApprove: (d) => _showApproveDialog(context, d, cubit),
-                    onReject: (d) => cubit.rejectDevice(d.id),
-                    onOverrideCategory: (d, cat) =>
-                        cubit.overrideCategory(deviceId: d.id, category: cat),
-                    onLaunchScan: () {
-                      if (isAdmin) {
-                        _showStartScanDialog(context, state);
-                      } else {
-                        _showAdminRequiredDialog(context);
-                      }
-                    },
-                  ),
-                ],
-              ),
-            );
-          }
+                    // Discovered Devices DataTable
+                    DiscoveredDevicesTable(
+                      devices: state.filteredDevices,
+                      userRole: userRole,
+                      onViewEvidence: (d) => _showEvidenceDialog(context, d),
+                      onApprove: (d) => _showApproveDialog(context, d, cubit),
+                      onReject: (d) => cubit.rejectDevice(d.id),
+                      onOverrideCategory: (d, cat) =>
+                          cubit.overrideCategory(deviceId: d.id, category: cat),
+                      onLaunchScan: () {
+                        if (isAdmin) {
+                          _showStartScanDialog(context, state);
+                        } else {
+                          _showAdminRequiredDialog(context);
+                        }
+                      },
+                    ),
+                  ],
+                ),
+              );
+            }
 
-          return const SizedBox.shrink();
-        },
+            return const SizedBox.shrink();
+          },
+        ),
       ),
     );
   }
@@ -320,11 +335,35 @@ class NetworkDiscoveryPage extends StatelessWidget {
   ) {
     final factoryCubit = context.read<FactoryCubit>();
     final activeFactoryId = factoryCubit.state.selectedFactoryId;
-    final ranges = activeFactoryId != null
-        ? state.rangesWithStatus
-              .where((r) => r.factoryId == activeFactoryId)
-              .toList()
-        : state.rangesWithStatus;
+    if (activeFactoryId == null) {
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: Colors.orange),
+              SizedBox(width: 8),
+              Text('Factory Selection Required'),
+            ],
+          ),
+          content: const Text(
+            'A discovery scan must belong to an individual active factory.\n\n'
+            'Please select an explicit factory (e.g. BNF or RNF) from the top bar before launching a scan.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    final ranges = state.rangesWithStatus
+        .where((r) => r.factoryId == activeFactoryId)
+        .toList();
 
     showDialog(
       context: context,

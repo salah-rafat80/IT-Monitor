@@ -30,10 +30,12 @@ class _ManageNetworkRangesDialogState extends State<ManageNetworkRangesDialog> {
   bool _isSaving = false;
   String? _errorMessage;
   NetworkRange? _livePreviewRange;
+  String? _selectedFactoryId;
 
   @override
   void initState() {
     super.initState();
+    _selectedFactoryId = widget.factoryId;
     _cidrController.addListener(_updateLivePreview);
   }
 
@@ -60,14 +62,27 @@ class _ManageNetworkRangesDialogState extends State<ManageNetworkRangesDialog> {
   }
 
   Future<void> _saveRange({bool launchDiscovery = false}) async {
+    final factoryCubit = context.read<FactoryCubit>();
+    final effectiveFactoryId =
+        _selectedFactoryId ??
+        widget.factoryId ??
+        factoryCubit.state.selectedFactoryId;
+
+    if (effectiveFactoryId == null ||
+        effectiveFactoryId.trim().isEmpty ||
+        effectiveFactoryId.toLowerCase() == 'unassigned') {
+      setState(() {
+        _errorMessage =
+            'An explicit target factory must be selected before saving a network range. '
+            'Please choose a factory above.';
+      });
+      return;
+    }
+
     if (!_formKey.currentState!.validate()) return;
 
     final cidr = _cidrController.text.trim();
     final name = _nameController.text.trim();
-
-    final factoryCubit = context.read<FactoryCubit>();
-    final effectiveFactoryId =
-        widget.factoryId ?? factoryCubit.state.selectedFactoryId ?? 'bnf';
 
     setState(() {
       _isSaving = true;
@@ -235,20 +250,22 @@ class _ManageNetworkRangesDialogState extends State<ManageNetworkRangesDialog> {
             builder: (context, state) {
               final cubit = context.read<NetworkDiscoveryCubit>();
               final factoryCubit = context.watch<FactoryCubit>();
-              final effectiveFactoryId =
-                  widget.factoryId ?? factoryCubit.state.selectedFactoryId;
+              final currentFactoryId =
+                  _selectedFactoryId ??
+                  widget.factoryId ??
+                  factoryCubit.state.selectedFactoryId;
               final selectedFactory = factoryCubit.state.factories
-                  .where((f) => f.id == effectiveFactoryId)
+                  .where((f) => f.id == currentFactoryId)
                   .firstOrNull;
 
               final rawRanges = state is NetworkDiscoveryLoaded
                   ? state.config.networkRanges
                   : <NetworkRange>[];
-              final ranges = effectiveFactoryId != null
+              final ranges = currentFactoryId != null
                   ? rawRanges
-                        .where((r) => r.factoryId == effectiveFactoryId)
+                        .where((r) => r.factoryId == currentFactoryId)
                         .toList()
-                  : rawRanges;
+                  : <NetworkRange>[];
               final isScanning =
                   state is NetworkDiscoveryLoaded && state.isScanning;
 
@@ -267,7 +284,7 @@ class _ManageNetworkRangesDialogState extends State<ManageNetworkRangesDialog> {
                             Text(
                               selectedFactory != null
                                   ? 'Manage Ranges: ${selectedFactory.code} (${selectedFactory.name})'
-                                  : 'Manage Authorized Network Ranges (All Factories)',
+                                  : 'Manage Authorized Network Ranges (Select Factory)',
                               style: theme.textTheme.titleLarge?.copyWith(
                                 fontWeight: FontWeight.bold,
                               ),
@@ -291,6 +308,81 @@ class _ManageNetworkRangesDialogState extends State<ManageNetworkRangesDialog> {
                     ],
                   ),
                   const Divider(height: 24),
+
+                  // Factory Selection Bar (when in Consolidated mode)
+                  if (widget.factoryId == null) ...[
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 10,
+                      ),
+                      margin: const EdgeInsets.only(bottom: 12),
+                      decoration: BoxDecoration(
+                        color: currentFactoryId == null
+                            ? Colors.orange.withValues(alpha: 0.1)
+                            : const Color(0xFF0F62FE).withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: currentFactoryId == null
+                              ? Colors.orange.withValues(alpha: 0.3)
+                              : const Color(0xFF0F62FE).withValues(alpha: 0.25),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.factory_rounded,
+                            color: currentFactoryId == null
+                                ? Colors.orange
+                                : const Color(0xFF0F62FE),
+                            size: 20,
+                          ),
+                          const SizedBox(width: 10),
+                          const Text(
+                            'Target Factory: ',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: DropdownButtonHideUnderline(
+                              child: DropdownButton<String>(
+                                value: currentFactoryId,
+                                isDense: true,
+                                hint: const Text(
+                                  'Select Factory to Manage Ranges (Required)',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: Colors.orange,
+                                  ),
+                                ),
+                                items: factoryCubit.state.factories
+                                    .where((f) => f.isActive)
+                                    .map(
+                                      (f) => DropdownMenuItem(
+                                        value: f.id,
+                                        child: Text(
+                                          '${f.name} (${f.code})',
+                                          style: const TextStyle(fontSize: 13),
+                                        ),
+                                      ),
+                                    )
+                                    .toList(),
+                                onChanged: (val) {
+                                  setState(() {
+                                    _selectedFactoryId = val;
+                                    _errorMessage = null;
+                                  });
+                                },
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
 
                   // Error notification if present
                   if (_errorMessage != null) ...[
@@ -434,7 +526,8 @@ class _ManageNetworkRangesDialogState extends State<ManageNetworkRangesDialog> {
                               mainAxisAlignment: MainAxisAlignment.end,
                               children: [
                                 OutlinedButton.icon(
-                                  onPressed: _isSaving
+                                  onPressed:
+                                      (_isSaving || currentFactoryId == null)
                                       ? null
                                       : () =>
                                             _saveRange(launchDiscovery: false),
@@ -458,7 +551,10 @@ class _ManageNetworkRangesDialogState extends State<ManageNetworkRangesDialog> {
                                     backgroundColor: const Color(0xFF0F62FE),
                                     foregroundColor: Colors.white,
                                   ),
-                                  onPressed: (_isSaving || isScanning)
+                                  onPressed:
+                                      (_isSaving ||
+                                          isScanning ||
+                                          currentFactoryId == null)
                                       ? null
                                       : () => _saveRange(launchDiscovery: true),
                                   icon: const Icon(
@@ -502,7 +598,38 @@ class _ManageNetworkRangesDialogState extends State<ManageNetworkRangesDialog> {
 
                   // Range List View
                   Expanded(
-                    child: ranges.isEmpty
+                    child: currentFactoryId == null
+                        ? Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(
+                                  Icons.factory_outlined,
+                                  size: 48,
+                                  color: Colors.orange,
+                                ),
+                                const SizedBox(height: 12),
+                                const Text(
+                                  'Factory Selection Required',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 15,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  'Please select a specific factory from the dropdown above to view, create, and manage its network ranges.',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: theme.textTheme.bodySmall?.color
+                                        ?.withValues(alpha: 0.7),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        : ranges.isEmpty
                         ? Center(
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,

@@ -222,61 +222,250 @@ class DiscoveryRepositoryImpl implements DiscoveryRepository {
 
   @override
   Future<Result<void>> addRange(NetworkRange range) async {
-    final configRes = await getConfig();
-    if (configRes.isFailure) return Result.failure(configRes.failureOrNull!);
-    final config = configRes.dataOrNull!;
+    if (AppConfig.isProductionClient) {
+      final client = _effectiveClient;
+      if (client == null || !client.isAuthenticated) {
+        return Result.failure(
+          NetworkFailure(
+            'Production client is not authenticated with the authoritative IT Network Monitor Service.',
+          ),
+        );
+      }
+      final res = await client.addNetworkRange(range.toJson());
+      if (res.isSuccess) {
+        await getConfig();
+        return Result.success(null);
+      } else {
+        return Result.failure(
+          NetworkFailure(
+            'Failed to add network range via service API: ${res.errorMessage}',
+          ),
+        );
+      }
+    }
 
-    if (config.networkRanges.any(
-      (r) =>
-          (r.cidr == range.cidr && r.factoryId == range.factoryId) ||
-          r.id == range.id,
-    )) {
+    try {
+      return await _db.transaction(() async {
+        final existing = await (_db.select(
+          _db.discoveryConfigurations,
+        )..limit(1)).getSingleOrNull();
+
+        final List<NetworkRange> currentRanges = [];
+        if (existing != null) {
+          final raw =
+              jsonDecode(existing.authorizedRangesJson) as List<dynamic>;
+          for (final item in raw) {
+            if (item is Map<String, dynamic>) {
+              currentRanges.add(NetworkRange.fromJson(item));
+            } else if (item is String) {
+              final p = NetworkRange.tryParse(item);
+              if (p != null) currentRanges.add(p);
+            }
+          }
+        }
+
+        if (currentRanges.any(
+          (r) =>
+              (r.cidr == range.cidr && r.factoryId == range.factoryId) ||
+              r.id == range.id,
+        )) {
+          return Result.failure(
+            ValidationFailure(
+              'Network range ${range.cidr} already exists for factory ${range.factoryId}.',
+            ),
+          );
+        }
+
+        final updatedRanges = [...currentRanges, range];
+        final companion = DiscoveryConfigurationsCompanion(
+          authorizedRangesJson: Value(
+            jsonEncode(updatedRanges.map((r) => r.toJson()).toList()),
+          ),
+          updatedAt: Value(DateTime.now()),
+        );
+
+        if (existing == null) {
+          await _db.into(_db.discoveryConfigurations).insert(companion);
+        } else {
+          await (_db.update(
+            _db.discoveryConfigurations,
+          )..where((t) => t.id.equals(existing.id))).write(companion);
+        }
+
+        if (!_rangesController.isClosed) {
+          _rangesController.add(updatedRanges);
+        }
+        return Result.success(null);
+      });
+    } catch (e) {
       return Result.failure(
-        ValidationFailure(
-          'Network range ${range.cidr} already exists for factory ${range.factoryId}.',
-        ),
+        DatabaseFailure('Failed to add network range atomically: $e'),
       );
     }
-    final updatedRanges = [...config.networkRanges, range];
-    return saveConfig(config.copyWith(networkRanges: updatedRanges));
   }
 
   @override
   Future<Result<void>> updateRange(NetworkRange range) async {
-    final configRes = await getConfig();
-    if (configRes.isFailure) return Result.failure(configRes.failureOrNull!);
-    final config = configRes.dataOrNull!;
+    if (AppConfig.isProductionClient) {
+      final client = _effectiveClient;
+      if (client == null || !client.isAuthenticated) {
+        return Result.failure(
+          NetworkFailure(
+            'Production client is not authenticated with the authoritative IT Network Monitor Service.',
+          ),
+        );
+      }
+      final res = await client.updateNetworkRange(range.toJson());
+      if (res.isSuccess) {
+        await getConfig();
+        return Result.success(null);
+      } else {
+        return Result.failure(
+          NetworkFailure(
+            'Failed to update network range via service API: ${res.errorMessage}',
+          ),
+        );
+      }
+    }
 
-    final index = config.networkRanges.indexWhere(
-      (r) =>
-          r.id == range.id ||
-          (r.cidr == range.cidr && r.factoryId == range.factoryId),
-    );
-    if (index == -1) {
+    try {
+      return await _db.transaction(() async {
+        final existing = await (_db.select(
+          _db.discoveryConfigurations,
+        )..limit(1)).getSingleOrNull();
+
+        if (existing == null) {
+          return Result.failure(
+            ValidationFailure('Network range ${range.cidr} was not found.'),
+          );
+        }
+
+        final List<NetworkRange> currentRanges = [];
+        final raw = jsonDecode(existing.authorizedRangesJson) as List<dynamic>;
+        for (final item in raw) {
+          if (item is Map<String, dynamic>) {
+            currentRanges.add(NetworkRange.fromJson(item));
+          } else if (item is String) {
+            final p = NetworkRange.tryParse(item);
+            if (p != null) currentRanges.add(p);
+          }
+        }
+
+        final index = currentRanges.indexWhere(
+          (r) =>
+              r.id == range.id ||
+              (r.cidr == range.cidr && r.factoryId == range.factoryId),
+        );
+        if (index == -1) {
+          return Result.failure(
+            ValidationFailure('Network range ${range.cidr} was not found.'),
+          );
+        }
+
+        final updatedRanges = List<NetworkRange>.from(currentRanges);
+        updatedRanges[index] = range.copyWith(updatedAt: DateTime.now());
+
+        await (_db.update(
+          _db.discoveryConfigurations,
+        )..where((t) => t.id.equals(existing.id))).write(
+          DiscoveryConfigurationsCompanion(
+            authorizedRangesJson: Value(
+              jsonEncode(updatedRanges.map((r) => r.toJson()).toList()),
+            ),
+            updatedAt: Value(DateTime.now()),
+          ),
+        );
+
+        if (!_rangesController.isClosed) {
+          _rangesController.add(updatedRanges);
+        }
+        return Result.success(null);
+      });
+    } catch (e) {
       return Result.failure(
-        ValidationFailure('Network range ${range.cidr} was not found.'),
+        DatabaseFailure('Failed to update network range atomically: $e'),
       );
     }
-    final updatedRanges = List<NetworkRange>.from(config.networkRanges);
-    updatedRanges[index] = range.copyWith(updatedAt: DateTime.now());
-    return saveConfig(config.copyWith(networkRanges: updatedRanges));
   }
 
   @override
   Future<Result<void>> deleteRange(String rangeId) async {
-    final configRes = await getConfig();
-    if (configRes.isFailure) return Result.failure(configRes.failureOrNull!);
-    final config = configRes.dataOrNull!;
+    if (AppConfig.isProductionClient) {
+      final client = _effectiveClient;
+      if (client == null || !client.isAuthenticated) {
+        return Result.failure(
+          NetworkFailure(
+            'Production client is not authenticated with the authoritative IT Network Monitor Service.',
+          ),
+        );
+      }
+      final res = await client.deleteNetworkRange(rangeId);
+      if (res.isSuccess) {
+        await getConfig();
+        return Result.success(null);
+      } else {
+        return Result.failure(
+          NetworkFailure(
+            'Failed to delete network range via service API: ${res.errorMessage}',
+          ),
+        );
+      }
+    }
 
-    final updatedRanges = config.networkRanges
-        .where((r) => r.id != rangeId && r.cidr != rangeId)
-        .toList();
-    if (updatedRanges.length == config.networkRanges.length) {
+    try {
+      return await _db.transaction(() async {
+        final existing = await (_db.select(
+          _db.discoveryConfigurations,
+        )..limit(1)).getSingleOrNull();
+
+        if (existing == null) {
+          return Result.failure(
+            ValidationFailure('Network range $rangeId was not found.'),
+          );
+        }
+
+        final List<NetworkRange> currentRanges = [];
+        final raw = jsonDecode(existing.authorizedRangesJson) as List<dynamic>;
+        for (final item in raw) {
+          if (item is Map<String, dynamic>) {
+            currentRanges.add(NetworkRange.fromJson(item));
+          } else if (item is String) {
+            final p = NetworkRange.tryParse(item);
+            if (p != null) currentRanges.add(p);
+          }
+        }
+
+        final updatedRanges = currentRanges
+            .where((r) => r.id != rangeId && r.cidr != rangeId)
+            .toList();
+
+        if (updatedRanges.length == currentRanges.length) {
+          return Result.failure(
+            ValidationFailure('Network range $rangeId was not found.'),
+          );
+        }
+
+        await (_db.update(
+          _db.discoveryConfigurations,
+        )..where((t) => t.id.equals(existing.id))).write(
+          DiscoveryConfigurationsCompanion(
+            authorizedRangesJson: Value(
+              jsonEncode(updatedRanges.map((r) => r.toJson()).toList()),
+            ),
+            updatedAt: Value(DateTime.now()),
+          ),
+        );
+
+        if (!_rangesController.isClosed) {
+          _rangesController.add(updatedRanges);
+        }
+        return Result.success(null);
+      });
+    } catch (e) {
       return Result.failure(
-        ValidationFailure('Network range $rangeId was not found.'),
+        DatabaseFailure('Failed to delete network range atomically: $e'),
       );
     }
-    return saveConfig(config.copyWith(networkRanges: updatedRanges));
   }
 
   @override

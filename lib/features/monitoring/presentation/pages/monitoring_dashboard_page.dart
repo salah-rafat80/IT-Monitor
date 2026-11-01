@@ -16,6 +16,7 @@ import '../widgets/monitoring_summary_cards.dart';
 
 import '../../../infrastructure/presentation/bloc/infrastructure_cubit.dart';
 import '../../../infrastructure/presentation/widgets/infrastructure_status_cards.dart';
+import '../../../factories/presentation/bloc/factory_cubit.dart';
 import '../../../factories/presentation/widgets/factory_overview_cards.dart';
 
 class MonitoringDashboardPage extends StatelessWidget {
@@ -23,17 +24,37 @@ class MonitoringDashboardPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final initialFactoryId = context
+        .read<FactoryCubit>()
+        .state
+        .selectedFactoryId;
     return MultiBlocProvider(
       providers: [
         BlocProvider<MonitoringDashboardCubit>(
-          create: (context) =>
-              getIt<MonitoringDashboardCubit>()..initDashboard(),
+          create: (context) {
+            final cubit = getIt<MonitoringDashboardCubit>();
+            if (initialFactoryId != null) {
+              cubit.setFactoryFilter(initialFactoryId);
+            }
+            return cubit..initDashboard();
+          },
         ),
         BlocProvider<InfrastructureCubit>.value(
-          value: getIt<InfrastructureCubit>()..loadInfrastructure(),
+          value: getIt<InfrastructureCubit>()
+            ..loadInfrastructure(factoryId: initialFactoryId),
         ),
       ],
-      child: const MonitoringDashboardView(),
+      child: BlocListener<FactoryCubit, FactoryState>(
+        listener: (context, state) {
+          context.read<MonitoringDashboardCubit>().setFactoryFilter(
+            state.selectedFactoryId,
+          );
+          context.read<InfrastructureCubit>().setFactory(
+            state.selectedFactoryId,
+          );
+        },
+        child: const MonitoringDashboardView(),
+      ),
     );
   }
 }

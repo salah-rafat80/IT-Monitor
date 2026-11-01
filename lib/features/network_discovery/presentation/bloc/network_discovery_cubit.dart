@@ -192,7 +192,23 @@ class NetworkDiscoveryCubit extends Cubit<NetworkDiscoveryState> {
     int? maxConcurrency,
     int? timeoutSeconds,
   }) async {
-    final effectiveFactory = factoryId ?? _activeFactoryId ?? 'bnf';
+    final effectiveFactory = (factoryId ?? _activeFactoryId)?.trim();
+    if (effectiveFactory == null ||
+        effectiveFactory.isEmpty ||
+        effectiveFactory.toLowerCase() == 'unassigned') {
+      final current = state;
+      if (current is NetworkDiscoveryLoaded) {
+        emit(
+          current.copyWith(
+            errorMessage:
+                'A specific factory must be selected before launching a discovery scan. '
+                'All Factories (Consolidated) mode does not permit scans.',
+          ),
+        );
+      }
+      return;
+    }
+
     final res = await _coordinator.startScan(
       factoryId: effectiveFactory,
       requestedRanges: requestedRanges,

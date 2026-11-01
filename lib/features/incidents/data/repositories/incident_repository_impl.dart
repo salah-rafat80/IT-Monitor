@@ -219,8 +219,14 @@ class IncidentRepositoryImpl implements IncidentRepository {
   }
 
   @override
-  Stream<List<IncidentEntity>> watchActiveIncidents({String? factoryId}) {
-    return _activeIncidentsController.stream.map((list) {
+  Stream<List<IncidentEntity>> watchActiveIncidents({
+    String? factoryId,
+  }) async* {
+    final current = await getActiveIncidents(factoryId: factoryId);
+    if (current.isSuccess) {
+      yield current.dataOrNull ?? [];
+    }
+    yield* _activeIncidentsController.stream.map((list) {
       if (factoryId != null && factoryId.isNotEmpty) {
         return list.where((i) => i.factoryId == factoryId).toList();
       }

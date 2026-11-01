@@ -39,14 +39,33 @@ class ReportsError extends ReportsState {
 @injectable
 class ReportsCubit extends Cubit<ReportsState> {
   final ReportRepository _repository;
+  String? _factoryId;
+  ReportPeriod _currentPeriod = ReportPeriod.last24Hours;
 
   ReportsCubit(this._repository) : super(ReportsInitial());
 
-  Future<void> loadReport([
-    ReportPeriod period = ReportPeriod.last24Hours,
-  ]) async {
+  String? get currentFactoryId => _factoryId;
+  ReportPeriod get currentPeriod => _currentPeriod;
+
+  void setFactory(String? factoryId) {
+    if (_factoryId != factoryId) {
+      _factoryId = factoryId;
+      loadReport(_currentPeriod, _factoryId);
+    }
+  }
+
+  Future<void> loadReport([ReportPeriod? period, String? factoryId]) async {
+    if (period != null) _currentPeriod = period;
+    if (factoryId != null || (factoryId == null && _factoryId != null)) {
+      _factoryId = factoryId;
+    }
+    if (isClosed) return;
     emit(ReportsLoading());
-    final res = await _repository.generateReport(period);
+    final res = await _repository.generateReport(
+      _currentPeriod,
+      factoryId: _factoryId,
+    );
+    if (isClosed) return;
     if (res.isSuccess) {
       emit(ReportsLoaded(report: res.dataOrNull!));
     } else {
@@ -59,7 +78,11 @@ class ReportsCubit extends Cubit<ReportsState> {
   Future<void> exportCsv() async {
     final currentState = state;
     if (currentState is ReportsLoaded) {
-      final res = await _repository.exportReportToCsv(currentState.report);
+      final res = await _repository.exportReportToCsv(
+        currentState.report,
+        null,
+        _factoryId,
+      );
       if (res.isSuccess) {
         emit(
           ReportsLoaded(
@@ -82,11 +105,7 @@ class ReportsCubit extends Cubit<ReportsState> {
   Future<void> purgeOldData(int days) async {
     final res = await _repository.purgeCheckResultsOlderThanDays(days);
     if (res.isSuccess) {
-      final currentState = state;
-      final currentPeriod = currentState is ReportsLoaded
-          ? currentState.report.period
-          : ReportPeriod.last24Hours;
-      await loadReport(currentPeriod);
+      await loadReport(_currentPeriod, _factoryId);
     }
   }
 }

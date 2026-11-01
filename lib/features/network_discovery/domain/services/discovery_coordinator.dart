@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'package:injectable/injectable.dart';
 
+import '../../../../core/di/injection.dart';
 import '../../../../core/errors/failures.dart';
 import '../../../../core/utils/result.dart';
 import '../../../devices/domain/entities/device_entity.dart';
 import '../../../devices/domain/repositories/device_repository.dart';
+import '../../../factories/domain/repositories/factory_repository.dart';
 import '../../../infrastructure/domain/entities/unifi_device_entity.dart';
 import '../../../infrastructure/domain/repositories/infrastructure_repository.dart';
 import '../entities/classification_confidence.dart';
@@ -14,6 +16,7 @@ import '../entities/discovery_config_entity.dart';
 import '../entities/discovery_evidence_item.dart';
 import '../entities/discovery_progress.dart';
 import '../entities/discovery_scan_job.dart';
+import '../entities/network_range.dart';
 import '../entities/review_state.dart';
 import '../repositories/discovery_repository.dart';
 import '../../data/datasources/strategies/arp_discovery_strategy.dart';
@@ -36,6 +39,7 @@ class DiscoveryCoordinator {
   final MacVendorLookup _vendorLookup;
   final List<DiscoveryStrategy> _strategies;
   final InfrastructureRepository? _infrastructureRepo;
+  final FactoryRepository? _factoryRepo;
 
   bool _isScanning = false;
   bool _isCancelled = false;
@@ -57,6 +61,7 @@ class DiscoveryCoordinator {
     OnvifDiscoveryStrategy onvif,
     MdnsSsdpDiscoveryStrategy mdns, [
     this._infrastructureRepo,
+    this._factoryRepo,
   ]) : _strategies = [icmp, arp, dns, tcp, onvif, mdns];
 
   bool get isScanning => _isScanning;
@@ -79,29 +84,138 @@ class DiscoveryCoordinator {
       );
     }
 
-    _isScanning = true;
-    _isCancelled = false;
+    final factoryRepo =
+        _factoryRepo ??
+        (getIt.isRegistered<FactoryRepository>()
+            ? getIt<FactoryRepository>()
+            : null);
 
-    final effectiveFactoryId = factoryId ?? 'unassigned';
+    final effectiveFactoryId = factoryId?.trim();
 
-    // 1. Fetch current configuration & validate ranges
+    // 1. If factoryId is explicitly 'unassigned' or blank, always reject
+    if (effectiveFactoryId != null &&
+        (effectiveFactoryId.isEmpty ||
+            effectiveFactoryId.toLowerCase() == 'unassigned')) {
+      return Result.failure(
+        const ValidationFailure(
+          'A valid, active factoryId is required to start a network discovery scan. '
+          'Consolidated or unassigned scans are not permitted.',
+        ),
+      );
+    }
+
+    // 2. In any factory-aware environment (service, app DI, or multi-factory tests), require an explicit active factory
+    if (factoryRepo != null) {
+      if (effectiveFactoryId == null) {
+        return Result.failure(
+          const ValidationFailure(
+            'No valid authorized CIDR ranges available for discovery: A valid, active factoryId is required to start a network discovery scan. '
+            'Consolidated or unassigned scans are not permitted.',
+          ),
+        );
+      }
+
+      final factRes = await factoryRepo.getFactoryById(effectiveFactoryId);
+      final factory = factRes.dataOrNull;
+      if (factRes.isFailure || factory == null) {
+        return Result.failure(
+          ValidationFailure('Factory "$effectiveFactoryId" does not exist.'),
+        );
+      }
+      if (!factory.isActive) {
+        return Result.failure(
+          ValidationFailure(
+            'Factory "${factory.name}" ($effectiveFactoryId) is inactive. '
+            'Discovery scans cannot be launched for inactive factories.',
+          ),
+        );
+      }
+    }
+
+    final targetFactoryId = effectiveFactoryId ?? 'unassigned';
+
+    // 3. Fetch authoritative current configuration & validate ranges
     final configRes = await _discoveryRepo.getConfig();
     final config = configRes.dataOrNull ?? DiscoveryConfigEntity.initial();
 
+    final authoritativeFactoryRanges = config.networkRanges
+        .where((r) => r.factoryId == targetFactoryId && r.isEnabled)
+        .toList();
+
     List<String> rangesToScan;
     if (requestedRanges != null && requestedRanges.isNotEmpty) {
-      rangesToScan = requestedRanges;
+      if (effectiveFactoryId != null) {
+        // Enforce authoritative range checks for the targeted factory
+        final validatedCidrs = <String>[];
+        for (final req in requestedRanges) {
+          final trimmed = req.trim();
+          final parsed = NetworkRange.tryParse(trimmed);
+          final normalizedCidr = parsed?.cidr ?? trimmed;
+
+          // Check if range belongs to another factory
+          final otherFactoryRange = config.networkRanges
+              .where(
+                (r) =>
+                    (r.id == trimmed || r.cidr == normalizedCidr) &&
+                    r.factoryId != targetFactoryId,
+              )
+              .firstOrNull;
+          if (otherFactoryRange != null) {
+            return Result.failure(
+              ValidationFailure(
+                'Requested range "$req" belongs to another factory '
+                '("${otherFactoryRange.factoryId}") and cannot be scanned under factory "$targetFactoryId".',
+              ),
+            );
+          }
+
+          // Check if registered under this factory
+          final matchingRange = config.networkRanges
+              .where(
+                (r) =>
+                    (r.id == trimmed || r.cidr == normalizedCidr) &&
+                    r.factoryId == targetFactoryId,
+              )
+              .firstOrNull;
+
+          if (matchingRange == null) {
+            return Result.failure(
+              ValidationFailure(
+                'Requested range "$req" is not registered for factory "$targetFactoryId". '
+                'Arbitrary or unregistered CIDR ranges cannot be scanned.',
+              ),
+            );
+          }
+
+          if (!matchingRange.isEnabled) {
+            return Result.failure(
+              ValidationFailure(
+                'Requested range "$req" is disabled for factory "$targetFactoryId" and cannot be scanned.',
+              ),
+            );
+          }
+
+          validatedCidrs.add(matchingRange.cidr);
+        }
+        rangesToScan = validatedCidrs;
+      } else {
+        rangesToScan = requestedRanges;
+      }
     } else {
-      rangesToScan = config.getAuthorizedRangesForFactory(effectiveFactoryId);
+      if (effectiveFactoryId != null) {
+        rangesToScan = authoritativeFactoryRanges.map((r) => r.cidr).toList();
+      } else {
+        rangesToScan = config.getAuthorizedRangesForFactory(targetFactoryId);
+      }
     }
 
     final validRanges = _rangeValidator.validateRanges(rangesToScan);
 
     if (validRanges.isEmpty) {
-      _isScanning = false;
       return Result.failure(
         ValidationFailure(
-          'No valid authorized CIDR ranges provided for discovery in factory $effectiveFactoryId',
+          'No valid authorized CIDR ranges provided for discovery in factory "$targetFactoryId". '
+          'Please configure and enable authorized network scopes before scanning.',
         ),
       );
     }
@@ -118,27 +232,30 @@ class DiscoveryCoordinator {
     }
 
     if (candidateHosts.isEmpty) {
-      _isScanning = false;
       return Result.failure(
         ValidationFailure(
-          'Target scopes yielded zero candidate hosts for discovery scan',
+          'Target scopes yielded zero candidate hosts for discovery scan in factory "$effectiveFactoryId".',
         ),
       );
     }
 
     if (candidateHosts.length > NetworkRangeValidator.maxTotalTargets) {
-      _isScanning = false;
       return Result.failure(
         ValidationFailure(
-          'Target count (${candidateHosts.length}) exceeds maximum allowable limit of ${NetworkRangeValidator.maxTotalTargets} hosts per scan. Please refine your CIDR scopes.',
+          'Target count (${candidateHosts.length}) exceeds maximum allowable limit of '
+          '${NetworkRangeValidator.maxTotalTargets} hosts per scan. Please refine your CIDR scopes.',
         ),
       );
     }
 
-    // 3. Create Scan Job record
+    // 3. Mark scanning as active only after all checks pass
+    _isScanning = true;
+    _isCancelled = false;
+
+    // 4. Create Scan Job record
     final activeStrategies = enabledStrategies ?? config.enabledStrategies;
     var job = DiscoveryScanJob(
-      factoryId: effectiveFactoryId,
+      factoryId: targetFactoryId,
       status: ScanJobStatus.validating,
       targetRanges: validRanges.map((r) => r.cidr).toList(),
       enabledStrategies: activeStrategies,

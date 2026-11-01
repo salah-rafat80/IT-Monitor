@@ -2596,7 +2596,43 @@ Write-Output 'OK'
           return;
         }
 
-        final factoryId = body['factoryId']?.toString().trim() ?? 'unassigned';
+        final factoryId = body['factoryId']?.toString().trim();
+        if (factoryId == null ||
+            factoryId.isEmpty ||
+            factoryId.toLowerCase() == 'unassigned') {
+          await _jsonResponse(request, {
+            'success': false,
+            'error':
+                'A valid, active factoryId is required to add a network range. '
+                'Range creation requires explicit factory selection.',
+          }, status: 400);
+          return;
+        }
+
+        final factoryRepo = getIt.isRegistered<FactoryRepository>()
+            ? getIt<FactoryRepository>()
+            : null;
+        if (factoryRepo != null) {
+          final factRes = await factoryRepo.getFactoryById(factoryId);
+          final factory = factRes.dataOrNull;
+          if (factRes.isFailure || factory == null) {
+            await _jsonResponse(request, {
+              'success': false,
+              'error': 'Factory "$factoryId" does not exist.',
+            }, status: 400);
+            return;
+          }
+          if (!factory.isActive) {
+            await _jsonResponse(request, {
+              'success': false,
+              'error':
+                  'Factory "${factory.name}" ($factoryId) is inactive. '
+                  'Ranges cannot be added to inactive factories.',
+            }, status: 400);
+            return;
+          }
+        }
+
         final name = body['name']?.toString().trim();
         final isEnabled = body['isEnabled'] is bool
             ? body['isEnabled'] as bool
@@ -2669,7 +2705,40 @@ Write-Output 'OK'
         }
 
         final id = body['id']?.toString() ?? parsed.id;
-        final factoryId = body['factoryId']?.toString().trim() ?? 'unassigned';
+        final factoryId = body['factoryId']?.toString().trim();
+        if (factoryId == null ||
+            factoryId.isEmpty ||
+            factoryId.toLowerCase() == 'unassigned') {
+          await _jsonResponse(request, {
+            'success': false,
+            'error':
+                'A valid, active factoryId is required to update a network range.',
+          }, status: 400);
+          return;
+        }
+
+        final factoryRepo = getIt.isRegistered<FactoryRepository>()
+            ? getIt<FactoryRepository>()
+            : null;
+        if (factoryRepo != null) {
+          final factRes = await factoryRepo.getFactoryById(factoryId);
+          final factory = factRes.dataOrNull;
+          if (factRes.isFailure || factory == null) {
+            await _jsonResponse(request, {
+              'success': false,
+              'error': 'Factory "$factoryId" does not exist.',
+            }, status: 400);
+            return;
+          }
+          if (!factory.isActive) {
+            await _jsonResponse(request, {
+              'success': false,
+              'error': 'Factory "${factory.name}" ($factoryId) is inactive.',
+            }, status: 400);
+            return;
+          }
+        }
+
         final name = body['name']?.toString().trim();
         final isEnabled = body['isEnabled'] is bool
             ? body['isEnabled'] as bool
@@ -2781,10 +2850,47 @@ Write-Output 'OK'
         }
 
         final body = await _readJsonBody(request);
-        final factoryId = body['factoryId']?.toString().trim() ?? 'unassigned';
-        final ranges = (body['ranges'] as List<dynamic>?)
-            ?.map((e) => e.toString())
-            .toList();
+        final rawFactoryId = body['factoryId']?.toString().trim();
+        if (rawFactoryId == null ||
+            rawFactoryId.isEmpty ||
+            rawFactoryId.toLowerCase() == 'unassigned') {
+          await _jsonResponse(request, {
+            'success': false,
+            'error':
+                'A valid, active factoryId is required to start a discovery scan. '
+                'Consolidated or unassigned scans are forbidden.',
+          }, status: 400);
+          return;
+        }
+
+        final factoryRepo = getIt.isRegistered<FactoryRepository>()
+            ? getIt<FactoryRepository>()
+            : null;
+        if (factoryRepo != null) {
+          final factRes = await factoryRepo.getFactoryById(rawFactoryId);
+          final factory = factRes.dataOrNull;
+          if (factRes.isFailure || factory == null) {
+            await _jsonResponse(request, {
+              'success': false,
+              'error': 'Factory "$rawFactoryId" does not exist.',
+            }, status: 400);
+            return;
+          }
+          if (!factory.isActive) {
+            await _jsonResponse(request, {
+              'success': false,
+              'error':
+                  'Factory "${factory.name}" ($rawFactoryId) is inactive. '
+                  'Discovery scans cannot be launched for inactive factories.',
+            }, status: 400);
+            return;
+          }
+        }
+
+        final ranges =
+            ((body['ranges'] ?? body['requestedRanges']) as List<dynamic>?)
+                ?.map((e) => e.toString())
+                .toList();
         final strategies = (body['strategies'] as List<dynamic>?)
             ?.map((e) => e.toString())
             .toList();
@@ -2793,7 +2899,7 @@ Write-Output 'OK'
 
         final coordinator = getIt<DiscoveryCoordinator>();
         final res = await coordinator.startScan(
-          factoryId: factoryId,
+          factoryId: rawFactoryId,
           requestedRanges: ranges,
           enabledStrategies: strategies,
           maxConcurrency: concurrency,

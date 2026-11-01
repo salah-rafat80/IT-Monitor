@@ -3,10 +3,6 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../auth/domain/entities/user_entity.dart';
 import '../../../auth/presentation/bloc/auth_cubit.dart';
-import '../../../devices/presentation/bloc/devices_cubit.dart';
-import '../../../infrastructure/presentation/bloc/infrastructure_cubit.dart';
-import '../../../monitoring/presentation/bloc/monitoring_dashboard_cubit.dart';
-import '../../../network_discovery/presentation/bloc/network_discovery_cubit.dart';
 import '../bloc/factory_cubit.dart';
 import 'add_factory_dialog.dart';
 
@@ -15,23 +11,6 @@ class FactoryHeaderBar extends StatelessWidget {
 
   void _onFactoryChanged(BuildContext context, String? factoryId) {
     context.read<FactoryCubit>().selectFactoryById(factoryId);
-
-    // Propagate active factory context across active cubits if registered
-    try {
-      context.read<DevicesCubit>().setFactory(factoryId);
-    } catch (_) {}
-
-    try {
-      context.read<MonitoringDashboardCubit>().setFactoryFilter(factoryId);
-    } catch (_) {}
-
-    try {
-      context.read<NetworkDiscoveryCubit>().setFactory(factoryId);
-    } catch (_) {}
-
-    try {
-      context.read<InfrastructureCubit>().setFactory(factoryId);
-    } catch (_) {}
   }
 
   @override

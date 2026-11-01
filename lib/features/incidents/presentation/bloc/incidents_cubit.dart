@@ -10,15 +10,33 @@ import 'incidents_state.dart';
 class IncidentsCubit extends Cubit<IncidentsState> {
   final IncidentRepository _incidentRepo;
   StreamSubscription<List<IncidentEntity>>? _activeIncidentsSub;
+  String? _factoryId;
 
   IncidentsCubit(this._incidentRepo) : super(const IncidentsLoading());
 
-  Future<void> initIncidents() async {
+  String? get currentFactoryId => _factoryId;
+
+  void setFactory(String? factoryId) {
+    if (_factoryId != factoryId) {
+      _factoryId = factoryId;
+      initIncidents(_factoryId);
+    }
+  }
+
+  Future<void> initIncidents([String? factoryId]) async {
+    if (factoryId != null || (factoryId == null && _factoryId != null)) {
+      _factoryId = factoryId;
+    }
     emit(const IncidentsLoading());
     try {
-      final activeRes = await _incidentRepo.getActiveIncidents();
-      final historyRes = await _incidentRepo.getIncidentHistory();
+      final activeRes = await _incidentRepo.getActiveIncidents(
+        factoryId: _factoryId,
+      );
+      final historyRes = await _incidentRepo.getIncidentHistory(
+        factoryId: _factoryId,
+      );
 
+      if (isClosed) return;
       if (activeRes.isFailure || historyRes.isFailure) {
         emit(
           IncidentsError(
@@ -34,12 +52,13 @@ class IncidentsCubit extends Cubit<IncidentsState> {
       final history = historyRes.dataOrNull ?? [];
 
       _activeIncidentsSub?.cancel();
-      _activeIncidentsSub = _incidentRepo.watchActiveIncidents().listen((
-        updatedActive,
-      ) {
-        _refreshWithActive(updatedActive);
-      });
+      _activeIncidentsSub = _incidentRepo
+          .watchActiveIncidents(factoryId: _factoryId)
+          .listen((updatedActive) {
+            _refreshWithActive(updatedActive);
+          });
 
+      if (isClosed) return;
       emit(
         _applyHistoryFilters(
           IncidentsLoaded(
@@ -50,12 +69,16 @@ class IncidentsCubit extends Cubit<IncidentsState> {
         ),
       );
     } catch (e) {
+      if (isClosed) return;
       emit(IncidentsError('Incidents initialization error: $e'));
     }
   }
 
   Future<void> refreshHistory() async {
-    final historyRes = await _incidentRepo.getIncidentHistory();
+    final historyRes = await _incidentRepo.getIncidentHistory(
+      factoryId: _factoryId,
+    );
+    if (isClosed) return;
     if (historyRes.isSuccess) {
       final current = state;
       if (current is IncidentsLoaded) {

@@ -31,6 +31,7 @@ class TopologyCubit extends Cubit<TopologyState> {
   StreamSubscription<List<DeviceStatusEntity>>? _statusSubscription;
   List<DeviceEntity> _cachedDevices = [];
   List<UniFiDeviceEntity> _cachedInfra = [];
+  String? _factoryId;
 
   TopologyCubit(
     this._deviceRepo,
@@ -40,10 +41,22 @@ class TopologyCubit extends Cubit<TopologyState> {
     this._builder,
   ) : super(const TopologyLoading());
 
-  Future<void> init() async {
+  String? get currentFactoryId => _factoryId;
+
+  void setFactory(String? factoryId) {
+    if (_factoryId != factoryId) {
+      _factoryId = factoryId;
+      init(_factoryId);
+    }
+  }
+
+  Future<void> init([String? factoryId]) async {
+    if (factoryId != null || (factoryId == null && _factoryId != null)) {
+      _factoryId = factoryId;
+    }
     emit(const TopologyLoading());
     try {
-      final devRes = await _deviceRepo.getDevices();
+      final devRes = await _deviceRepo.getDevices(factoryId: _factoryId);
       if (devRes.isFailure) {
         emit(
           TopologyError(
@@ -54,7 +67,9 @@ class TopologyCubit extends Cubit<TopologyState> {
       }
       _cachedDevices = devRes.dataOrNull!;
 
-      final infraRes = await _infraRepo.getInfrastructureDevices();
+      final infraRes = await _infraRepo.getInfrastructureDevices(
+        factoryId: _factoryId,
+      );
       _cachedInfra = infraRes.dataOrNull ?? [];
 
       // Initial statuses
@@ -89,6 +104,7 @@ class TopologyCubit extends Cubit<TopologyState> {
       emit(TopologyLoaded(locations: locationNodes, enterpriseGraph: graph));
 
       // Watch live status updates
+      _statusSubscription?.cancel();
       _statusSubscription = _monitoringRepo.watchAllDeviceStatuses().listen((
         statuses,
       ) {

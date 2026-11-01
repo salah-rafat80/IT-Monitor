@@ -45,6 +45,7 @@ enum PingFailureReason {
 class CheckResult extends Equatable {
   final int deviceId;
   final String? assetId;
+  final String? factoryId;
   final String targetIp;
   final CheckType checkType;
   final DateTime timestamp;
@@ -60,6 +61,7 @@ class CheckResult extends Equatable {
   const CheckResult({
     required this.deviceId,
     String? assetId,
+    this.factoryId,
     required this.targetIp,
     this.checkType = CheckType.icmp,
     required this.timestamp,
@@ -80,6 +82,7 @@ class CheckResult extends Equatable {
   factory CheckResult.success({
     required int deviceId,
     String? assetId,
+    String? factoryId,
     required String targetIp,
     required DateTime timestamp,
     int? latencyMs,
@@ -91,6 +94,7 @@ class CheckResult extends Equatable {
     return CheckResult(
       deviceId: deviceId,
       assetId: assetId,
+      factoryId: factoryId,
       targetIp: targetIp,
       timestamp: timestamp,
       isSuccess: true,
@@ -106,6 +110,7 @@ class CheckResult extends Equatable {
   factory CheckResult.failure({
     required int deviceId,
     String? assetId,
+    String? factoryId,
     required String targetIp,
     required DateTime timestamp,
     required String errorMessage,
@@ -116,6 +121,7 @@ class CheckResult extends Equatable {
     return CheckResult(
       deviceId: deviceId,
       assetId: assetId,
+      factoryId: factoryId,
       targetIp: targetIp,
       timestamp: timestamp,
       isSuccess: false,
@@ -131,6 +137,7 @@ class CheckResult extends Equatable {
   List<Object?> get props => [
     deviceId,
     assetId,
+    factoryId,
     targetIp,
     checkType,
     timestamp,

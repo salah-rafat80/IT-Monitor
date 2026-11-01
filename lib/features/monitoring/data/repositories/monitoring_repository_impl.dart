@@ -133,10 +133,28 @@ class MonitoringRepositoryImpl implements MonitoringRepository {
     }
 
     try {
+      String effectiveFactoryId = result.factoryId ?? 'unassigned';
+      if (effectiveFactoryId == 'unassigned') {
+        final dev = await (_db.select(
+          _db.devices,
+        )..where((d) => d.id.equals(result.deviceId))).getSingleOrNull();
+        if (dev != null && dev.factoryId.isNotEmpty) {
+          effectiveFactoryId = dev.factoryId;
+        } else {
+          final infra = await (_db.select(
+            _db.infrastructureDevices,
+          )..where((d) => d.id.equals(result.deviceId))).getSingleOrNull();
+          if (infra != null && infra.factoryId.isNotEmpty) {
+            effectiveFactoryId = infra.factoryId;
+          }
+        }
+      }
+
       await _db
           .into(_db.checkResults)
           .insert(
             CheckResultsCompanion.insert(
+              factoryId: Value(effectiveFactoryId),
               deviceId: result.deviceId,
               assetId: Value(result.assetId),
               targetIp: result.targetIp,

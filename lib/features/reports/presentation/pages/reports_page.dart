@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/di/injection.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../factories/presentation/bloc/factory_cubit.dart';
 import '../../domain/entities/report_entity.dart';
 import '../bloc/reports_cubit.dart';
 
@@ -11,10 +12,20 @@ class ReportsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final initialFactoryId = context
+        .read<FactoryCubit>()
+        .state
+        .selectedFactoryId;
     return BlocProvider(
       create: (_) =>
-          getIt<ReportsCubit>()..loadReport(ReportPeriod.last24Hours),
-      child: const _ReportsView(),
+          getIt<ReportsCubit>()
+            ..loadReport(ReportPeriod.last24Hours, initialFactoryId),
+      child: BlocListener<FactoryCubit, FactoryState>(
+        listener: (context, state) {
+          context.read<ReportsCubit>().setFactory(state.selectedFactoryId);
+        },
+        child: const _ReportsView(),
+      ),
     );
   }
 }
@@ -143,6 +154,8 @@ class _ReportsView extends StatelessWidget {
 
             if (state is ReportsLoaded) {
               final report = state.report;
+              final factoryState = context.watch<FactoryCubit>().state;
+              final factoryScopeName = factoryState.activeFactoryName;
 
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -165,7 +178,7 @@ class _ReportsView extends StatelessWidget {
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              'Historical telemetry statistics from ${report.startDate.toString().split('.')[0]} to ${report.endDate.toString().split('.')[0]}',
+                              'Historical telemetry statistics ($factoryScopeName) from ${report.startDate.toString().split('.')[0]} to ${report.endDate.toString().split('.')[0]}',
                               style: const TextStyle(
                                 fontSize: 12,
                                 color: AppColors.textSecondaryDark,
@@ -238,7 +251,7 @@ class _ReportsView extends StatelessWidget {
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
-                                  'Historical telemetry statistics from ${report.startDate.toString().split('.')[0]} to ${report.endDate.toString().split('.')[0]}',
+                                  'Historical telemetry statistics ($factoryScopeName) from ${report.startDate.toString().split('.')[0]} to ${report.endDate.toString().split('.')[0]}',
                                   style: const TextStyle(
                                     fontSize: 12,
                                     color: AppColors.textSecondaryDark,

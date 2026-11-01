@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../../../core/di/injection.dart';
 import '../../../auth/domain/entities/user_entity.dart';
 import '../../../auth/presentation/bloc/auth_cubit.dart';
+import '../../../factories/presentation/bloc/factory_cubit.dart';
 import '../bloc/incidents_cubit.dart';
 import '../bloc/incidents_state.dart';
 import '../widgets/incident_details_modal.dart';
@@ -16,9 +17,19 @@ class IncidentsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final initialFactoryId = context
+        .read<FactoryCubit>()
+        .state
+        .selectedFactoryId;
     return BlocProvider<IncidentsCubit>(
-      create: (context) => getIt<IncidentsCubit>()..initIncidents(),
-      child: const IncidentsView(),
+      create: (context) =>
+          getIt<IncidentsCubit>()..initIncidents(initialFactoryId),
+      child: BlocListener<FactoryCubit, FactoryState>(
+        listener: (context, state) {
+          context.read<IncidentsCubit>().setFactory(state.selectedFactoryId);
+        },
+        child: const IncidentsView(),
+      ),
     );
   }
 }
@@ -34,6 +45,7 @@ class IncidentsView extends StatelessWidget {
     final userRole = user?.role ?? UserRole.viewer;
     final currentUsername = user?.username ?? 'Viewer';
     final isAdmin = userRole == UserRole.admin;
+    final factoryState = context.watch<FactoryCubit>().state;
 
     return DefaultTabController(
       length: 2,
@@ -64,6 +76,25 @@ class IncidentsView extends StatelessWidget {
                     fontSize: 11,
                     fontWeight: FontWeight.bold,
                     color: isAdmin ? theme.primaryColor : Colors.grey,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0F62FE).withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(
+                    color: const Color(0xFF0F62FE).withValues(alpha: 0.3),
+                  ),
+                ),
+                child: Text(
+                  factoryState.activeFactoryName,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF0F62FE),
                   ),
                 ),
               ),

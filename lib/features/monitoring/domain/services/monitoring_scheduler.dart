@@ -12,6 +12,9 @@ import 'package:it_network_monitor/features/incidents/domain/services/incident_e
 import 'ping_checker.dart';
 import 'status_engine.dart';
 
+import '../../../factories/domain/entities/factory_entity.dart';
+import '../../../factories/domain/entities/gateway_status_entity.dart';
+import '../../../factories/domain/repositories/factory_repository.dart';
 import '../../../infrastructure/domain/entities/unifi_device_entity.dart';
 import '../../../infrastructure/domain/repositories/infrastructure_repository.dart';
 
@@ -22,6 +25,7 @@ class MonitoringScheduler {
   final PingChecker _pingChecker;
   final IncidentEngine? _incidentEngine;
   final InfrastructureRepository? _infrastructureRepo;
+  final FactoryRepository? _factoryRepo;
 
   MonitoringConfig _config = const MonitoringConfig();
   Timer? _schedulerLoopTimer;
@@ -54,6 +58,7 @@ class MonitoringScheduler {
     this._pingChecker, [
     this._incidentEngine,
     this._infrastructureRepo,
+    this._factoryRepo,
   ]) {
     _concurrencyLimiter = AsyncSemaphore(_config.maxConcurrentChecks);
   }
@@ -256,6 +261,38 @@ class MonitoringScheduler {
       }
     }
 
+    // Monitor factory gateways (RNF 192.168.22.1, BNF 192.168.21.1) as first-class persistent targets
+    if (_factoryRepo != null) {
+      final factoriesRes = await _factoryRepo.getFactories(
+        includeInactive: false,
+      );
+      final activeFactories = (factoriesRes.dataOrNull ?? [])
+          .where(
+            (f) =>
+                f.id != 'unassigned' &&
+                f.gatewayIp != null &&
+                f.gatewayIp!.trim().isNotEmpty,
+          )
+          .toList();
+
+      for (final factory in activeFactories) {
+        final virtualId = factory.id == 'rnf'
+            ? 50001
+            : (factory.id == 'bnf'
+                  ? 50002
+                  : (50000 + factory.id.hashCode.abs() % 1000));
+        if (!force) {
+          final lastCheck = _lastCheckTimestamps[virtualId];
+          if (lastCheck != null &&
+              now.difference(lastCheck).inSeconds <
+                  _config.checkIntervalSeconds) {
+            continue;
+          }
+        }
+        targets.add(_MonitoringTarget.gateway(factory, virtualId));
+      }
+    }
+
     if (waitForCompletion) {
       try {
         return await _processTargetsQueue(
@@ -320,7 +357,9 @@ class MonitoringScheduler {
           continue;
         }
 
-        if (target.isInfra) {
+        if (target.isGateway) {
+          await _runCheckForGateway(target.factory!, target.id);
+        } else if (target.isInfra) {
           await _runCheckForInfraDevice(target.infra!);
         } else {
           await _runCheckForDevice(target.device!);
@@ -339,6 +378,110 @@ class MonitoringScheduler {
     }
 
     return allCompletedSuccessfully;
+  }
+
+  Future<void> _runCheckForGateway(FactoryEntity factory, int virtualId) async {
+    final gatewayIp = factory.gatewayIp;
+    if (gatewayIp == null || gatewayIp.trim().isEmpty) return;
+
+    final checkCompleter = Completer<void>();
+    _inFlightCheckCompleters[virtualId] = checkCompleter;
+    await _concurrencyLimiter.acquire();
+    try {
+      _inFlightDeviceIds.add(virtualId);
+      final checkTime = DateTime.now();
+      _lastCheckTimestamps[virtualId] = checkTime;
+      _totalChecksExecuted++;
+
+      final pingRes = await _pingChecker.checkPing(
+        deviceId: virtualId,
+        targetIp: gatewayIp,
+        timeout: Duration(seconds: _config.timeoutSeconds),
+      );
+
+      final checkResult = CheckResult(
+        deviceId: virtualId,
+        assetId: 'gateway',
+        factoryId: factory.id,
+        targetIp: gatewayIp,
+        checkType: CheckType.icmp,
+        isSuccess: pingRes.isSuccess,
+        latencyMs: pingRes.latencyMs,
+        packetLossPercent: pingRes.packetLossPercent,
+        errorMessage: pingRes.errorMessage,
+        timestamp: checkTime,
+      );
+
+      if (!_checkResultController.isClosed) {
+        _checkResultController.add(checkResult);
+      }
+
+      await _monitoringRepo.saveCheckResult(checkResult);
+
+      if (_factoryRepo != null) {
+        final currentStatRes = await _factoryRepo.getGatewayStatus(factory.id);
+        final currentStat =
+            currentStatRes.dataOrNull ??
+            GatewayStatusEntity(
+              factoryId: factory.id,
+              gatewayIp: gatewayIp,
+              status: GatewayHealthStatus.unknown,
+            );
+
+        int consecutiveFailures = currentStat.consecutiveFailures;
+        int consecutiveSuccesses = currentStat.consecutiveSuccesses;
+        GatewayHealthStatus newHealth = currentStat.status;
+        DateTime? lastSuccessful = currentStat.lastSuccessfulCheckAt;
+
+        if (checkResult.isSuccess) {
+          consecutiveSuccesses++;
+          consecutiveFailures = 0;
+          lastSuccessful = checkTime;
+
+          if (consecutiveSuccesses >= _config.recoveryThreshold) {
+            final latency = checkResult.latencyMs ?? 0;
+            newHealth = latency > 150
+                ? GatewayHealthStatus.degraded
+                : GatewayHealthStatus.online;
+          }
+        } else {
+          consecutiveFailures++;
+          consecutiveSuccesses = 0;
+
+          if (consecutiveFailures >= _config.failureThreshold) {
+            newHealth = GatewayHealthStatus.down;
+          }
+        }
+
+        final updatedStatus = GatewayStatusEntity(
+          factoryId: factory.id,
+          gatewayIp: gatewayIp,
+          status: newHealth,
+          lastCheckAt: checkTime,
+          lastSuccessfulCheckAt: lastSuccessful,
+          latencyMs: checkResult.latencyMs,
+          consecutiveFailures: consecutiveFailures,
+          consecutiveSuccesses: consecutiveSuccesses,
+          failureReason: checkResult.errorMessage,
+        );
+
+        await _factoryRepo.saveGatewayStatus(updatedStatus);
+      }
+    } catch (e, st) {
+      _unexpectedExceptionCount++;
+      _logDiagnostic(
+        'Unexpected error checking factory gateway ${factory.id} ($gatewayIp)',
+        error: e,
+        stackTrace: st,
+      );
+    } finally {
+      _inFlightDeviceIds.remove(virtualId);
+      if (!checkCompleter.isCompleted) {
+        checkCompleter.complete();
+      }
+      _inFlightCheckCompleters.remove(virtualId);
+      _concurrencyLimiter.release();
+    }
   }
 
   Future<void> _runCheckForInfraDevice(UniFiDeviceEntity infra) async {
@@ -528,12 +671,24 @@ class _MonitoringTarget {
   final int id;
   final DeviceEntity? device;
   final UniFiDeviceEntity? infra;
+  final FactoryEntity? factory;
 
-  _MonitoringTarget.device(this.device) : id = device!.id, infra = null;
+  _MonitoringTarget.device(this.device)
+    : id = device!.id,
+      infra = null,
+      factory = null;
 
-  _MonitoringTarget.infra(this.infra) : id = 10000 + infra!.id, device = null;
+  _MonitoringTarget.infra(this.infra)
+    : id = 10000 + infra!.id,
+      device = null,
+      factory = null;
+
+  _MonitoringTarget.gateway(this.factory, this.id)
+    : device = null,
+      infra = null;
 
   bool get isInfra => infra != null;
+  bool get isGateway => factory != null;
 }
 
 /// Asynchronous counting semaphore to strictly bound concurrent checks

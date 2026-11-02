@@ -47,6 +47,7 @@ class _WallDisplayHeaderState extends State<WallDisplayHeader> {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = context.appTokens;
     final timeStr = DateFormat('yyyy-MM-dd • HH:mm:ss').format(_now);
     final lastUpdateStr = widget.lastUpdatedAt != null
         ? DateFormat('HH:mm:ss').format(widget.lastUpdatedAt!)
@@ -54,29 +55,23 @@ class _WallDisplayHeaderState extends State<WallDisplayHeader> {
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      decoration: const BoxDecoration(
-        color: AppColors.darkSurface,
-        border: Border(
-          bottom: BorderSide(color: AppColors.darkBorder, width: 1),
-        ),
+      decoration: BoxDecoration(
+        color: tokens.surface,
+        border: Border(bottom: BorderSide(color: tokens.cardBorder, width: 1)),
       ),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         child: Row(
           children: [
             // Left: Logo & Title
-            const Icon(
-              Icons.monitor_heart_outlined,
-              color: AppColors.primary,
-              size: 26,
-            ),
+            Icon(Icons.monitor_heart_outlined, color: tokens.primary, size: 26),
             const SizedBox(width: 10),
-            const Text(
+            Text(
               'IT NETWORK MONITOR',
               style: TextStyle(
                 fontWeight: FontWeight.bold,
                 letterSpacing: 1.2,
-                color: AppColors.textPrimaryDark,
+                color: tokens.textPrimary,
                 fontSize: 16,
               ),
             ),
@@ -84,18 +79,18 @@ class _WallDisplayHeaderState extends State<WallDisplayHeader> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
               decoration: BoxDecoration(
-                color: AppColors.primary.withValues(alpha: 0.15),
+                color: tokens.primary.withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(4),
                 border: Border.all(
-                  color: AppColors.primary.withValues(alpha: 0.4),
+                  color: tokens.primary.withValues(alpha: 0.4),
                 ),
               ),
-              child: const Text(
+              child: Text(
                 'WALL DISPLAY',
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 10,
-                  color: AppColors.primary,
+                  color: tokens.primary,
                   letterSpacing: 1.0,
                 ),
               ),
@@ -107,26 +102,26 @@ class _WallDisplayHeaderState extends State<WallDisplayHeader> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
               decoration: BoxDecoration(
-                color: AppColors.darkCard,
+                color: tokens.surfaceSecondary,
                 borderRadius: BorderRadius.circular(6),
-                border: Border.all(color: AppColors.darkBorder),
+                border: Border.all(color: tokens.cardBorder),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.access_time_rounded,
                     size: 14,
-                    color: AppColors.primary,
+                    color: tokens.primary,
                   ),
                   const SizedBox(width: 6),
                   Text(
                     timeStr,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontFamily: 'monospace',
                       fontWeight: FontWeight.w600,
                       fontSize: 13,
-                      color: AppColors.textPrimaryDark,
+                      color: tokens.textPrimary,
                     ),
                   ),
                 ],
@@ -140,13 +135,13 @@ class _WallDisplayHeaderState extends State<WallDisplayHeader> {
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
                 color: widget.isConnected
-                    ? AppColors.statusUp.withValues(alpha: 0.12)
-                    : AppColors.statusDown.withValues(alpha: 0.12),
+                    ? tokens.statusOnline.withValues(alpha: 0.12)
+                    : tokens.statusOffline.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(6),
                 border: Border.all(
                   color: widget.isConnected
-                      ? AppColors.statusUp.withValues(alpha: 0.4)
-                      : AppColors.statusDown.withValues(alpha: 0.4),
+                      ? tokens.statusOnline.withValues(alpha: 0.4)
+                      : tokens.statusOffline.withValues(alpha: 0.4),
                 ),
               ),
               child: Row(
@@ -157,8 +152,8 @@ class _WallDisplayHeaderState extends State<WallDisplayHeader> {
                     height: 8,
                     decoration: BoxDecoration(
                       color: widget.isConnected
-                          ? AppColors.statusUp
-                          : AppColors.statusDown,
+                          ? tokens.statusOnline
+                          : tokens.statusOffline,
                       shape: BoxShape.circle,
                     ),
                   ),
@@ -171,8 +166,8 @@ class _WallDisplayHeaderState extends State<WallDisplayHeader> {
                       fontWeight: FontWeight.bold,
                       fontSize: 11,
                       color: widget.isConnected
-                          ? AppColors.statusUp
-                          : AppColors.statusDown,
+                          ? tokens.statusOnline
+                          : tokens.statusOffline,
                     ),
                   ),
                 ],
@@ -196,26 +191,26 @@ class _WallDisplayHeaderState extends State<WallDisplayHeader> {
                   vertical: 5,
                 ),
                 decoration: BoxDecoration(
-                  color: AppColors.darkCard,
+                  color: tokens.surfaceSecondary,
                   borderRadius: BorderRadius.circular(6),
-                  border: Border.all(color: AppColors.darkBorder),
+                  border: Border.all(color: tokens.cardBorder),
                 ),
                 child: Row(
                   children: [
-                    const Icon(
+                    Icon(
                       Icons.sort_rounded,
                       size: 14,
-                      color: AppColors.textSecondaryDark,
+                      color: tokens.textSecondary,
                     ),
                     const SizedBox(width: 4),
                     Text(
                       widget.currentSortBy == 'severity'
                           ? 'Sort: Severity'
                           : 'Sort: Owner',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontWeight: FontWeight.w600,
                         fontSize: 11,
-                        color: AppColors.textPrimaryDark,
+                        color: tokens.textPrimary,
                       ),
                     ),
                   ],
@@ -239,22 +234,22 @@ class _WallDisplayHeaderState extends State<WallDisplayHeader> {
                   horizontal: 12,
                   vertical: 6,
                 ),
-                side: const BorderSide(color: AppColors.darkBorder),
+                side: BorderSide(color: tokens.cardBorder),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(6),
                 ),
               ),
-              icon: const Icon(
+              icon: Icon(
                 Icons.fullscreen_exit_rounded,
                 size: 16,
-                color: AppColors.textSecondaryDark,
+                color: tokens.textSecondary,
               ),
-              label: const Text(
+              label: Text(
                 'Exit [ESC]',
                 style: TextStyle(
                   fontWeight: FontWeight.w600,
                   fontSize: 11,
-                  color: AppColors.textSecondaryDark,
+                  color: tokens.textSecondary,
                 ),
               ),
             ),

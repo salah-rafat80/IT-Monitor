@@ -6,6 +6,7 @@ import '../../domain/entities/network_range.dart';
 class DiscoveryStartDialog extends StatefulWidget {
   final DiscoveryConfigEntity config;
   final List<NetworkRange> ranges;
+  final Set<String>? initialSelectedRanges;
   final Function({
     required List<String> ranges,
     required List<String> strategies,
@@ -19,6 +20,7 @@ class DiscoveryStartDialog extends StatefulWidget {
     required this.config,
     required this.ranges,
     required this.onStart,
+    this.initialSelectedRanges,
   });
 
   @override
@@ -34,10 +36,21 @@ class _DiscoveryStartDialogState extends State<DiscoveryStartDialog> {
   @override
   void initState() {
     super.initState();
-    _selectedRanges = widget.ranges
+    final enabledRanges = widget.ranges
         .where((r) => r.isEnabled)
         .map((r) => r.cidr)
         .toSet();
+
+    if (widget.initialSelectedRanges != null &&
+        widget.initialSelectedRanges!.isNotEmpty) {
+      final filtered = widget.initialSelectedRanges!
+          .where(enabledRanges.contains)
+          .toSet();
+      _selectedRanges = filtered.isNotEmpty ? filtered : enabledRanges;
+    } else {
+      _selectedRanges = enabledRanges;
+    }
+
     _selectedStrategies = widget.config.enabledStrategies.toSet();
     _concurrency = widget.config.maxConcurrency;
     _timeoutSeconds = widget.config.timeoutSeconds;
@@ -118,10 +131,53 @@ class _DiscoveryStartDialogState extends State<DiscoveryStartDialog> {
                     ],
                   ),
                 ),
-              const SizedBox(height: 16),
-              const Text(
-                'Target Network Scopes:',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Target Network Scopes:',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                  ),
+                  if (widget.ranges.isNotEmpty)
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        TextButton(
+                          style: TextButton.styleFrom(
+                            visualDensity: VisualDensity.compact,
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                          ),
+                          onPressed: () {
+                            setState(() {
+                              _selectedRanges = widget.ranges
+                                  .where((r) => r.isEnabled)
+                                  .map((r) => r.cidr)
+                                  .toSet();
+                            });
+                          },
+                          child: const Text(
+                            'Select All',
+                            style: TextStyle(fontSize: 12),
+                          ),
+                        ),
+                        TextButton(
+                          style: TextButton.styleFrom(
+                            visualDensity: VisualDensity.compact,
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                          ),
+                          onPressed: () {
+                            setState(() {
+                              _selectedRanges.clear();
+                            });
+                          },
+                          child: const Text(
+                            'Clear',
+                            style: TextStyle(fontSize: 12),
+                          ),
+                        ),
+                      ],
+                    ),
+                ],
               ),
               const SizedBox(height: 8),
               if (widget.ranges.isEmpty)

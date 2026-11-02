@@ -10,6 +10,7 @@ import '../../../../core/errors/failures.dart';
 import '../../../../core/utils/result.dart';
 import '../../../monitoring/data/datasources/monitoring_service_client.dart';
 import '../../domain/entities/factory_entity.dart';
+import '../../domain/entities/gateway_status_entity.dart';
 import '../../domain/repositories/factory_repository.dart';
 
 @LazySingleton(as: FactoryRepository)
@@ -305,5 +306,129 @@ class FactoryRepositoryImpl implements FactoryRepository {
         .select(_db.factories)
         .watch()
         .map((rows) => rows.map(_mapRowToEntity).toList());
+  }
+
+  // --- Gateway Monitoring Persistence ---
+
+  final StreamController<List<GatewayStatusEntity>> _gatewayStatusesController =
+      StreamController<List<GatewayStatusEntity>>.broadcast();
+
+  GatewayStatusEntity _mapGatewayRow(Map<String, dynamic> row) {
+    return GatewayStatusEntity(
+      factoryId: row['factory_id'] as String? ?? '',
+      gatewayIp: row['gateway_ip'] as String? ?? '',
+      status: GatewayHealthStatus.values.firstWhere(
+        (e) => e.name == row['status'],
+        orElse: () => GatewayHealthStatus.unknown,
+      ),
+      lastCheckAt: row['last_check_at'] != null
+          ? DateTime.fromMillisecondsSinceEpoch(row['last_check_at'] as int)
+          : null,
+      lastSuccessfulCheckAt: row['last_successful_check_at'] != null
+          ? DateTime.fromMillisecondsSinceEpoch(
+              row['last_successful_check_at'] as int,
+            )
+          : null,
+      latencyMs: row['latency_ms'] as int?,
+      consecutiveFailures: row['consecutive_failures'] as int? ?? 0,
+      consecutiveSuccesses: row['consecutive_successes'] as int? ?? 0,
+      failureReason: row['failure_reason'] as String?,
+    );
+  }
+
+  @override
+  Future<Result<List<GatewayStatusEntity>>> getGatewayStatuses() async {
+    try {
+      final rows = await _db
+          .customSelect('SELECT * FROM gateway_statuses')
+          .get();
+      final list = rows.map((r) => _mapGatewayRow(r.data)).toList();
+      return Result.success(list);
+    } catch (e) {
+      return Result.failure(
+        DatabaseFailure('Failed to load gateway statuses: $e'),
+      );
+    }
+  }
+
+  @override
+  Future<Result<GatewayStatusEntity?>> getGatewayStatus(
+    String factoryId,
+  ) async {
+    try {
+      final rows = await _db
+          .customSelect(
+            'SELECT * FROM gateway_statuses WHERE factory_id = ? LIMIT 1',
+            variables: [Variable.withString(factoryId)],
+          )
+          .get();
+      if (rows.isEmpty) return Result.success(null);
+      return Result.success(_mapGatewayRow(rows.first.data));
+    } catch (e) {
+      return Result.failure(
+        DatabaseFailure('Failed to load gateway status for $factoryId: $e'),
+      );
+    }
+  }
+
+  @override
+  Future<Result<void>> saveGatewayStatus(GatewayStatusEntity status) async {
+    try {
+      await _db.customStatement(
+        '''
+        INSERT INTO gateway_statuses (
+          factory_id, gateway_ip, status, last_check_at, last_successful_check_at,
+          latency_ms, consecutive_failures, consecutive_successes, failure_reason
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(factory_id) DO UPDATE SET
+          gateway_ip = excluded.gateway_ip,
+          status = excluded.status,
+          last_check_at = excluded.last_check_at,
+          last_successful_check_at = excluded.last_successful_check_at,
+          latency_ms = excluded.latency_ms,
+          consecutive_failures = excluded.consecutive_failures,
+          consecutive_successes = excluded.consecutive_successes,
+          failure_reason = excluded.failure_reason;
+        ''',
+        [
+          status.factoryId,
+          status.gatewayIp,
+          status.status.name,
+          status.lastCheckAt?.millisecondsSinceEpoch,
+          status.lastSuccessfulCheckAt?.millisecondsSinceEpoch,
+          status.latencyMs,
+          status.consecutiveFailures,
+          status.consecutiveSuccesses,
+          status.failureReason,
+        ],
+      );
+
+      // Notify watchers
+      getGatewayStatuses().then((res) {
+        if (res.isSuccess &&
+            res.dataOrNull != null &&
+            !_gatewayStatusesController.isClosed) {
+          _gatewayStatusesController.add(res.dataOrNull!);
+        }
+      });
+
+      return Result.success(null);
+    } catch (e) {
+      return Result.failure(
+        DatabaseFailure('Failed to save gateway status: $e'),
+      );
+    }
+  }
+
+  @override
+  Stream<List<GatewayStatusEntity>> watchGatewayStatuses() {
+    getGatewayStatuses().then((res) {
+      if (res.isSuccess &&
+          res.dataOrNull != null &&
+          !_gatewayStatusesController.isClosed) {
+        _gatewayStatusesController.add(res.dataOrNull!);
+      }
+    });
+    return _gatewayStatusesController.stream;
   }
 }

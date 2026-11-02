@@ -247,8 +247,12 @@ class InfrastructureStatusCards extends StatelessWidget {
     dynamic incident,
     bool isAdmin,
   ) {
-    final statusEnum = status?.status ?? DeviceStatusEnum.unknown;
-    final isDown = statusEnum == DeviceStatusEnum.down;
+    final statusEnum = status?.status ?? DeviceStatusEnum.down;
+    final isDown =
+        statusEnum == DeviceStatusEnum.down ||
+        statusEnum == DeviceStatusEnum.unknown ||
+        statusEnum == DeviceStatusEnum.unreachable;
+
     final cardBorder = isDark ? AppColors.darkBorder : AppColors.lightBorder;
     final textSecondary = isDark
         ? AppColors.textSecondaryDark

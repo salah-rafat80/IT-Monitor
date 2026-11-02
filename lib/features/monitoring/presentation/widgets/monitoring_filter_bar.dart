@@ -216,12 +216,12 @@ class MonitoringFilterBar extends StatelessWidget {
                       value: 'down',
                       child: Text('Disconnected'),
                     ),
-                    DropdownMenuItem(value: 'unknown', child: Text('Unknown')),
                     DropdownMenuItem(
                       value: 'maintenance',
                       child: Text('Maintenance'),
                     ),
                   ],
+
                   onChanged: (val) => cubit.setStatusFilter(val),
                 ),
                 const SizedBox(width: 12),

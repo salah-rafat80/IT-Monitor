@@ -215,6 +215,15 @@ class NetworkDiscoveryPage extends StatelessWidget {
                       ranges: state.rangesWithStatus,
                       activeSubnetFilter: state.subnetFilter,
                       onSelectSubnet: (cidr) => cubit.setSubnetFilter(cidr),
+                      onScanRange: isAdmin
+                          ? (range) {
+                              _showStartScanDialog(
+                                context,
+                                state,
+                                initialSelectedRanges: {range.cidr},
+                              );
+                            }
+                          : null,
                       isAdmin: isAdmin,
                       onManageScopes: () =>
                           _showManageRangesDialog(context, isAdmin),
@@ -331,8 +340,9 @@ class NetworkDiscoveryPage extends StatelessWidget {
 
   void _showStartScanDialog(
     BuildContext context,
-    NetworkDiscoveryLoaded state,
-  ) {
+    NetworkDiscoveryLoaded state, {
+    Set<String>? initialSelectedRanges,
+  }) {
     final factoryCubit = context.read<FactoryCubit>();
     final activeFactoryId = factoryCubit.state.selectedFactoryId;
     if (activeFactoryId == null) {
@@ -365,11 +375,16 @@ class NetworkDiscoveryPage extends StatelessWidget {
         .where((r) => r.factoryId == activeFactoryId)
         .toList();
 
+    final effectiveInitialRanges =
+        initialSelectedRanges ??
+        (state.subnetFilter != null ? {state.subnetFilter!} : null);
+
     showDialog(
       context: context,
       builder: (ctx) => DiscoveryStartDialog(
         config: state.config,
         ranges: ranges,
+        initialSelectedRanges: effectiveInitialRanges,
         onStart:
             ({
               required ranges,

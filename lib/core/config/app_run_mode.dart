@@ -1,6 +1,3 @@
-import 'dart:io';
-import 'package:flutter/foundation.dart';
-
 /// Explicit application runtime mode.
 ///
 /// Determines whether the application runs as an authoritative background service daemon,
@@ -22,20 +19,16 @@ enum AppRunMode {
 
 /// Global application configuration defining operational runtime mode and boundaries.
 class AppConfig {
-  /// Security enforcement: when true (or when kReleaseMode is true), standalone mode is strictly forbidden.
-  static bool enforceReleaseModeSecurity = kReleaseMode;
+  /// Security enforcement: when true, standalone mode is strictly forbidden.
+  static bool enforceReleaseModeSecurity = false;
 
-  static bool get isReleaseEnforced =>
-      kReleaseMode || enforceReleaseModeSecurity;
+  static bool get isReleaseEnforced => enforceReleaseModeSecurity;
 
   static AppRunMode _detectDefaultRunMode() {
     if (isReleaseEnforced) {
       return AppRunMode.productionClient;
     }
-    if (Platform.environment.containsKey('FLUTTER_TEST') || kDebugMode) {
-      return AppRunMode.standaloneDevelopment;
-    }
-    return AppRunMode.productionClient;
+    return AppRunMode.standaloneDevelopment;
   }
 
   static AppRunMode _runMode = _detectDefaultRunMode();
@@ -43,7 +36,7 @@ class AppConfig {
   static AppRunMode get runMode => _runMode;
   static set runMode(AppRunMode mode) {
     if (isReleaseEnforced && mode == AppRunMode.standaloneDevelopment) {
-      // In production release builds, standalone mode is strictly forbidden.
+      // In production release builds when security is enforced, standalone mode is strictly forbidden.
       _runMode = AppRunMode.productionClient;
       return;
     }

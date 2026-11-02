@@ -7,6 +7,7 @@ class DiscoveryRangesCard extends StatelessWidget {
   final List<NetworkRange> ranges;
   final String? activeSubnetFilter;
   final ValueChanged<String?> onSelectSubnet;
+  final ValueChanged<NetworkRange>? onScanRange;
   final VoidCallback? onManageScopes;
   final bool isAdmin;
 
@@ -15,6 +16,7 @@ class DiscoveryRangesCard extends StatelessWidget {
     required this.ranges,
     required this.activeSubnetFilter,
     required this.onSelectSubnet,
+    this.onScanRange,
     this.onManageScopes,
     this.isAdmin = false,
   });
@@ -228,17 +230,40 @@ class DiscoveryRangesCard extends StatelessWidget {
                             ),
                           ],
                         ),
-                        const SizedBox(width: 12),
-                        Icon(
-                          isSelected
-                              ? Icons.check_circle
-                              : Icons.filter_alt_outlined,
-                          size: 18,
-                          color: !r.isEnabled
-                              ? Colors.transparent
-                              : (isSelected
-                                    ? theme.primaryColor
-                                    : theme.disabledColor),
+                        const SizedBox(width: 8),
+                        if (isAdmin && onScanRange != null && r.isEnabled) ...[
+                          IconButton(
+                            icon: const Icon(
+                              Icons.play_circle_fill_rounded,
+                              size: 22,
+                              color: Color(0xFF10B981),
+                            ),
+                            tooltip: 'Scan ${r.cidr} Now',
+                            visualDensity: VisualDensity.compact,
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(
+                              minWidth: 28,
+                              minHeight: 28,
+                            ),
+                            onPressed: () => onScanRange!(r),
+                          ),
+                          const SizedBox(width: 6),
+                        ],
+                        Tooltip(
+                          message: isSelected
+                              ? 'Clear Subnet Filter'
+                              : 'Filter by ${r.cidr}',
+                          child: Icon(
+                            isSelected
+                                ? Icons.check_circle
+                                : Icons.filter_alt_outlined,
+                            size: 18,
+                            color: !r.isEnabled
+                                ? Colors.transparent
+                                : (isSelected
+                                      ? theme.primaryColor
+                                      : theme.disabledColor),
+                          ),
                         ),
                       ],
                     ),

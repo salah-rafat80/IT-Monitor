@@ -6,52 +6,54 @@ class AppTypography {
     displayLarge: TextStyle(
       fontSize: 32,
       fontWeight: FontWeight.bold,
-      color: AppColors.textPrimaryDark,
+      color: AppColors.darkTextPrimary,
+      letterSpacing: -0.5,
     ),
     displayMedium: TextStyle(
       fontSize: 28,
       fontWeight: FontWeight.bold,
-      color: AppColors.textPrimaryDark,
+      color: AppColors.darkTextPrimary,
+      letterSpacing: -0.5,
     ),
     headlineLarge: TextStyle(
       fontSize: 24,
       fontWeight: FontWeight.bold,
-      color: AppColors.textPrimaryDark,
+      color: AppColors.darkTextPrimary,
     ),
     headlineMedium: TextStyle(
       fontSize: 20,
       fontWeight: FontWeight.w600,
-      color: AppColors.textPrimaryDark,
+      color: AppColors.darkTextPrimary,
     ),
     titleLarge: TextStyle(
       fontSize: 18,
       fontWeight: FontWeight.w600,
-      color: AppColors.textPrimaryDark,
+      color: AppColors.darkTextPrimary,
     ),
     titleMedium: TextStyle(
       fontSize: 16,
       fontWeight: FontWeight.w600,
-      color: AppColors.textPrimaryDark,
+      color: AppColors.darkTextPrimary,
     ),
     titleSmall: TextStyle(
       fontSize: 14,
       fontWeight: FontWeight.w500,
-      color: AppColors.textPrimaryDark,
+      color: AppColors.darkTextPrimary,
     ),
     bodyLarge: TextStyle(
       fontSize: 15,
       fontWeight: FontWeight.normal,
-      color: AppColors.textPrimaryDark,
+      color: AppColors.darkTextPrimary,
     ),
     bodyMedium: TextStyle(
       fontSize: 14,
       fontWeight: FontWeight.normal,
-      color: AppColors.textSecondaryDark,
+      color: AppColors.darkTextSecondary,
     ),
     bodySmall: TextStyle(
       fontSize: 12,
       fontWeight: FontWeight.normal,
-      color: AppColors.textSecondaryDark,
+      color: AppColors.darkTextSecondary,
     ),
   );
 
@@ -59,52 +61,54 @@ class AppTypography {
     displayLarge: TextStyle(
       fontSize: 32,
       fontWeight: FontWeight.bold,
-      color: AppColors.textPrimaryLight,
+      color: AppColors.lightTextPrimary,
+      letterSpacing: -0.5,
     ),
     displayMedium: TextStyle(
       fontSize: 28,
       fontWeight: FontWeight.bold,
-      color: AppColors.textPrimaryLight,
+      color: AppColors.lightTextPrimary,
+      letterSpacing: -0.5,
     ),
     headlineLarge: TextStyle(
       fontSize: 24,
       fontWeight: FontWeight.bold,
-      color: AppColors.textPrimaryLight,
+      color: AppColors.lightTextPrimary,
     ),
     headlineMedium: TextStyle(
       fontSize: 20,
       fontWeight: FontWeight.w600,
-      color: AppColors.textPrimaryLight,
+      color: AppColors.lightTextPrimary,
     ),
     titleLarge: TextStyle(
       fontSize: 18,
       fontWeight: FontWeight.w600,
-      color: AppColors.textPrimaryLight,
+      color: AppColors.lightTextPrimary,
     ),
     titleMedium: TextStyle(
       fontSize: 16,
       fontWeight: FontWeight.w600,
-      color: AppColors.textPrimaryLight,
+      color: AppColors.lightTextPrimary,
     ),
     titleSmall: TextStyle(
       fontSize: 14,
       fontWeight: FontWeight.w500,
-      color: AppColors.textPrimaryLight,
+      color: AppColors.lightTextPrimary,
     ),
     bodyLarge: TextStyle(
       fontSize: 15,
       fontWeight: FontWeight.normal,
-      color: AppColors.textPrimaryLight,
+      color: AppColors.lightTextPrimary,
     ),
     bodyMedium: TextStyle(
       fontSize: 14,
       fontWeight: FontWeight.normal,
-      color: AppColors.textSecondaryLight,
+      color: AppColors.lightTextSecondary,
     ),
     bodySmall: TextStyle(
       fontSize: 12,
       fontWeight: FontWeight.normal,
-      color: AppColors.textSecondaryLight,
+      color: AppColors.lightTextSecondary,
     ),
   );
 }

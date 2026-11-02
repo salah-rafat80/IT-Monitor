@@ -741,6 +741,19 @@ class AppDatabase extends _$AppDatabase {
         await customStatement(
           'CREATE UNIQUE INDEX IF NOT EXISTS idx_infrastructure_devices_factory_ip ON infrastructure_devices(factory_id, ip) WHERE ip != \'\' AND ip IS NOT NULL;',
         );
+        await customStatement('''
+          CREATE TABLE IF NOT EXISTS gateway_statuses (
+            factory_id TEXT PRIMARY KEY,
+            gateway_ip TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'unknown',
+            last_check_at INTEGER,
+            last_successful_check_at INTEGER,
+            latency_ms INTEGER,
+            consecutive_failures INTEGER NOT NULL DEFAULT 0,
+            consecutive_successes INTEGER NOT NULL DEFAULT 0,
+            failure_reason TEXT
+          );
+        ''');
         await _ensureDefaultFactoriesSeeded();
       },
     );

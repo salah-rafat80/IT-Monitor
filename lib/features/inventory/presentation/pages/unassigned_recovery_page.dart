@@ -102,6 +102,8 @@ class _UnassignedRecoveryPageState extends State<UnassignedRecoveryPage> {
     required String targetFactoryName,
     required List<DeviceEntity> selectedDevices,
   }) {
+    if (selectedDevices.isEmpty) return;
+
     showDialog(
       context: context,
       builder: (dialogCtx) => AlertDialog(
@@ -239,19 +241,41 @@ class _UnassignedRecoveryPageState extends State<UnassignedRecoveryPage> {
                 });
 
                 final errorMsg = res.failureOrNull?.message;
-                messenger.showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      res.isSuccess
-                          ? 'Successfully assigned ${selectedDevices.length} devices to $targetFactoryName.'
-                          : 'Failed to assign devices: ${errorMsg ?? "Unknown error"}',
+                if (res.isSuccess) {
+                  final data = res.dataOrNull;
+                  final count = data?.count ?? selectedDevices.length;
+                  if (data != null && data.hasRefreshError) {
+                    messenger.showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          'Successfully assigned $count devices to $targetFactoryName, but refreshing inventory failed: ${data.refreshError}',
+                        ),
+                        backgroundColor: Colors.orange.shade800,
+                        duration: const Duration(seconds: 6),
+                      ),
+                    );
+                  } else {
+                    messenger.showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          'Successfully assigned $count devices to $targetFactoryName.',
+                        ),
+                        backgroundColor: const Color(0xFF10B981),
+                        duration: const Duration(seconds: 4),
+                      ),
+                    );
+                  }
+                } else {
+                  messenger.showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        'Failed to assign devices: ${errorMsg ?? "Unknown error"}',
+                      ),
+                      backgroundColor: Colors.red,
+                      duration: const Duration(seconds: 8),
                     ),
-                    backgroundColor: res.isSuccess
-                        ? const Color(0xFF10B981)
-                        : Colors.red,
-                    duration: Duration(seconds: res.isSuccess ? 4 : 8),
-                  ),
-                );
+                  );
+                }
               }
             },
             child: const Text('Confirm Assignment'),
@@ -274,18 +298,33 @@ class _UnassignedRecoveryPageState extends State<UnassignedRecoveryPage> {
         .toList();
 
     return Scaffold(
-      body: BlocBuilder<DevicesCubit, DevicesState>(
-        builder: (context, state) {
-          final List<DeviceEntity> unassignedList;
+      body: BlocConsumer<DevicesCubit, DevicesState>(
+        listener: (context, state) {
           if (state is DevicesLoaded) {
+            final validIds = state.allDevices
+                .where(
+                  (d) => d.factoryId == 'unassigned' || d.factoryId.isEmpty,
+                )
+                .map((d) => d.id)
+                .toSet();
+            setState(() {
+              _selectedDeviceIds.retainWhere(validIds.contains);
+            });
+          } else if (state is DevicesError) {
+            setState(() {
+              _selectedDeviceIds.clear();
+            });
+          }
+        },
+        builder: (context, state) {
+          final isLoaded = state is DevicesLoaded;
+          final List<DeviceEntity> unassignedList;
+          if (isLoaded) {
             unassignedList = state.allDevices
                 .where(
                   (d) => d.factoryId == 'unassigned' || d.factoryId.isEmpty,
                 )
                 .toList();
-            _selectedDeviceIds.retainWhere(
-              (id) => unassignedList.any((d) => d.id == id),
-            );
           } else {
             unassignedList = [];
           }
@@ -437,7 +476,7 @@ class _UnassignedRecoveryPageState extends State<UnassignedRecoveryPage> {
 
                         // Select All button
                         TextButton.icon(
-                          onPressed: unassignedList.isEmpty
+                          onPressed: !isLoaded || unassignedList.isEmpty
                               ? null
                               : () {
                                   setState(() {
@@ -470,7 +509,7 @@ class _UnassignedRecoveryPageState extends State<UnassignedRecoveryPage> {
                         // Assignment buttons
                         if (isAdmin) ...[
                           Text(
-                            'Assign Selected (${_selectedDeviceIds.length}):',
+                            'Assign Selected (${isLoaded ? _selectedDeviceIds.length : 0}):',
                             style: const TextStyle(
                               fontWeight: FontWeight.w600,
                               fontSize: 13,
@@ -487,7 +526,9 @@ class _UnassignedRecoveryPageState extends State<UnassignedRecoveryPage> {
                                 visualDensity: VisualDensity.compact,
                               ),
                               onPressed:
-                                  _selectedDeviceIds.isEmpty || _isAssigning
+                                  !isLoaded ||
+                                      _selectedDeviceIds.isEmpty ||
+                                      _isAssigning
                                   ? null
                                   : () {
                                       final selectedDevs = unassignedList
@@ -767,7 +808,8 @@ class _UnassignedRecoveryPageState extends State<UnassignedRecoveryPage> {
                                                         horizontal: 8,
                                                       ),
                                                 ),
-                                                onPressed: _isAssigning
+                                                onPressed:
+                                                    !isLoaded || _isAssigning
                                                     ? null
                                                     : () {
                                                         _showAssignmentPreviewDialog(

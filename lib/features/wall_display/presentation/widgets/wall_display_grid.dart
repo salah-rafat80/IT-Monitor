@@ -25,19 +25,30 @@ class WallDisplayGrid extends StatelessWidget {
         final availableWidth = constraints.maxWidth;
         final availableHeight = constraints.maxHeight;
 
-        // Calculate columns and rows based on device count
-        // For 37 devices: 5 columns x 8 rows = 40 capacity
-        int crossAxisCount = 5;
-        if (availableWidth < 1200) {
-          crossAxisCount = 4;
-        } else if (availableWidth >= 2200) {
-          crossAxisCount = 6;
-        }
-
-        final int totalItems = devices.length;
-        final int rows = (totalItems / crossAxisCount).ceil();
-
         const double spacing = 6.0;
+        final int totalItems = devices.length;
+
+        // Calculate columns and rows dynamically to optimize card aspect ratio and vertical clearance
+        int crossAxisCount = (availableWidth / 200).floor().clamp(3, 7);
+        double bestScore = double.infinity;
+
+        for (int c = 3; c <= 8; c++) {
+          final int r = (totalItems / c).ceil();
+          final double w = (availableWidth - (c - 1) * spacing) / c;
+          final double h =
+              (availableHeight - (max(1, r) - 1) * spacing) / max(1, r);
+
+          if (w >= 145 && h >= 45) {
+            // Target ideal card aspect ratio of ~2.5 (e.g. 175w x 70h)
+            final double ratio = w / h;
+            final double score = (ratio - 2.5).abs();
+            if (score < bestScore) {
+              bestScore = score;
+              crossAxisCount = c;
+            }
+          }
+        }
+        final int rows = (totalItems / crossAxisCount).ceil();
 
         final double totalHorizontalSpacing = (crossAxisCount - 1) * spacing;
         final double totalVerticalSpacing = (max(1, rows) - 1) * spacing;

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../../core/theme/app_colors.dart';
 import '../../domain/entities/device_status_entity.dart';
 
 class DeviceStatusChip extends StatelessWidget {
@@ -15,6 +16,7 @@ class DeviceStatusChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = context.appTokens;
     final effectiveStatus = isMaintenance
         ? DeviceStatusEnum.maintenance
         : status;
@@ -26,33 +28,29 @@ class DeviceStatusChip extends StatelessWidget {
     switch (effectiveStatus) {
       case DeviceStatusEnum.up:
         iconData = Icons.check_circle_rounded;
-        color = const Color(0xFF10B981); // Emerald Green
+        color = tokens.statusOnline;
         text = 'Connected';
         break;
       case DeviceStatusEnum.degraded:
         iconData = Icons.warning_amber_rounded;
-        color = const Color(0xFFF59E0B); // Amber / Orange
+        color = tokens.statusDegraded;
         text = 'Degraded';
         break;
       case DeviceStatusEnum.down:
-        iconData = Icons.cancel_rounded;
-        color = const Color(0xFFEF4444); // Red
-        text = 'Disconnected';
-        break;
-      case DeviceStatusEnum.maintenance:
-        iconData = Icons.build_circle_rounded;
-        color = const Color(0xFF3B82F6); // Blue
-        text = 'Maintenance';
-        break;
       case DeviceStatusEnum.unreachable:
-        iconData = Icons.do_not_disturb_on_rounded;
-        color = const Color(0xFF8B5CF6); // Purple
-        text = 'Unreachable';
+        iconData = Icons.cancel_rounded;
+        color = tokens.statusOffline;
+        text = 'Disconnected';
         break;
       case DeviceStatusEnum.unknown:
         iconData = Icons.help_outline_rounded;
-        color = const Color(0xFF6B7280); // Grey
+        color = tokens.statusUnknown;
         text = 'Unknown';
+        break;
+      case DeviceStatusEnum.maintenance:
+        iconData = Icons.build_circle_rounded;
+        color = tokens.statusMaintenance;
+        text = 'Maintenance';
         break;
     }
 

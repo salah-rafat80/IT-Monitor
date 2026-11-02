@@ -83,24 +83,25 @@ class _WallDisplayViewState extends State<_WallDisplayView> {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = context.appTokens;
     return KeyboardListener(
       focusNode: _focusNode..requestFocus(),
       onKeyEvent: _handleKeyEvent,
       child: Scaffold(
-        backgroundColor: AppColors.darkBackground,
+        backgroundColor: tokens.background,
         body: SafeArea(
           child: BlocBuilder<MonitoringDashboardCubit, MonitoringDashboardState>(
             builder: (context, state) {
               if (state is MonitoringDashboardLoading) {
-                return const Center(
+                return Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      CircularProgressIndicator(color: AppColors.primary),
-                      SizedBox(height: 16),
+                      CircularProgressIndicator(color: tokens.primary),
+                      const SizedBox(height: 16),
                       Text(
                         'Initializing Wall Display Mode...',
-                        style: TextStyle(color: AppColors.textSecondaryDark),
+                        style: TextStyle(color: tokens.textSecondary),
                       ),
                     ],
                   ),
@@ -112,18 +113,18 @@ class _WallDisplayViewState extends State<_WallDisplayView> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const Icon(
+                      Icon(
                         Icons.error_outline_rounded,
-                        color: AppColors.statusDown,
+                        color: tokens.statusOffline,
                         size: 48,
                       ),
                       const SizedBox(height: 16),
                       Text(
                         state.message,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w600,
-                          color: AppColors.statusDown,
+                          color: tokens.statusOffline,
                         ),
                       ),
                       const SizedBox(height: 16),
@@ -217,23 +218,20 @@ class _WallDisplayViewState extends State<_WallDisplayView> {
                         horizontal: 16,
                         vertical: 4,
                       ),
-                      decoration: const BoxDecoration(
-                        color: AppColors.darkSurface,
+                      decoration: BoxDecoration(
+                        color: tokens.surface,
                         border: Border(
-                          top: BorderSide(
-                            color: AppColors.darkBorder,
-                            width: 1,
-                          ),
+                          top: BorderSide(color: tokens.cardBorder, width: 1),
                         ),
                       ),
-                      child: const Row(
+                      child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Text(
                             'Monitored Devices Grid • No Scroll / Full Coverage',
                             style: TextStyle(
                               fontSize: 10.5,
-                              color: AppColors.textSecondaryDark,
+                              color: tokens.textSecondary,
                             ),
                           ),
                           Text(
@@ -241,7 +239,7 @@ class _WallDisplayViewState extends State<_WallDisplayView> {
                             style: TextStyle(
                               fontSize: 10.5,
                               fontWeight: FontWeight.w600,
-                              color: AppColors.primary,
+                              color: tokens.primary,
                             ),
                           ),
                         ],
@@ -263,50 +261,45 @@ class _WallDisplayViewState extends State<_WallDisplayView> {
     return BlocBuilder<InfrastructureCubit, InfrastructureState>(
       builder: (context, infraState) {
         if (infraState.devices.isEmpty) return const SizedBox.shrink();
+        final tokens = context.appTokens;
 
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
           margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
           decoration: BoxDecoration(
-            color: AppColors.darkSurface,
+            color: tokens.surface,
             borderRadius: BorderRadius.circular(6),
-            border: Border.all(color: AppColors.darkBorder),
+            border: Border.all(color: tokens.cardBorder),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 children: [
-                  const Icon(
-                    Icons.hub_outlined,
-                    color: AppColors.primary,
-                    size: 16,
-                  ),
+                  Icon(Icons.hub_outlined, color: tokens.primary, size: 16),
                   const SizedBox(width: 8),
-                  const Text(
+                  Text(
                     'Infrastructure Assets:',
                     style: TextStyle(
-                      color: AppColors.textSecondaryDark,
+                      color: tokens.textSecondary,
                       fontSize: 11,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
                   const SizedBox(width: 8),
                   Text(
-                    '${infraState.totalCount} assets (${infraState.upCount} UP, ${infraState.downCount} DOWN, ${infraState.unknownCount} UNKNOWN)',
-                    style: const TextStyle(
-                      color: AppColors.primary,
+                    '${infraState.totalCount} assets (${infraState.upCount} UP, ${infraState.downCount + infraState.unknownCount} DISCONNECTED)',
+                    style: TextStyle(
+                      color: tokens.primary,
                       fontSize: 10,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
+
                   const Spacer(),
-                  const Text(
+                  Text(
                     'Read-Only Monitoring',
-                    style: TextStyle(
-                      color: AppColors.textSecondaryDark,
-                      fontSize: 10,
-                    ),
+                    style: TextStyle(color: tokens.textSecondary, fontSize: 10),
                   ),
                 ],
               ),
@@ -328,6 +321,7 @@ class _WallDisplayViewState extends State<_WallDisplayView> {
                     return Padding(
                       padding: const EdgeInsets.only(right: 8),
                       child: _buildInfraPill(
+                        context: context,
                         label:
                             '${device.name} (${device.ip})$locationText$latencyText',
                         status: status?.status,
@@ -345,32 +339,36 @@ class _WallDisplayViewState extends State<_WallDisplayView> {
   }
 
   Widget _buildInfraPill({
+    required BuildContext context,
     required String label,
     required DeviceStatusEnum? status,
     required bool isCritical,
   }) {
+    final tokens = context.appTokens;
     Color color;
     String statusText;
     switch (status) {
       case DeviceStatusEnum.up:
-        color = AppColors.statusUp;
+        color = tokens.statusOnline;
         statusText = 'UP';
         break;
       case DeviceStatusEnum.degraded:
-        color = AppColors.statusDegraded;
+        color = tokens.statusDegraded;
         statusText = 'DEGRADED';
         break;
       case DeviceStatusEnum.down:
-        color = AppColors.statusDown;
-        statusText = 'DOWN';
+      case DeviceStatusEnum.unknown:
+      case DeviceStatusEnum.unreachable:
+        color = tokens.statusOffline;
+        statusText = 'DISCONNECTED';
         break;
       case DeviceStatusEnum.maintenance:
-        color = AppColors.statusMaintenance;
+        color = tokens.statusMaintenance;
         statusText = 'MAINT';
         break;
       default:
-        color = AppColors.statusUnknown;
-        statusText = 'UNKNOWN';
+        color = tokens.statusOffline;
+        statusText = 'DISCONNECTED';
     }
 
     return Container(

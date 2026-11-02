@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/theme_cubit.dart';
 import '../../../auth/domain/entities/user_entity.dart';
 import '../../../auth/presentation/bloc/auth_cubit.dart';
 import '../bloc/factory_cubit.dart';
@@ -318,21 +320,87 @@ class FactoryHeaderBar extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(width: 16),
-                  if (isAdmin)
-                    TextButton.icon(
-                      onPressed: () {
-                        showDialog(
-                          context: context,
-                          builder: (_) => const AddFactoryDialog(),
-                        );
-                      },
-                      icon: const Icon(Icons.add_business_rounded, size: 16),
-                      label: const Text('Add Factory'),
-                      style: TextButton.styleFrom(
-                        foregroundColor: const Color(0xFF0F62FE),
-                        visualDensity: VisualDensity.compact,
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Global Theme Mode Switcher
+                      BlocBuilder<ThemeCubit, ThemeState>(
+                        builder: (context, themeState) {
+                          final isDark = themeState.isDark;
+                          return Tooltip(
+                            message: isDark
+                                ? 'Switch to Professional Light Theme'
+                                : 'Switch to Cyber Neon Dark Theme',
+                            child: Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(8),
+                                onTap: () =>
+                                    context.read<ThemeCubit>().toggleTheme(),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 6,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: theme.appTokens.surfaceSecondary,
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(
+                                      color: theme.appTokens.border,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        isDark
+                                            ? Icons.dark_mode_rounded
+                                            : Icons.light_mode_rounded,
+                                        size: 16,
+                                        color: isDark
+                                            ? const Color(0xFF00E5FF)
+                                            : const Color(0xFF1769FF),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        isDark ? 'CYBER DARK' : 'PRO LIGHT',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                          color: isDark
+                                              ? const Color(0xFF00E5FF)
+                                              : const Color(0xFF1769FF),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          );
+                        },
                       ),
-                    ),
+                      const SizedBox(width: 12),
+                      if (isAdmin)
+                        TextButton.icon(
+                          onPressed: () {
+                            showDialog(
+                              context: context,
+                              builder: (_) => const AddFactoryDialog(),
+                            );
+                          },
+                          icon: const Icon(
+                            Icons.add_business_rounded,
+                            size: 16,
+                          ),
+                          label: const Text('Add Factory'),
+                          style: TextButton.styleFrom(
+                            foregroundColor: theme.appTokens.primary,
+                            visualDensity: VisualDensity.compact,
+                          ),
+                        ),
+                    ],
+                  ),
                 ],
               ),
             ),

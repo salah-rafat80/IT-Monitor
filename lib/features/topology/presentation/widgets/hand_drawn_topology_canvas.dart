@@ -231,7 +231,6 @@ class _HandDrawnTopologyCanvasState extends State<HandDrawnTopologyCanvas>
     int upCount = 0;
     int downCount = 0;
     int degradedCount = 0;
-    int unknownCount = 0;
     int maintenanceCount = 0;
 
     for (final loc in widget.locations) {
@@ -245,6 +244,8 @@ class _HandDrawnTopologyCanvasState extends State<HandDrawnTopologyCanvas>
             upCount++;
             break;
           case DeviceStatusEnum.down:
+          case DeviceStatusEnum.unreachable:
+          case DeviceStatusEnum.unknown:
             downCount++;
             break;
           case DeviceStatusEnum.degraded:
@@ -252,10 +253,6 @@ class _HandDrawnTopologyCanvasState extends State<HandDrawnTopologyCanvas>
             break;
           case DeviceStatusEnum.maintenance:
             maintenanceCount++;
-            break;
-          case DeviceStatusEnum.unreachable:
-          case DeviceStatusEnum.unknown:
-            unknownCount++;
             break;
         }
       }
@@ -314,7 +311,7 @@ class _HandDrawnTopologyCanvasState extends State<HandDrawnTopologyCanvas>
                   ),
                   const SizedBox(width: 8),
                   _StatusLegendBadge(
-                    label: 'Down ($downCount)',
+                    label: 'Disconnected ($downCount)',
                     color: const Color(0xFFEF4444),
                   ),
                   const SizedBox(width: 8),
@@ -326,11 +323,6 @@ class _HandDrawnTopologyCanvasState extends State<HandDrawnTopologyCanvas>
                   _StatusLegendBadge(
                     label: 'Maintenance ($maintenanceCount)',
                     color: const Color(0xFF3B82F6),
-                  ),
-                  const SizedBox(width: 8),
-                  _StatusLegendBadge(
-                    label: 'Unknown ($unknownCount)',
-                    color: const Color(0xFF6B7280),
                   ),
                 ],
               ),

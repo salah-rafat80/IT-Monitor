@@ -83,9 +83,16 @@ class _InfrastructureDevicesTableState
           }
 
           if (_statusFilter != null) {
-            final st =
-                state.getStatusFor(d)?.status ?? DeviceStatusEnum.unknown;
-            if (st != _statusFilter) return false;
+            final st = state.getStatusFor(d)?.status ?? DeviceStatusEnum.down;
+            if (_statusFilter == DeviceStatusEnum.down) {
+              if (st != DeviceStatusEnum.down &&
+                  st != DeviceStatusEnum.unknown &&
+                  st != DeviceStatusEnum.unreachable) {
+                return false;
+              }
+            } else if (st != _statusFilter) {
+              return false;
+            }
           }
 
           return true;
@@ -257,17 +264,14 @@ class _InfrastructureDevicesTableState
                       ),
                       DropdownMenuItem(
                         value: DeviceStatusEnum.down,
-                        child: Text('Down'),
+                        child: Text('Disconnected'),
                       ),
                       DropdownMenuItem(
                         value: DeviceStatusEnum.degraded,
                         child: Text('Degraded'),
                       ),
-                      DropdownMenuItem(
-                        value: DeviceStatusEnum.unknown,
-                        child: Text('Unknown'),
-                      ),
                     ],
+
                     onChanged: (val) => setState(() => _statusFilter = val),
                   ),
                 ),

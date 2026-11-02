@@ -15,6 +15,7 @@ class FactoryCubit extends Cubit<FactoryState> {
   final FactoryRepository _factoryRepository;
   final NetworkDetectionService _networkDetectionService;
   StreamSubscription? _factoriesSub;
+  StreamSubscription? _gatewayStatusesSub;
   Timer? _networkPollTimer;
   Set<String> _lastDetectedIps = {};
 
@@ -42,6 +43,13 @@ class FactoryCubit extends Cubit<FactoryState> {
           selectedFactory: () => updatedSelected,
         ),
       );
+    });
+
+    _gatewayStatusesSub = _factoryRepository.watchGatewayStatuses().listen((
+      statuses,
+    ) {
+      final map = {for (var s in statuses) s.factoryId: s};
+      emit(state.copyWith(gatewayStatuses: map));
     });
 
     // Controlled periodic network revalidation (runs every 10s to detect network changes)
@@ -311,6 +319,7 @@ class FactoryCubit extends Cubit<FactoryState> {
   Future<void> close() {
     _networkPollTimer?.cancel();
     _factoriesSub?.cancel();
+    _gatewayStatusesSub?.cancel();
     return super.close();
   }
 }

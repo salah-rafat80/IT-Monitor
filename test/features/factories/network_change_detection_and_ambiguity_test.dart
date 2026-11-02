@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:it_network_monitor/core/utils/result.dart';
 import 'package:it_network_monitor/features/factories/domain/entities/factory_entity.dart';
+import 'package:it_network_monitor/features/factories/domain/entities/gateway_status_entity.dart';
 import 'package:it_network_monitor/features/factories/domain/repositories/factory_repository.dart';
 import 'package:it_network_monitor/features/factories/domain/services/network_detection_service.dart';
 import 'package:it_network_monitor/features/factories/presentation/bloc/factory_cubit.dart';
@@ -56,6 +57,23 @@ class _FakeFactoryRepository implements FactoryRepository {
 
   @override
   Future<Result<void>> deleteFactory(String id) async => Result.success(null);
+
+  @override
+  Future<Result<List<GatewayStatusEntity>>> getGatewayStatuses() async =>
+      Result.success(const []);
+
+  @override
+  Future<Result<GatewayStatusEntity?>> getGatewayStatus(
+    String factoryId,
+  ) async => Result.success(null);
+
+  @override
+  Future<Result<void>> saveGatewayStatus(GatewayStatusEntity status) async =>
+      Result.success(null);
+
+  @override
+  Stream<List<GatewayStatusEntity>> watchGatewayStatuses() =>
+      Stream.value(const []);
 }
 
 void main() {

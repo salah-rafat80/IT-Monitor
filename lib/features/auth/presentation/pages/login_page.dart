@@ -228,6 +228,21 @@ class _LoginPageState extends State<LoginPage> {
                             padding: const EdgeInsets.symmetric(vertical: 16),
                           ),
                         ),
+                        const SizedBox(height: 12),
+                        OutlinedButton.icon(
+                          onPressed: () {
+                            AppConfig.runMode =
+                                AppRunMode.standaloneDevelopment;
+                            context.read<AuthCubit>().checkAuthStatus();
+                          },
+                          icon: const Icon(Icons.flash_on_rounded),
+                          label: const Text(
+                            'تشغيل مباشر فوري بدون تسجيل دخول (Standalone)',
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                          ),
+                        ),
                       ],
                     ],
                   ),

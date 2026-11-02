@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../../../core/theme/app_colors.dart';
 import '../../../devices/domain/entities/device_entity.dart';
 import '../../../incidents/domain/entities/incident_entity.dart';
 import '../../../monitoring/domain/entities/device_status_entity.dart';
@@ -45,16 +46,13 @@ class FactoryOverviewCards extends StatelessWidget {
       return const SizedBox.shrink();
     }
 
+    final tokens = context.appTokens;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
-            const Icon(
-              Icons.apartment_rounded,
-              size: 20,
-              color: Color(0xFF0F62FE),
-            ),
+            Icon(Icons.apartment_rounded, size: 20, color: tokens.primary),
             const SizedBox(width: 8),
             Text(
               'Factory Overview & Network Scopes',
@@ -73,7 +71,7 @@ class FactoryOverviewCards extends StatelessWidget {
               physics: const NeverScrollableScrollPhysics(),
               gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: isWide ? 2 : 1,
-                mainAxisExtent: 220,
+                mainAxisExtent: 275,
                 crossAxisSpacing: 16,
                 mainAxisSpacing: 16,
               ),
@@ -128,8 +126,12 @@ class _FactoryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final tokens = context.appTokens;
     final activeFactory = context.watch<FactoryCubit>().state.selectedFactory;
     final isSelected = activeFactory?.id == factory.id;
+
+    final isRnf = factory.code.toUpperCase() == 'RNF';
+    final factoryBrandColor = isRnf ? tokens.factoryRnf : tokens.factoryBnf;
 
     final monitoredDevices = devices.where((d) => d.isMonitored).toList();
     final onlineCount = monitoredDevices.where((d) {
@@ -146,12 +148,11 @@ class _FactoryCard extends StatelessWidget {
 
     return Card(
       elevation: isSelected ? 4 : 1,
+      color: tokens.surface,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
         side: BorderSide(
-          color: isSelected
-              ? const Color(0xFF0F62FE)
-              : theme.dividerColor.withValues(alpha: 0.2),
+          color: isSelected ? factoryBrandColor : tokens.cardBorder,
           width: isSelected ? 2 : 1,
         ),
       ),
@@ -168,15 +169,18 @@ class _FactoryCard extends StatelessWidget {
                     vertical: 4,
                   ),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF0F62FE).withValues(alpha: 0.15),
+                    color: factoryBrandColor.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(6),
+                    border: Border.all(
+                      color: factoryBrandColor.withValues(alpha: 0.3),
+                    ),
                   ),
                   child: Text(
                     factory.code,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 13,
-                      color: Color(0xFF0F62FE),
+                      color: factoryBrandColor,
                     ),
                   ),
                 ),
@@ -186,6 +190,7 @@ class _FactoryCard extends StatelessWidget {
                     factory.name,
                     style: theme.textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.bold,
+                      color: tokens.textPrimary,
                     ),
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -193,25 +198,107 @@ class _FactoryCard extends StatelessWidget {
                 if (isSelected)
                   Container(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 6,
-                      vertical: 2,
+                      horizontal: 8,
+                      vertical: 3,
                     ),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF10B981).withValues(alpha: 0.2),
+                      color: tokens.statusOnline.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(4),
+                      border: Border.all(
+                        color: tokens.statusOnline.withValues(alpha: 0.3),
+                      ),
                     ),
-                    child: const Text(
+                    child: Text(
                       'ACTIVE SCOPE',
                       style: TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.bold,
-                        color: Color(0xFF10B981),
+                        color: tokens.statusOnline,
                       ),
                     ),
                   ),
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
+            // Authoritative Gateway Health Row
+            Builder(
+              builder: (context) {
+                final gwStatus = context
+                    .watch<FactoryCubit>()
+                    .state
+                    .gatewayStatuses[factory.id];
+                final gwIp = factory.gatewayIp ?? 'N/A';
+                final isGwOnline = gwStatus?.isOnline ?? false;
+                final isGwDown = gwStatus?.isDown ?? false;
+                final gwLatency = gwStatus?.latencyMs;
+
+                Color gwColor = tokens.statusUnknown;
+                String statusText = 'CHECKING';
+                IconData gwIcon = Icons.help_outline;
+
+                if (isGwOnline) {
+                  gwColor = tokens.statusOnline;
+                  statusText =
+                      'ONLINE (${gwLatency != null ? "${gwLatency}ms" : "OK"})';
+                  gwIcon = Icons.check_circle_outline;
+                } else if (gwStatus?.isDegraded ?? false) {
+                  gwColor = tokens.statusDegraded;
+                  statusText =
+                      'DEGRADED (${gwLatency != null ? "${gwLatency}ms" : "HIGH LATENCY"})';
+                  gwIcon = Icons.warning_amber_rounded;
+                } else if (isGwDown) {
+                  gwColor = tokens.statusOffline;
+                  statusText = 'DOWN';
+                  gwIcon = Icons.cancel_outlined;
+                }
+
+                return Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: gwColor.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: gwColor.withValues(alpha: 0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.router_rounded, size: 16, color: gwColor),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Gateway ($gwIp):',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: tokens.textPrimary,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Icon(gwIcon, size: 14, color: gwColor),
+                      const SizedBox(width: 4),
+                      Text(
+                        statusText,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: gwColor,
+                        ),
+                      ),
+                      const Spacer(),
+                      Text(
+                        factory.expectedCidr ?? '',
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: tokens.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 10),
             // Metrics row
             Row(
               children: [
@@ -219,14 +306,14 @@ class _FactoryCard extends StatelessWidget {
                   label: 'Devices',
                   value: '${devices.length}',
                   subtext: '$onlineCount on / $offlineCount off',
-                  color: const Color(0xFF0F62FE),
+                  color: tokens.primary,
                 ),
                 const SizedBox(width: 8),
                 _MetricTile(
                   label: 'Ranges',
                   value: '$enabledRanges / ${ranges.length}',
                   subtext: 'enabled',
-                  color: const Color(0xFF8A3FFC),
+                  color: tokens.factoryBnf,
                 ),
                 const SizedBox(width: 8),
                 _MetricTile(
@@ -234,8 +321,8 @@ class _FactoryCard extends StatelessWidget {
                   value: '$activeAlerts',
                   subtext: activeAlerts == 0 ? 'Normal' : 'Active',
                   color: activeAlerts > 0
-                      ? Colors.red
-                      : const Color(0xFF10B981),
+                      ? tokens.statusOffline
+                      : tokens.statusOnline,
                 ),
                 const SizedBox(width: 8),
                 _MetricTile(
@@ -246,12 +333,12 @@ class _FactoryCard extends StatelessWidget {
                   subtext: latestScan != null
                       ? '${latestScan!.classifiedCount + latestScan!.unknownCount} assets'
                       : 'No scans',
-                  color: Colors.blueGrey,
+                  color: tokens.textSecondary,
                 ),
               ],
             ),
             const Spacer(),
-            const Divider(height: 1),
+            Divider(height: 1, color: tokens.cardBorder),
             const SizedBox(height: 8),
             // Actions
             Row(
@@ -310,7 +397,10 @@ class _FactoryCard extends StatelessWidget {
                   icon: const Icon(Icons.radar, size: 14),
                   label: const Text('Start Discovery'),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF0F62FE),
+                    backgroundColor: tokens.primary,
+                    foregroundColor: tokens.isDark
+                        ? const Color(0xFF090D19)
+                        : Colors.white,
                     visualDensity: VisualDensity.compact,
                   ),
                 ),
@@ -338,6 +428,7 @@ class _MetricTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = context.appTokens;
     return Expanded(
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
@@ -352,7 +443,7 @@ class _MetricTile extends StatelessWidget {
           children: [
             Text(
               label,
-              style: TextStyle(fontSize: 10, color: Colors.grey[400]),
+              style: TextStyle(fontSize: 10, color: tokens.textSecondary),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
@@ -369,7 +460,7 @@ class _MetricTile extends StatelessWidget {
             ),
             Text(
               subtext,
-              style: TextStyle(fontSize: 9, color: Colors.grey[400]),
+              style: TextStyle(fontSize: 9, color: tokens.textSecondary),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),

@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../features/auth/presentation/bloc/auth_cubit.dart';
 import '../../../features/factories/presentation/widgets/factory_header_bar.dart';
+import '../../theme/app_colors.dart';
 
 class DesktopShell extends StatelessWidget {
   final Widget child;
@@ -12,6 +13,7 @@ class DesktopShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = context.appTokens;
     final location = GoRouterState.of(context).uri.path;
     final authState = context.watch<AuthCubit>().state;
     final currentUser = authState is AuthAuthenticated ? authState.user : null;
@@ -21,13 +23,32 @@ class DesktopShell extends StatelessWidget {
     final sidebarWidth = isCompact ? 72.0 : 240.0;
 
     return Scaffold(
+      backgroundColor: tokens.background,
       body: Row(
         children: [
           // Sidebar
           AnimatedContainer(
             duration: const Duration(milliseconds: 200),
             width: sidebarWidth,
-            color: Theme.of(context).colorScheme.surface,
+            decoration: BoxDecoration(
+              color: tokens.surface,
+              border: Border(right: BorderSide(color: tokens.border, width: 1)),
+              boxShadow: tokens.isDark
+                  ? [
+                      BoxShadow(
+                        color: tokens.primary.withValues(alpha: 0.05),
+                        blurRadius: 16,
+                        offset: const Offset(2, 0),
+                      ),
+                    ]
+                  : [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.03),
+                        blurRadius: 8,
+                        offset: const Offset(1, 0),
+                      ),
+                    ],
+            ),
             child: ClipRect(
               child: LayoutBuilder(
                 builder: (context, sidebarConstraints) {
@@ -37,44 +58,90 @@ class DesktopShell extends StatelessWidget {
                       Container(
                         padding: EdgeInsets.symmetric(
                           horizontal: isSidebarCompact ? 12 : 20,
-                          vertical: 24,
+                          vertical: 22,
                         ),
                         alignment: isSidebarCompact
                             ? Alignment.center
                             : Alignment.centerLeft,
                         child: isSidebarCompact
-                            ? const Tooltip(
+                            ? Tooltip(
                                 message: 'IT Network Monitor',
-                                child: Icon(
-                                  Icons.monitor_heart,
-                                  color: Color(0xFF0F62FE),
-                                  size: 28,
+                                child: Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: tokens.primary.withValues(
+                                      alpha: 0.12,
+                                    ),
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(
+                                      color: tokens.primary.withValues(
+                                        alpha: 0.3,
+                                      ),
+                                    ),
+                                  ),
+                                  child: Icon(
+                                    Icons.monitor_heart_rounded,
+                                    color: tokens.primary,
+                                    size: 24,
+                                  ),
                                 ),
                               )
                             : Row(
                                 children: [
-                                  const Icon(
-                                    Icons.monitor_heart,
-                                    color: Color(0xFF0F62FE),
-                                    size: 28,
+                                  Container(
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: BoxDecoration(
+                                      color: tokens.primary.withValues(
+                                        alpha: 0.12,
+                                      ),
+                                      borderRadius: BorderRadius.circular(10),
+                                      border: Border.all(
+                                        color: tokens.primary.withValues(
+                                          alpha: 0.3,
+                                        ),
+                                      ),
+                                    ),
+                                    child: Icon(
+                                      Icons.monitor_heart_rounded,
+                                      color: tokens.primary,
+                                      size: 24,
+                                    ),
                                   ),
                                   const SizedBox(width: 12),
                                   Expanded(
-                                    child: Text(
-                                      'IT Monitor',
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .titleLarge
-                                          ?.copyWith(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(
+                                          'IT Monitor',
+                                          style: TextStyle(
                                             fontWeight: FontWeight.bold,
+                                            fontSize: 17,
+                                            color: tokens.textPrimary,
+                                            letterSpacing: -0.3,
                                           ),
-                                      overflow: TextOverflow.ellipsis,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        Text(
+                                          tokens.isDark
+                                              ? 'CYBER OPS'
+                                              : 'ENTERPRISE',
+                                          style: TextStyle(
+                                            fontSize: 9,
+                                            fontWeight: FontWeight.bold,
+                                            letterSpacing: 1.5,
+                                            color: tokens.primary,
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ),
                                 ],
                               ),
                       ),
-                      const Divider(height: 1),
+                      Divider(height: 1, color: tokens.border),
                       Expanded(
                         child: ListView(
                           padding: const EdgeInsets.symmetric(
@@ -256,7 +323,7 @@ class DesktopShell extends StatelessWidget {
   }
 }
 
-class _NavTile extends StatelessWidget {
+class _NavTile extends StatefulWidget {
   final IconData icon;
   final IconData selectedIcon;
   final String label;
@@ -274,33 +341,72 @@ class _NavTile extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    final activeColor = Theme.of(context).colorScheme.primary;
+  State<_NavTile> createState() => _NavTileState();
+}
 
-    if (isCompact) {
+class _NavTileState extends State<_NavTile> {
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.appTokens;
+    final activeColor = tokens.primary;
+
+    final bgColor = widget.isSelected
+        ? activeColor.withValues(alpha: tokens.isDark ? 0.16 : 0.12)
+        : (_isHovered
+              ? tokens.surfaceSecondary.withValues(alpha: 0.6)
+              : Colors.transparent);
+
+    final borderColor = widget.isSelected
+        ? (tokens.isDark
+              ? tokens.borderGlow
+              : activeColor.withValues(alpha: 0.4))
+        : (_isHovered ? tokens.border : Colors.transparent);
+
+    final iconColor = widget.isSelected
+        ? activeColor
+        : (_isHovered ? tokens.textPrimary : tokens.textSecondary);
+
+    final textColor = widget.isSelected
+        ? (tokens.isDark ? tokens.primary : activeColor)
+        : (_isHovered ? tokens.textPrimary : tokens.textSecondary);
+
+    if (widget.isCompact) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 4),
         child: Tooltip(
-          message: label,
-          child: Material(
-            color: Colors.transparent,
-            child: InkWell(
-              borderRadius: BorderRadius.circular(8),
-              onTap: onTap,
-              child: Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: isSelected
-                      ? activeColor.withValues(alpha: 0.15)
-                      : Colors.transparent,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(
-                  isSelected ? selectedIcon : icon,
-                  color: isSelected
-                      ? activeColor
-                      : Theme.of(context).iconTheme.color,
-                  size: 22,
+          message: widget.label,
+          child: MouseRegion(
+            onEnter: (_) => setState(() => _isHovered = true),
+            onExit: (_) => setState(() => _isHovered = false),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(10),
+                onTap: widget.onTap,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: bgColor,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: borderColor, width: 1),
+                    boxShadow: widget.isSelected && tokens.isDark
+                        ? [
+                            BoxShadow(
+                              color: activeColor.withValues(alpha: 0.25),
+                              blurRadius: 8,
+                              spreadRadius: -1,
+                            ),
+                          ]
+                        : null,
+                  ),
+                  child: Icon(
+                    widget.isSelected ? widget.selectedIcon : widget.icon,
+                    color: iconColor,
+                    size: 22,
+                  ),
                 ),
               ),
             ),
@@ -310,45 +416,74 @@ class _NavTile extends StatelessWidget {
     }
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(8),
-          onTap: onTap,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            decoration: BoxDecoration(
-              color: isSelected
-                  ? activeColor.withValues(alpha: 0.12)
-                  : Colors.transparent,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  isSelected ? selectedIcon : icon,
-                  color: isSelected
-                      ? activeColor
-                      : Theme.of(context).iconTheme.color,
-                  size: 22,
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Text(
-                    label,
-                    style: TextStyle(
-                      fontWeight: isSelected
-                          ? FontWeight.bold
-                          : FontWeight.normal,
-                      color: isSelected ? activeColor : null,
-                      fontSize: 14,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                    maxLines: 1,
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: MouseRegion(
+        onEnter: (_) => setState(() => _isHovered = true),
+        onExit: (_) => setState(() => _isHovered = false),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(10),
+            onTap: widget.onTap,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: bgColor,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: borderColor, width: 1),
+                boxShadow: widget.isSelected && tokens.isDark
+                    ? [
+                        BoxShadow(
+                          color: activeColor.withValues(alpha: 0.15),
+                          blurRadius: 10,
+                          offset: const Offset(0, 1),
+                        ),
+                      ]
+                    : null,
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    widget.isSelected ? widget.selectedIcon : widget.icon,
+                    color: iconColor,
+                    size: 22,
                   ),
-                ),
-              ],
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Text(
+                      widget.label,
+                      style: TextStyle(
+                        fontWeight: widget.isSelected
+                            ? FontWeight.bold
+                            : FontWeight.w500,
+                        color: textColor,
+                        fontSize: 14,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
+                    ),
+                  ),
+                  if (widget.isSelected)
+                    Container(
+                      width: 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color: activeColor,
+                        shape: BoxShape.circle,
+                        boxShadow: tokens.isDark
+                            ? [
+                                BoxShadow(
+                                  color: activeColor,
+                                  blurRadius: 6,
+                                  spreadRadius: 1,
+                                ),
+                              ]
+                            : null,
+                      ),
+                    ),
+                ],
+              ),
             ),
           ),
         ),

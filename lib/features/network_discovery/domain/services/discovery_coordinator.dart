@@ -152,24 +152,7 @@ class DiscoveryCoordinator {
           final parsed = NetworkRange.tryParse(trimmed);
           final normalizedCidr = parsed?.cidr ?? trimmed;
 
-          // Check if range belongs to another factory
-          final otherFactoryRange = config.networkRanges
-              .where(
-                (r) =>
-                    (r.id == trimmed || r.cidr == normalizedCidr) &&
-                    r.factoryId != targetFactoryId,
-              )
-              .firstOrNull;
-          if (otherFactoryRange != null) {
-            return Result.failure(
-              ValidationFailure(
-                'Requested range "$req" belongs to another factory '
-                '("${otherFactoryRange.factoryId}") and cannot be scanned under factory "$targetFactoryId".',
-              ),
-            );
-          }
-
-          // Check if registered under this factory
+          // 1. Check if registered under this factory
           final matchingRange = config.networkRanges
               .where(
                 (r) =>
@@ -179,6 +162,24 @@ class DiscoveryCoordinator {
               .firstOrNull;
 
           if (matchingRange == null) {
+            // Check if range belongs to another assigned factory
+            final otherFactoryRange = config.networkRanges
+                .where(
+                  (r) =>
+                      (r.id == trimmed || r.cidr == normalizedCidr) &&
+                      r.factoryId != targetFactoryId &&
+                      r.factoryId != 'unassigned',
+                )
+                .firstOrNull;
+            if (otherFactoryRange != null) {
+              return Result.failure(
+                ValidationFailure(
+                  'Requested range "$req" belongs to another factory '
+                  '("${otherFactoryRange.factoryId}") and cannot be scanned under factory "$targetFactoryId".',
+                ),
+              );
+            }
+
             return Result.failure(
               ValidationFailure(
                 'Requested range "$req" is not registered for factory "$targetFactoryId". '

@@ -5,9 +5,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'core/config/app_run_mode.dart';
 import 'core/config/client_config.dart';
+import 'core/database/app_database.dart';
 import 'core/di/injection.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
+import 'core/theme/theme_cubit.dart';
 import 'features/auth/presentation/bloc/auth_cubit.dart';
 import 'features/devices/presentation/bloc/devices_cubit.dart';
 import 'features/factories/presentation/bloc/factory_cubit.dart';
@@ -28,18 +30,42 @@ void main(List<String> args) async {
     return;
   }
 
-  // Standalone mode is strictly forbidden in Release mode (and when release security is enforced).
-  // In production Release clients, it fails closed to productionClient.
-  final isRelease = AppConfig.isReleaseEnforced;
-  if (!isRelease &&
-      (args.contains('--standalone') ||
-          Platform.environment['IT_MONITOR_STANDALONE'] == 'true' ||
-          (kDebugMode &&
-              !args.contains('--client') &&
-              Platform.environment['FLUTTER_TEST'] != 'true'))) {
-    AppConfig.runMode = AppRunMode.standaloneDevelopment;
-  } else {
+  // Determine AppRunMode:
+  // 1. Explicit --client flag forces productionClient mode.
+  // 2. Explicit --standalone flag forces standaloneDevelopment mode.
+  // 3. Otherwise: probe if background service is running on 127.0.0.1:5050.
+  //    If running -> productionClient.
+  //    If not running -> standaloneDevelopment (direct local database & auto admin login).
+  if (args.contains('--client')) {
     AppConfig.runMode = AppRunMode.productionClient;
+  } else if (args.contains('--standalone') ||
+      Platform.environment['IT_MONITOR_STANDALONE'] == 'true') {
+    AppConfig.runMode = AppRunMode.standaloneDevelopment;
+  } else if (AppConfig.isReleaseEnforced) {
+    AppConfig.runMode = AppRunMode.productionClient;
+  } else {
+    bool serviceRunning = false;
+    try {
+      final socket = await Socket.connect(
+        '127.0.0.1',
+        5050,
+        timeout: const Duration(milliseconds: 150),
+      );
+      socket.destroy();
+      serviceRunning = true;
+    } catch (_) {
+      serviceRunning = false;
+    }
+
+    if (serviceRunning) {
+      AppConfig.runMode = AppRunMode.productionClient;
+    } else {
+      AppConfig.runMode = AppRunMode.standaloneDevelopment;
+    }
+  }
+
+  if (AppConfig.isStandaloneDevelopment) {
+    DatabaseConfig.isDevelopment = true;
   }
 
   WidgetsFlutterBinding.ensureInitialized();
@@ -153,22 +179,29 @@ class ITNetworkMonitorApp extends StatelessWidget {
           create: (_) => getIt<DevicesCubit>()..loadDevices(),
         ),
         BlocProvider<MonitoringCubit>(
-          create: (_) => getIt<MonitoringCubit>()..initMonitoring(),
+          create: (_) => getIt<MonitoringCubit>()
+            ..initMonitoring(startScheduler: AppConfig.isStandaloneDevelopment),
         ),
+
         BlocProvider<NetworkDiscoveryCubit>(
           create: (_) => getIt<NetworkDiscoveryCubit>()..init(),
         ),
         BlocProvider<InfrastructureCubit>.value(
           value: getIt<InfrastructureCubit>()..loadInfrastructure(),
         ),
+        BlocProvider<ThemeCubit>(create: (_) => getIt<ThemeCubit>()),
       ],
-      child: MaterialApp.router(
-        title: 'IT Network Monitor',
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.lightTheme,
-        darkTheme: AppTheme.darkTheme,
-        themeMode: ThemeMode.dark,
-        routerConfig: AppRouter.router,
+      child: BlocBuilder<ThemeCubit, ThemeState>(
+        builder: (context, themeState) {
+          return MaterialApp.router(
+            title: 'IT Network Monitor',
+            debugShowCheckedModeBanner: false,
+            theme: AppTheme.lightTheme,
+            darkTheme: AppTheme.darkTheme,
+            themeMode: themeState.themeMode,
+            routerConfig: AppRouter.router,
+          );
+        },
       ),
     );
   }

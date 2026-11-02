@@ -110,6 +110,7 @@ import '../../features/users/domain/repositories/user_repository.dart' as _i658;
 import '../../features/users/presentation/bloc/user_management_cubit.dart'
     as _i184;
 import '../database/app_database.dart' as _i982;
+import '../theme/theme_cubit.dart' as _i611;
 
 extension GetItInjectableX on _i174.GetIt {
   // initializes the registration of main-scope dependencies inside of GetIt
@@ -119,6 +120,7 @@ extension GetItInjectableX on _i174.GetIt {
   }) {
     final gh = _i526.GetItHelper(this, environment, environmentFilter);
     gh.lazySingleton<_i982.AppDatabase>(() => _i982.AppDatabase());
+    gh.lazySingleton<_i611.ThemeCubit>(() => _i611.ThemeCubit());
     gh.lazySingleton<_i1032.UniFiApiClient>(() => _i1032.UniFiApiClient());
     gh.lazySingleton<_i819.DnsHostnameStrategy>(
       () => _i819.DnsHostnameStrategy(),
@@ -252,15 +254,6 @@ extension GetItInjectableX on _i174.GetIt {
         gh<_i6.NotificationService>(),
       ),
     );
-    gh.lazySingleton<_i714.MonitoringScheduler>(
-      () => _i714.MonitoringScheduler(
-        gh<_i1071.DeviceRepository>(),
-        gh<_i365.MonitoringRepository>(),
-        gh<_i217.PingChecker>(),
-        gh<_i405.IncidentEngine>(),
-        gh<_i114.InfrastructureRepository>(),
-      ),
-    );
     gh.lazySingleton<_i236.InfrastructureCubit>(
       () => _i236.InfrastructureCubit(
         gh<_i114.InfrastructureRepository>(),
@@ -277,6 +270,16 @@ extension GetItInjectableX on _i174.GetIt {
         gh<_i365.MonitoringRepository>(),
         gh<_i289.TopologyGrouper>(),
         gh<_i524.EnterpriseTopologyBuilder>(),
+      ),
+    );
+    gh.lazySingleton<_i714.MonitoringScheduler>(
+      () => _i714.MonitoringScheduler(
+        gh<_i1071.DeviceRepository>(),
+        gh<_i365.MonitoringRepository>(),
+        gh<_i217.PingChecker>(),
+        gh<_i405.IncidentEngine>(),
+        gh<_i114.InfrastructureRepository>(),
+        gh<_i911.FactoryRepository>(),
       ),
     );
     gh.factory<_i264.DevicesCubit>(

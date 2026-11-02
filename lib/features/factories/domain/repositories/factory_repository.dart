@@ -1,6 +1,8 @@
 import '../../../../core/utils/result.dart';
 import '../entities/factory_entity.dart';
 
+import '../entities/gateway_status_entity.dart';
+
 abstract class FactoryRepository {
   Future<Result<List<FactoryEntity>>> getFactories({
     bool includeInactive = false,
@@ -11,4 +13,10 @@ abstract class FactoryRepository {
   Future<Result<FactoryEntity>> updateFactory(FactoryEntity factory);
   Future<Result<void>> deleteFactory(String id);
   Stream<List<FactoryEntity>> watchFactories();
+
+  // First-class Gateway Monitoring Persistence
+  Future<Result<List<GatewayStatusEntity>>> getGatewayStatuses();
+  Future<Result<GatewayStatusEntity?>> getGatewayStatus(String factoryId);
+  Future<Result<void>> saveGatewayStatus(GatewayStatusEntity status);
+  Stream<List<GatewayStatusEntity>> watchGatewayStatuses();
 }

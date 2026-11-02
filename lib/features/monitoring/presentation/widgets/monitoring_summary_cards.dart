@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../../core/theme/app_colors.dart';
 import '../bloc/monitoring_dashboard_state.dart';
 
 class MonitoringSummaryCards extends StatelessWidget {
@@ -13,6 +14,8 @@ class MonitoringSummaryCards extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = context.appTokens;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -21,7 +24,7 @@ class MonitoringSummaryCards extends StatelessWidget {
           builder: (context, constraints) {
             final double cardWidth;
             if (constraints.maxWidth >= 1100) {
-              cardWidth = (constraints.maxWidth - (5 * 12)) / 6;
+              cardWidth = (constraints.maxWidth - (4 * 12)) / 5;
             } else if (constraints.maxWidth >= 720) {
               cardWidth = (constraints.maxWidth - (2 * 12)) / 3;
             } else if (constraints.maxWidth >= 420) {
@@ -33,65 +36,61 @@ class MonitoringSummaryCards extends StatelessWidget {
               spacing: 12,
               runSpacing: 12,
               children: [
-                _buildSummaryCard(
-                  context,
+                _SummaryKpiCard(
                   width: cardWidth,
                   title: 'Total Devices',
                   count: state.totalCount,
                   icon: Icons.devices_rounded,
-                  color: const Color(0xFF6366F1), // Indigo
+                  color: tokens.isDark
+                      ? const Color(0xFF00E5FF)
+                      : const Color(0xFF1769FF),
                   filterValue: null,
                   isSelected: state.statusFilter == null,
+                  onTap: () => onStatusCardTap?.call(null),
                 ),
-                _buildSummaryCard(
-                  context,
+                _SummaryKpiCard(
                   width: cardWidth,
                   title: 'Online (Up)',
                   count: state.upCount,
                   icon: Icons.check_circle_rounded,
-                  color: const Color(0xFF10B981), // Green
+                  color: tokens.statusOnline,
                   filterValue: 'up',
                   isSelected: state.statusFilter == 'up',
+                  onTap: () => onStatusCardTap?.call('up'),
                 ),
-                _buildSummaryCard(
-                  context,
+                _SummaryKpiCard(
                   width: cardWidth,
                   title: 'Degraded',
                   count: state.degradedCount,
                   icon: Icons.warning_amber_rounded,
-                  color: const Color(0xFFF59E0B), // Orange
+                  color: tokens.statusDegraded,
                   filterValue: 'degraded',
                   isSelected: state.statusFilter == 'degraded',
+                  onTap: () => onStatusCardTap?.call('degraded'),
                 ),
-                _buildSummaryCard(
-                  context,
+                _SummaryKpiCard(
                   width: cardWidth,
-                  title: 'Down',
-                  count: state.downCount,
+                  title: 'Disconnected',
+                  count: state.downCount + state.unknownCount,
                   icon: Icons.cancel_rounded,
-                  color: const Color(0xFFEF4444), // Red
+                  color: tokens.statusOffline,
                   filterValue: 'down',
-                  isSelected: state.statusFilter == 'down',
+                  isSelected:
+                      state.statusFilter == 'down' ||
+                      state.statusFilter == 'unknown',
+                  onTap: () => onStatusCardTap?.call('down'),
                 ),
-                _buildSummaryCard(
-                  context,
-                  width: cardWidth,
-                  title: 'Unknown',
-                  count: state.unknownCount,
-                  icon: Icons.help_outline_rounded,
-                  color: const Color(0xFF6B7280), // Grey
-                  filterValue: 'unknown',
-                  isSelected: state.statusFilter == 'unknown',
-                ),
-                _buildSummaryCard(
-                  context,
+                _SummaryKpiCard(
                   width: cardWidth,
                   title: 'Maintenance',
                   count: state.maintenanceCount,
                   icon: Icons.build_circle_rounded,
-                  color: const Color(0xFF3B82F6), // Blue
+                  color: tokens.isDark
+                      ? const Color(0xFFA78BFA)
+                      : const Color(0xFF8B5CF6),
                   filterValue: 'maintenance',
                   isSelected: state.statusFilter == 'maintenance',
+                  onTap: () => onStatusCardTap?.call('maintenance'),
                 ),
               ],
             );
@@ -104,11 +103,23 @@ class MonitoringSummaryCards extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
-              color: const Color(0xFFEF4444).withValues(alpha: 0.08),
+              color: tokens.statusOffline.withValues(
+                alpha: tokens.isDark ? 0.12 : 0.08,
+              ),
               borderRadius: BorderRadius.circular(10),
               border: Border.all(
-                color: const Color(0xFFEF4444).withValues(alpha: 0.3),
+                color: tokens.statusOffline.withValues(
+                  alpha: tokens.isDark ? 0.4 : 0.3,
+                ),
               ),
+              boxShadow: tokens.isDark
+                  ? [
+                      BoxShadow(
+                        color: tokens.statusOffline.withValues(alpha: 0.1),
+                        blurRadius: 12,
+                      ),
+                    ]
+                  : null,
             ),
             child: Wrap(
               spacing: 12,
@@ -119,17 +130,17 @@ class MonitoringSummaryCards extends StatelessWidget {
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(
+                    Icon(
                       Icons.error_outline_rounded,
-                      color: Color(0xFFEF4444),
+                      color: tokens.statusOffline,
                       size: 22,
                     ),
                     const SizedBox(width: 10),
                     Flexible(
                       child: Text(
                         'Active Monitoring Incidents: ${state.activeIncidents.length} device(s) requiring attention (${state.downCount} Down, ${state.degradedCount} Degraded)',
-                        style: const TextStyle(
-                          color: Color(0xFFEF4444),
+                        style: TextStyle(
+                          color: tokens.statusOffline,
                           fontWeight: FontWeight.w600,
                           fontSize: 13,
                         ),
@@ -139,15 +150,15 @@ class MonitoringSummaryCards extends StatelessWidget {
                 ),
                 TextButton.icon(
                   onPressed: () => onStatusCardTap?.call('down'),
-                  icon: const Icon(
+                  icon: Icon(
                     Icons.filter_list_rounded,
                     size: 16,
-                    color: Color(0xFFEF4444),
+                    color: tokens.statusOffline,
                   ),
-                  label: const Text(
+                  label: Text(
                     'Filter Incidents',
                     style: TextStyle(
-                      color: Color(0xFFEF4444),
+                      color: tokens.statusOffline,
                       fontSize: 12,
                       fontWeight: FontWeight.bold,
                     ),
@@ -160,70 +171,137 @@ class MonitoringSummaryCards extends StatelessWidget {
       ],
     );
   }
+}
 
-  Widget _buildSummaryCard(
-    BuildContext context, {
-    required double width,
-    required String title,
-    required int count,
-    required IconData icon,
-    required Color color,
-    required String? filterValue,
-    required bool isSelected,
-  }) {
-    final theme = Theme.of(context);
-    final safeWidth = width <= 0 ? 150.0 : width;
+class _SummaryKpiCard extends StatefulWidget {
+  final double width;
+  final String title;
+  final int count;
+  final IconData icon;
+  final Color color;
+  final String? filterValue;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _SummaryKpiCard({
+    required this.width,
+    required this.title,
+    required this.count,
+    required this.icon,
+    required this.color,
+    required this.filterValue,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  State<_SummaryKpiCard> createState() => _SummaryKpiCardState();
+}
+
+class _SummaryKpiCardState extends State<_SummaryKpiCard> {
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.appTokens;
+    final safeWidth = widget.width <= 0 ? 150.0 : widget.width;
+
+    final bgColor = widget.isSelected
+        ? widget.color.withValues(alpha: tokens.isDark ? 0.16 : 0.12)
+        : (_isHovered ? tokens.surfaceSecondary : tokens.surface);
+
+    final borderColor = widget.isSelected
+        ? widget.color
+        : (_isHovered
+              ? (tokens.isDark ? tokens.borderGlow : tokens.border)
+              : tokens.border);
 
     return SizedBox(
       width: safeWidth,
-      child: InkWell(
-        onTap: () => onStatusCardTap?.call(filterValue),
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: isSelected ? color.withValues(alpha: 0.12) : theme.cardColor,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: isSelected
-                  ? color
-                  : theme.dividerColor.withValues(alpha: 0.1),
-              width: isSelected ? 2 : 1,
+      child: MouseRegion(
+        onEnter: (_) => setState(() => _isHovered = true),
+        onExit: (_) => setState(() => _isHovered = false),
+        child: InkWell(
+          onTap: widget.onTap,
+          borderRadius: BorderRadius.circular(12),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: bgColor,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: borderColor,
+                width: widget.isSelected ? 2 : 1,
+              ),
+              boxShadow: (widget.isSelected || _isHovered) && tokens.isDark
+                  ? [
+                      BoxShadow(
+                        color: widget.color.withValues(alpha: 0.18),
+                        blurRadius: 14,
+                        offset: const Offset(0, 2),
+                      ),
+                    ]
+                  : [
+                      BoxShadow(
+                        color: Colors.black.withValues(
+                          alpha: tokens.isDark ? 0.2 : 0.03,
+                        ),
+                        blurRadius: 6,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
             ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Expanded(
-                    child: Text(
-                      title,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                        color: theme.textTheme.bodyMedium?.color?.withValues(
-                          alpha: 0.7,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        widget.title,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: tokens.textSecondary,
                         ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 6),
-                  Icon(icon, size: 18, color: color),
-                ],
-              ),
-              const SizedBox(height: 10),
-              Text(
-                '$count',
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                  color: isSelected ? color : theme.textTheme.titleLarge?.color,
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: widget.color.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(widget.icon, size: 16, color: widget.color),
+                    ),
+                  ],
                 ),
-              ),
-            ],
+                const SizedBox(height: 12),
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 250),
+                  transitionBuilder: (child, animation) => FadeTransition(
+                    opacity: animation,
+                    child: ScaleTransition(scale: animation, child: child),
+                  ),
+                  child: Text(
+                    '${widget.count}',
+                    key: ValueKey<int>(widget.count),
+                    style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: -0.5,
+                      color: widget.isSelected
+                          ? widget.color
+                          : tokens.textPrimary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

@@ -381,9 +381,22 @@ class MonitoringDashboardCubit extends Cubit<MonitoringDashboardState> {
 
     // Status filter
     if (loaded.statusFilter != null) {
-      list = list
-          .where((item) => item.status.status.toValue() == loaded.statusFilter)
-          .toList();
+      if (loaded.statusFilter == 'down') {
+        list = list
+            .where(
+              (item) =>
+                  item.status.status == DeviceStatusEnum.down ||
+                  item.status.status == DeviceStatusEnum.unknown ||
+                  item.status.status == DeviceStatusEnum.unreachable,
+            )
+            .toList();
+      } else {
+        list = list
+            .where(
+              (item) => item.status.status.toValue() == loaded.statusFilter,
+            )
+            .toList();
+      }
     }
 
     // Department filter

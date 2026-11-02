@@ -21,14 +21,13 @@ class EnterpriseDeviceDetailsSheet extends StatelessWidget {
       case DeviceStatusEnum.up:
         return const Color(0xFF16A34A);
       case DeviceStatusEnum.down:
+      case DeviceStatusEnum.unknown:
+      case DeviceStatusEnum.unreachable:
         return const Color(0xFFDC2626);
       case DeviceStatusEnum.degraded:
         return const Color(0xFFD97706);
       case DeviceStatusEnum.maintenance:
         return const Color(0xFF0284C7);
-      case DeviceStatusEnum.unknown:
-      default:
-        return const Color(0xFF94A3B8);
     }
   }
 

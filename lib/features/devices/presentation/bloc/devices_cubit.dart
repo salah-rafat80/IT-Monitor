@@ -72,6 +72,15 @@ final class DevicesError extends DevicesState {
   List<Object?> get props => [message];
 }
 
+class DeviceReassignmentResult {
+  final int count;
+  final String? refreshError;
+
+  const DeviceReassignmentResult({required this.count, this.refreshError});
+
+  bool get hasRefreshError => refreshError != null && refreshError!.isNotEmpty;
+}
+
 @injectable
 class DevicesCubit extends Cubit<DevicesState> {
   final DeviceRepository _deviceRepo;
@@ -268,7 +277,7 @@ class DevicesCubit extends Cubit<DevicesState> {
     );
   }
 
-  Future<Result<int>> reassignDevicesFactory({
+  Future<Result<DeviceReassignmentResult>> reassignDevicesFactory({
     required List<int> deviceIds,
     required String targetFactoryId,
   }) async {
@@ -278,9 +287,19 @@ class DevicesCubit extends Cubit<DevicesState> {
     );
 
     return res.fold(
-      onSuccess: (count) {
-        loadDevices();
-        return Result.success(count);
+      onSuccess: (count) async {
+        String? refreshError;
+        try {
+          await loadDevices();
+          if (state is DevicesError) {
+            refreshError = (state as DevicesError).message;
+          }
+        } catch (e) {
+          refreshError = e.toString();
+        }
+        return Result.success(
+          DeviceReassignmentResult(count: count, refreshError: refreshError),
+        );
       },
       onFailure: (failure) {
         // Do not overwrite current DevicesLoaded state with DevicesError on mutation failure,

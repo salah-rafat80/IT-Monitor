@@ -343,29 +343,32 @@ void main() {
       expect(gwStats.unknown, 2);
     });
 
-    test('8. RNF and BNF gateway histories remain separate', () {
-      final graph = builder.build(
-        monitoredDevices: endpoints,
-        infraDevices: unifiAps,
-        infraStatuses: {
-          '192.168.22.1': DeviceStatusEnum.up, // RNF Gateway UP
-          '192.168.21.1': DeviceStatusEnum.down, // BNF Gateway DOWN
-        },
-      );
+    test(
+      '8. RNF and BNF gateway histories remain separate and do not mark WAN as UP',
+      () {
+        final graph = builder.build(
+          monitoredDevices: endpoints,
+          infraDevices: unifiAps,
+          infraStatuses: {
+            50001: DeviceStatusEnum.up, // RNF Gateway UP
+            50002: DeviceStatusEnum.down, // BNF Gateway DOWN
+          },
+        );
 
-      expect(graph.nodes['gw_rnf_22']!.status, DeviceStatusEnum.up);
-      expect(graph.nodes['gw_bnf_21']!.status, DeviceStatusEnum.down);
+        expect(graph.nodes['gw_rnf_22']!.status, DeviceStatusEnum.up);
+        expect(graph.nodes['gw_bnf_21']!.status, DeviceStatusEnum.down);
 
-      // WAN is reachable if at least one gateway is up
-      expect(graph.nodes['wan_internet']!.status, DeviceStatusEnum.up);
+        // LAN gateway reachability must NEVER be inferred as Internet / WAN connectivity!
+        expect(graph.nodes['wan_internet']!.status, DeviceStatusEnum.unknown);
 
-      final gwStats = graph.categoryStats[TopologyDeviceCategory.gateway]!;
-      expect(gwStats.online, 1);
-      expect(gwStats.offline, 1);
-    });
+        final gwStats = graph.categoryStats[TopologyDeviceCategory.gateway]!;
+        expect(gwStats.online, 1);
+        expect(gwStats.offline, 1);
+      },
+    );
 
     test(
-      '9. Infrastructure WebSocket updates refresh AP and gateway topology nodes',
+      '9. Infrastructure WebSocket updates refresh AP and gateway topology nodes without fabricating WAN online',
       () {
         final initialGraph = builder.build(
           monitoredDevices: endpoints,
@@ -401,7 +404,11 @@ void main() {
         expect(updatedGraph.nodes['ap_3']!.status, DeviceStatusEnum.down);
         expect(updatedGraph.nodes['ap_3']!.failureReason, 'ICMP timeout');
         expect(updatedGraph.nodes['gw_rnf_22']!.status, DeviceStatusEnum.up);
-        expect(updatedGraph.nodes['wan_internet']!.status, DeviceStatusEnum.up);
+        // WAN remains strictly Unknown until externally verified!
+        expect(
+          updatedGraph.nodes['wan_internet']!.status,
+          DeviceStatusEnum.unknown,
+        );
       },
     );
 
@@ -545,5 +552,397 @@ void main() {
         }
       },
     );
+
+    test(
+      '13. Same infrastructure IP in RNF and BNF with different statuses does not collide',
+      () {
+        final multiFactoryAps = [
+          UniFiDeviceEntity(
+            id: 3,
+            name: 'RNF AP Floor 1',
+            ip: '192.168.7.2', // Identical IP in RNF
+            role: UniFiDeviceRole.accessPoint,
+            location: 'RNF Production',
+            isCriticalInfrastructure: true,
+            requiresAdminConfirmation: false,
+            linkedSubnets: const ['192.168.7.0/24'],
+            siteName: 'RNF Factory Site',
+            isEnabled: true,
+            isReadOnly: false,
+            createdAt: DateTime(2026),
+          ),
+          UniFiDeviceEntity(
+            id: 7,
+            name: 'BNF AP Admin Office',
+            ip: '192.168.7.2', // Identical IP in BNF
+            role: UniFiDeviceRole.accessPoint,
+            location: 'BNF Main Office',
+            isCriticalInfrastructure: true,
+            requiresAdminConfirmation: false,
+            linkedSubnets: const ['192.168.7.0/24'],
+            siteName: 'BNF Factory Site',
+            isEnabled: true,
+            isReadOnly: false,
+            createdAt: DateTime(2026),
+          ),
+        ];
+
+        // Build graph with stable virtual IDs: RNF AP is 10003 (UP), BNF AP is 10007 (DOWN)
+        final now = DateTime.now();
+        final statusMap = {
+          10003: DeviceStatusEntity(
+            deviceId: 10003,
+            status: DeviceStatusEnum.up,
+            statusChangedAt: now,
+            lastCheckAt: now,
+            lastLatencyMs: 8,
+          ),
+          10007: DeviceStatusEntity(
+            deviceId: 10007,
+            status: DeviceStatusEnum.down,
+            statusChangedAt: now,
+            lastCheckAt: now,
+            lastFailureReason: 'Port link down',
+          ),
+        };
+
+        final graph = builder.build(
+          monitoredDevices: endpoints,
+          infraDevices: multiFactoryAps,
+          statuses: statusMap,
+        );
+
+        final rnfApNode = graph.nodes['ap_3'];
+        final bnfApNode = graph.nodes['ap_7'];
+
+        expect(rnfApNode, isNotNull);
+        expect(bnfApNode, isNotNull);
+        // Both nodes share the same IP
+        expect(rnfApNode!.subtitle, '192.168.7.2');
+        expect(bnfApNode!.subtitle, '192.168.7.2');
+        // But statuses are completely independent and uncollided!
+        expect(rnfApNode.status, DeviceStatusEnum.up);
+        expect(bnfApNode.status, DeviceStatusEnum.down);
+        expect(bnfApNode.failureReason, 'Port link down');
+      },
+    );
+
+    test(
+      '14. Verified links dynamically transition from UP to DOWN when connected endpoint fails',
+      () {
+        final verifiedSwitch = UniFiDeviceEntity(
+          id: 11,
+          name: 'USW-Core-RNF',
+          ip: '192.168.22.5',
+          role: UniFiDeviceRole.switchDevice,
+          location: 'RNF Server Room',
+          isCriticalInfrastructure: true,
+          requiresAdminConfirmation: false,
+          linkedSubnets: const ['192.168.22.0/24'],
+          siteName: 'RNF Site',
+          isEnabled: true,
+          isReadOnly: false,
+          createdAt: DateTime(2026),
+        );
+
+        final now = DateTime.now();
+        // Initially both Switch (10011) and AP 3 (10003) and Gateway (50001) are UP
+        final initialStatuses = {
+          50001: DeviceStatusEntity(
+            deviceId: 50001,
+            status: DeviceStatusEnum.up,
+            statusChangedAt: now,
+            lastCheckAt: now,
+          ),
+          10011: DeviceStatusEntity(
+            deviceId: 10011,
+            status: DeviceStatusEnum.up,
+            statusChangedAt: now,
+            lastCheckAt: now,
+          ),
+        };
+
+        final initialGraph = builder.build(
+          monitoredDevices: [],
+          infraDevices: [verifiedSwitch],
+          statuses: initialStatuses,
+          factoryId: 'rnf',
+        );
+
+        final linkGwSw = initialGraph.links.firstWhere(
+          (l) => l.fromNodeId == 'gw_rnf_22' && l.toNodeId == 'sw_11',
+        );
+        expect(linkGwSw.status, DeviceStatusEnum.up);
+        expect(linkGwSw.isInferred, isFalse);
+
+        // Now Switch (10011) goes DOWN
+        final updatedGraph = initialGraph.updateStatuses({
+          50001: DeviceStatusEntity(
+            deviceId: 50001,
+            status: DeviceStatusEnum.up,
+            statusChangedAt: now,
+            lastCheckAt: now,
+          ),
+          10011: DeviceStatusEntity(
+            deviceId: 10011,
+            status: DeviceStatusEnum.down,
+            statusChangedAt: now,
+            lastCheckAt: now,
+            lastFailureReason: 'Power loss',
+          ),
+        });
+
+        final updatedLinkGwSw = updatedGraph.links.firstWhere(
+          (l) => l.fromNodeId == 'gw_rnf_22' && l.toNodeId == 'sw_11',
+        );
+        // Link must dynamically update to DOWN!
+        expect(updatedLinkGwSw.status, DeviceStatusEnum.down);
+      },
+    );
+
+    test(
+      '15. Verified links dynamically recover from DOWN to UP when endpoint recovers',
+      () {
+        final verifiedSwitch = UniFiDeviceEntity(
+          id: 11,
+          name: 'USW-Core-RNF',
+          ip: '192.168.22.5',
+          role: UniFiDeviceRole.switchDevice,
+          location: 'RNF Server Room',
+          isCriticalInfrastructure: true,
+          requiresAdminConfirmation: false,
+          linkedSubnets: const ['192.168.22.0/24'],
+          siteName: 'RNF Site',
+          isEnabled: true,
+          isReadOnly: false,
+          createdAt: DateTime(2026),
+        );
+
+        final now = DateTime.now();
+        // Start in DOWN state
+        final downGraph = builder.build(
+          monitoredDevices: [],
+          infraDevices: [verifiedSwitch],
+          statuses: {
+            50001: DeviceStatusEntity(
+              deviceId: 50001,
+              status: DeviceStatusEnum.up,
+              statusChangedAt: now,
+              lastCheckAt: now,
+            ),
+            10011: DeviceStatusEntity(
+              deviceId: 10011,
+              status: DeviceStatusEnum.down,
+              statusChangedAt: now,
+              lastCheckAt: now,
+            ),
+          },
+          factoryId: 'rnf',
+        );
+
+        expect(
+          downGraph.links
+              .firstWhere(
+                (l) => l.fromNodeId == 'gw_rnf_22' && l.toNodeId == 'sw_11',
+              )
+              .status,
+          DeviceStatusEnum.down,
+        );
+
+        // Now Switch recovers to UP
+        final recoveredGraph = downGraph.updateStatuses({
+          50001: DeviceStatusEntity(
+            deviceId: 50001,
+            status: DeviceStatusEnum.up,
+            statusChangedAt: now,
+            lastCheckAt: now,
+          ),
+          10011: DeviceStatusEntity(
+            deviceId: 10011,
+            status: DeviceStatusEnum.up,
+            statusChangedAt: now,
+            lastCheckAt: now,
+          ),
+        });
+
+        // Link must restore to UP!
+        expect(
+          recoveredGraph.links
+              .firstWhere(
+                (l) => l.fromNodeId == 'gw_rnf_22' && l.toNodeId == 'sw_11',
+              )
+              .status,
+          DeviceStatusEnum.up,
+        );
+      },
+    );
+
+    test(
+      '16. Inferred links strictly remain UNKNOWN even when downstream endpoint is UP',
+      () {
+        final now = DateTime.now();
+        final graph = builder.build(
+          monitoredDevices: endpoints,
+          infraDevices: unifiAps,
+        );
+
+        // Both endpoint 101 and gateway 50001 are UP
+        final updatedGraph = graph.updateStatuses({
+          50001: DeviceStatusEntity(
+            deviceId: 50001,
+            status: DeviceStatusEnum.up,
+            statusChangedAt: now,
+            lastCheckAt: now,
+          ),
+          101: DeviceStatusEntity(
+            deviceId: 101,
+            status: DeviceStatusEnum.up,
+            statusChangedAt: now,
+            lastCheckAt: now,
+          ),
+        });
+
+        final inferredLinks = updatedGraph.links
+            .where((l) => l.isInferred)
+            .toList();
+        expect(inferredLinks.isNotEmpty, isTrue);
+
+        // Inferred relationships MUST NEVER turn green (UP)!
+        for (final l in inferredLinks) {
+          expect(l.status, DeviceStatusEnum.unknown);
+        }
+      },
+    );
+
+    test('17. Gateway reachability is not reported as Internet connectivity', () {
+      final graph = builder.build(
+        monitoredDevices: endpoints,
+        infraDevices: unifiAps,
+        statuses: {
+          50001: DeviceStatusEntity(
+            deviceId: 50001,
+            status: DeviceStatusEnum.up,
+            statusChangedAt: DateTime.now(),
+            lastCheckAt: DateTime.now(),
+          ),
+          50002: DeviceStatusEntity(
+            deviceId: 50002,
+            status: DeviceStatusEnum.up,
+            statusChangedAt: DateTime.now(),
+            lastCheckAt: DateTime.now(),
+          ),
+        },
+      );
+
+      // Gateways are UP
+      expect(graph.nodes['gw_rnf_22']!.status, DeviceStatusEnum.up);
+      expect(graph.nodes['gw_bnf_21']!.status, DeviceStatusEnum.up);
+
+      // But Internet / WAN node status must remain UNKNOWN (not inferred from LAN gateways)
+      expect(graph.nodes['wan_internet']!.status, DeviceStatusEnum.unknown);
+
+      // And links from WAN to gateways remain UNKNOWN
+      final wanLinks = graph.links
+          .where((l) => l.fromNodeId == 'wan_internet')
+          .toList();
+      for (final wl in wanLinks) {
+        expect(wl.status, DeviceStatusEnum.unknown);
+      }
+    });
+
+    test(
+      '18. One and two consecutive failures are visibly distinguished as transitional states',
+      () {
+        final now = DateTime.now();
+        final freshOnline = DeviceStatusEntity(
+          deviceId: 101,
+          status: DeviceStatusEnum.up,
+          statusChangedAt: now,
+          lastCheckAt: now,
+          consecutiveFailures: 0,
+        );
+        expect(freshOnline.isTransitionalFailing, isFalse);
+        expect(freshOnline.transitionalLabel, 'Online');
+
+        // 1st failure: retained as UP, but transitional failing is TRUE
+        final fail1 = StatusEngine.processCheckResult(
+          currentStatus: freshOnline,
+          checkResult: CheckResult.failure(
+            deviceId: 101,
+            targetIp: '192.168.27.10',
+            timestamp: now,
+            errorMessage: 'Request timed out',
+          ),
+          config: config,
+        );
+        expect(fail1.status, DeviceStatusEnum.up);
+        expect(fail1.consecutiveFailures, 1);
+        expect(fail1.isTransitionalFailing, isTrue);
+        expect(
+          fail1.transitionalLabel,
+          'Previously Online · 1/3 Failed Checks',
+        );
+        expect(fail1.lastFailureReason, 'Request timed out');
+
+        // 2nd failure: still UP, but 2/3 Failed Checks
+        final fail2 = StatusEngine.processCheckResult(
+          currentStatus: fail1,
+          checkResult: CheckResult.failure(
+            deviceId: 101,
+            targetIp: '192.168.27.10',
+            timestamp: now,
+            errorMessage: 'Request timed out',
+          ),
+          config: config,
+        );
+        expect(fail2.status, DeviceStatusEnum.up);
+        expect(fail2.consecutiveFailures, 2);
+        expect(fail2.isTransitionalFailing, isTrue);
+        expect(
+          fail2.transitionalLabel,
+          'Previously Online · 2/3 Failed Checks',
+        );
+
+        // Verify EnterpriseTopologyNode exposes this state
+        final node = EnterpriseTopologyNode(
+          id: 'dev_101',
+          title: 'PC-101',
+          category: TopologyDeviceCategory.pc,
+          status: fail2.status,
+          level: 4,
+          consecutiveFailures: fail2.consecutiveFailures,
+          failureReason: fail2.lastFailureReason,
+        );
+        expect(node.isTransitionalFailing, isTrue);
+        expect(node.transitionalLabel, 'Previously Online · 2/3 Failed Checks');
+      },
+    );
+
+    test('19. Three consecutive failures produce Offline', () {
+      final now = DateTime.now();
+      final fail2 = DeviceStatusEntity(
+        deviceId: 101,
+        status: DeviceStatusEnum.up,
+        statusChangedAt: now,
+        lastCheckAt: now,
+        consecutiveFailures: 2,
+      );
+
+      // 3rd failure reaches threshold of 3 -> marks DOWN
+      final fail3 = StatusEngine.processCheckResult(
+        currentStatus: fail2,
+        checkResult: CheckResult.failure(
+          deviceId: 101,
+          targetIp: '192.168.27.10',
+          timestamp: now,
+          errorMessage: 'Request timed out',
+        ),
+        config: config,
+      );
+      expect(fail3.status, DeviceStatusEnum.down);
+      expect(fail3.consecutiveFailures, 3);
+      expect(fail3.effectiveStatus(), DeviceStatusEnum.down);
+      expect(fail3.isTransitionalFailing, isFalse);
+    });
   });
 }

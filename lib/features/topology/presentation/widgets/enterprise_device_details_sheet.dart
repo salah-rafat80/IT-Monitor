@@ -36,7 +36,13 @@ class EnterpriseDeviceDetailsSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final statusColor = _getStatusColor(node.status);
+    final isTransitional = node.isTransitionalFailing;
+    final statusColor = isTransitional
+        ? const Color(0xFFF59E0B)
+        : _getStatusColor(node.status);
+    final statusLabel = isTransitional
+        ? 'PREVIOUSLY ONLINE · ${node.consecutiveFailures}/3 FAILED'
+        : node.status.name.toUpperCase();
 
     return Container(
       width: 360,
@@ -105,7 +111,7 @@ class EnterpriseDeviceDetailsSheet extends StatelessWidget {
                           ),
                           const SizedBox(width: 5),
                           Text(
-                            node.status.name.toUpperCase(),
+                            statusLabel,
                             style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w700,
@@ -155,10 +161,12 @@ class EnterpriseDeviceDetailsSheet extends StatelessWidget {
                 const SizedBox(height: 16),
 
                 _buildInfoSection('Monitoring & Reachability', [
-                  _buildDetailRow(
-                    'Operational Status',
-                    node.status.displayName,
-                  ),
+                  _buildDetailRow('Operational Status', node.transitionalLabel),
+                  if (node.isTransitionalFailing)
+                    _buildDetailRow(
+                      'Failure Threshold',
+                      '${node.consecutiveFailures} of 3 consecutive probe failures',
+                    ),
                   _buildDetailRow(
                     'Status Freshness',
                     node.lastCheckAt != null

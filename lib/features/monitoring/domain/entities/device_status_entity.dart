@@ -122,6 +122,19 @@ class DeviceStatusEntity extends Equatable {
     return status;
   }
 
+  /// True when the device is currently retained as UP/Online by threshold policy,
+  /// but has recent consecutive probe failures (1 or 2 failures below failureThreshold).
+  bool get isTransitionalFailing =>
+      status == DeviceStatusEnum.up && consecutiveFailures > 0;
+
+  /// Clear transitional human-readable label when failing below threshold.
+  String get transitionalLabel {
+    if (isTransitionalFailing) {
+      return 'Previously Online · $consecutiveFailures/3 Failed Checks';
+    }
+    return effectiveStatus().displayName;
+  }
+
   String get freshnessDescription {
     if (lastCheckAt == null) return 'Never checked';
     final diff = DateTime.now().difference(lastCheckAt!);

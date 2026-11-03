@@ -6,12 +6,16 @@ class DeviceStatusChip extends StatelessWidget {
   final DeviceStatusEnum status;
   final bool isMaintenance;
   final bool compact;
+  final int consecutiveFailures;
+  final String? failureReason;
 
   const DeviceStatusChip({
     super.key,
     required this.status,
     this.isMaintenance = false,
     this.compact = false,
+    this.consecutiveFailures = 0,
+    this.failureReason,
   });
 
   @override
@@ -27,9 +31,17 @@ class DeviceStatusChip extends StatelessWidget {
 
     switch (effectiveStatus) {
       case DeviceStatusEnum.up:
-        iconData = Icons.check_circle_rounded;
-        color = tokens.statusOnline;
-        text = 'Connected';
+        if (consecutiveFailures > 0) {
+          iconData = Icons.warning_amber_rounded;
+          color = const Color(0xFFF59E0B);
+          text = compact
+              ? '$consecutiveFailures/3 Fail'
+              : 'Previously Online · $consecutiveFailures/3 Failed Checks';
+        } else {
+          iconData = Icons.check_circle_rounded;
+          color = tokens.statusOnline;
+          text = 'Connected';
+        }
         break;
       case DeviceStatusEnum.degraded:
         iconData = Icons.warning_amber_rounded;
@@ -59,8 +71,9 @@ class DeviceStatusChip extends StatelessWidget {
         break;
     }
 
+    final Widget chip;
     if (compact) {
-      return Container(
+      chip = Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         decoration: BoxDecoration(
           color: color.withValues(alpha: 0.12),
@@ -83,30 +96,38 @@ class DeviceStatusChip extends StatelessWidget {
           ],
         ),
       );
+    } else {
+      chip = Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: color.withValues(alpha: 0.3)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(iconData, size: 16, color: color),
+            const SizedBox(width: 6),
+            Text(
+              text,
+              style: TextStyle(
+                color: color,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      );
     }
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withValues(alpha: 0.3)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(iconData, size: 16, color: color),
-          const SizedBox(width: 6),
-          Text(
-            text,
-            style: TextStyle(
-              color: color,
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
-    );
+    if (failureReason != null && failureReason!.isNotEmpty) {
+      return Tooltip(
+        message: 'Latest Failure Reason: $failureReason',
+        child: chip,
+      );
+    }
+    return chip;
   }
 }

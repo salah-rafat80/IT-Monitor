@@ -202,6 +202,19 @@ class EnterpriseTopologyNode extends Equatable {
   Offset get rightAnchor =>
       Offset(position.dx + size.width, position.dy + size.height / 2);
 
+  /// True when the node is retained as UP by threshold policy,
+  /// but has recent probe failures (1 or 2 failures below failureThreshold).
+  bool get isTransitionalFailing =>
+      status == DeviceStatusEnum.up && consecutiveFailures > 0;
+
+  /// Clear transitional human-readable label when failing below threshold.
+  String get transitionalLabel {
+    if (isTransitionalFailing) {
+      return 'Previously Online · $consecutiveFailures/3 Failed Checks';
+    }
+    return status.displayName;
+  }
+
   @override
   List<Object?> get props => [
     id,
@@ -328,6 +341,28 @@ class EnterpriseTopologyLink extends Equatable {
     this.isInferred = false,
   });
 
+  EnterpriseTopologyLink copyWith({
+    String? id,
+    String? fromNodeId,
+    String? toNodeId,
+    String? fromPort,
+    String? toPort,
+    DeviceStatusEnum? status,
+    String? speed,
+    bool? isInferred,
+  }) {
+    return EnterpriseTopologyLink(
+      id: id ?? this.id,
+      fromNodeId: fromNodeId ?? this.fromNodeId,
+      toNodeId: toNodeId ?? this.toNodeId,
+      fromPort: fromPort ?? this.fromPort,
+      toPort: toPort ?? this.toPort,
+      status: status ?? this.status,
+      speed: speed ?? this.speed,
+      isInferred: isInferred ?? this.isInferred,
+    );
+  }
+
   @override
   List<Object?> get props => [
     id,
@@ -408,24 +443,65 @@ class EnterpriseTopologyGraph extends Equatable {
       }
     }
 
-    // Dynamic WAN reachability calculation based on gateways
+    // Actual WAN / Internet status remains strictly Unknown until externally verified.
+    // LAN gateway reachability must NEVER be inferred as Internet connectivity!
     final wanNode = updatedNodes['wan_internet'];
     if (wanNode != null) {
-      final gwNodes = updatedNodes.values
-          .where((n) => n.category == TopologyDeviceCategory.gateway)
-          .toList();
-      DeviceStatusEnum wanStatus = DeviceStatusEnum.unknown;
-      if (gwNodes.any((g) => g.status == DeviceStatusEnum.up)) {
-        wanStatus = DeviceStatusEnum.up;
-      } else if (gwNodes.isNotEmpty &&
-          gwNodes.every((g) => g.status == DeviceStatusEnum.down)) {
-        wanStatus = DeviceStatusEnum.down;
-      } else if (gwNodes.any((g) => g.status == DeviceStatusEnum.degraded)) {
-        wanStatus = DeviceStatusEnum.degraded;
-      } else if (gwNodes.any((g) => g.status == DeviceStatusEnum.stale)) {
-        wanStatus = DeviceStatusEnum.stale;
+      updatedNodes['wan_internet'] = wanNode.copyWith(
+        status: DeviceStatusEnum.unknown,
+      );
+    }
+
+    // Recalculate verified link statuses based on authoritative endpoint states.
+    final updatedLinks = <EnterpriseTopologyLink>[];
+    for (final link in links) {
+      if (link.isInferred) {
+        // Inferred links MUST strictly remain Unknown and never turn green (UP).
+        updatedLinks.add(link.copyWith(status: DeviceStatusEnum.unknown));
+        continue;
       }
-      updatedNodes['wan_internet'] = wanNode.copyWith(status: wanStatus);
+
+      final fromNode = updatedNodes[link.fromNodeId];
+      final toNode = updatedNodes[link.toNodeId];
+
+      if (fromNode == null || toNode == null) {
+        updatedLinks.add(link.copyWith(status: DeviceStatusEnum.unknown));
+        continue;
+      }
+
+      // If either end of a link connects to an inferred location group, the link is unverified.
+      if (fromNode.isInferred || toNode.isInferred) {
+        updatedLinks.add(link.copyWith(status: DeviceStatusEnum.unknown));
+        continue;
+      }
+
+      // If either end is WAN (Internet), external reachability is unverified -> remain Unknown.
+      if (fromNode.category == TopologyDeviceCategory.wan ||
+          toNode.category == TopologyDeviceCategory.wan) {
+        updatedLinks.add(link.copyWith(status: DeviceStatusEnum.unknown));
+        continue;
+      }
+
+      // Authoritative status resolution between two verified physical endpoints:
+      // If either endpoint is Down or Unreachable -> link is Down.
+      if (fromNode.status == DeviceStatusEnum.down ||
+          fromNode.status == DeviceStatusEnum.unreachable ||
+          toNode.status == DeviceStatusEnum.down ||
+          toNode.status == DeviceStatusEnum.unreachable) {
+        updatedLinks.add(link.copyWith(status: DeviceStatusEnum.down));
+      } else if (fromNode.status == DeviceStatusEnum.degraded ||
+          toNode.status == DeviceStatusEnum.degraded) {
+        updatedLinks.add(link.copyWith(status: DeviceStatusEnum.degraded));
+      } else if (fromNode.status == DeviceStatusEnum.stale ||
+          toNode.status == DeviceStatusEnum.stale) {
+        updatedLinks.add(link.copyWith(status: DeviceStatusEnum.stale));
+      } else if (fromNode.status == DeviceStatusEnum.up &&
+          toNode.status == DeviceStatusEnum.up) {
+        // Both endpoints verified fresh Online!
+        updatedLinks.add(link.copyWith(status: DeviceStatusEnum.up));
+      } else {
+        updatedLinks.add(link.copyWith(status: DeviceStatusEnum.unknown));
+      }
     }
 
     // Recompute category stats strictly from registered assets (exclude inferred & WAN)
@@ -455,7 +531,7 @@ class EnterpriseTopologyGraph extends Equatable {
 
     return EnterpriseTopologyGraph(
       nodes: updatedNodes,
-      links: links,
+      links: updatedLinks,
       unlinkedNodes: unlinkedNodes,
       canvasSize: canvasSize,
       categoryStats: stats,

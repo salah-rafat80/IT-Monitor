@@ -89,20 +89,20 @@ class TopologyCubit extends Cubit<TopologyState> {
       }
 
       // Map infrastructure statuses using stable virtual ID (10000 + infra.id)
-      final infraStatuses = <String, DeviceStatusEnum>{};
+      final infraStatuses = <int, DeviceStatusEnum>{};
       for (final infra in _cachedInfra) {
         final virtualId = 10000 + infra.id;
         final st = statusMap[virtualId];
-        infraStatuses[infra.ip] =
+        infraStatuses[virtualId] =
             st?.effectiveStatus() ?? DeviceStatusEnum.unknown;
       }
 
       // Map registered factory gateways: RNF (50001, 192.168.22.1) & BNF (50002, 192.168.21.1)
       if (statusMap.containsKey(50001)) {
-        infraStatuses['192.168.22.1'] = statusMap[50001]!.effectiveStatus();
+        infraStatuses[50001] = statusMap[50001]!.effectiveStatus();
       }
       if (statusMap.containsKey(50002)) {
-        infraStatuses['192.168.21.1'] = statusMap[50002]!.effectiveStatus();
+        infraStatuses[50002] = statusMap[50002]!.effectiveStatus();
       }
 
       final monitoredList = _cachedDevices.map((d) {
@@ -115,6 +115,7 @@ class TopologyCubit extends Cubit<TopologyState> {
         monitoredDevices: monitoredList,
         infraDevices: _cachedInfra,
         infraStatuses: infraStatuses,
+        statuses: statusMap,
         factoryId: _factoryId,
       );
 

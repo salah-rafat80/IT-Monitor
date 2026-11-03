@@ -35,7 +35,13 @@ class EnterpriseDeviceCard extends StatefulWidget {
 class _EnterpriseDeviceCardState extends State<EnterpriseDeviceCard> {
   bool _isHovered = false;
 
-  Color _getStatusColor(DeviceStatusEnum status) {
+  Color _getStatusColor(
+    DeviceStatusEnum status, {
+    bool isTransitional = false,
+  }) {
+    if (isTransitional) {
+      return const Color(0xFFF59E0B); // Warning Amber for 1/3 or 2/3 failing
+    }
     switch (status) {
       case DeviceStatusEnum.up:
         return const Color(0xFF10B981); // Emerald Green
@@ -108,7 +114,11 @@ class _EnterpriseDeviceCardState extends State<EnterpriseDeviceCard> {
 
   @override
   Widget build(BuildContext context) {
-    final statusColor = _getStatusColor(widget.node.status);
+    final isTransitional = widget.node.isTransitionalFailing;
+    final statusColor = _getStatusColor(
+      widget.node.status,
+      isTransitional: isTransitional,
+    );
     final themeColor = _getCategoryThemeColor(widget.node.category);
     final hasPortBadge =
         widget.node.category == TopologyDeviceCategory.switchDevice &&
@@ -190,22 +200,49 @@ class _EnterpriseDeviceCardState extends State<EnterpriseDeviceCard> {
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        // Status Indicator Dot & Pulse
-                        Container(
-                          width: 7,
-                          height: 7,
-                          decoration: BoxDecoration(
-                            color: statusColor,
-                            shape: BoxShape.circle,
-                            boxShadow: [
-                              BoxShadow(
-                                color: statusColor.withValues(alpha: 0.6),
-                                blurRadius: 4,
-                                spreadRadius: 0.5,
+                        // Status Indicator Dot & Pulse / Transitional Badge
+                        if (isTransitional)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 3,
+                              vertical: 1,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(
+                                0xFFF59E0B,
+                              ).withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(3),
+                              border: Border.all(
+                                color: const Color(
+                                  0xFFF59E0B,
+                                ).withValues(alpha: 0.7),
                               ),
-                            ],
+                            ),
+                            child: Text(
+                              '${widget.node.consecutiveFailures}/3 FAIL',
+                              style: const TextStyle(
+                                fontSize: 7,
+                                fontWeight: FontWeight.w800,
+                                color: Color(0xFFF59E0B),
+                              ),
+                            ),
+                          )
+                        else
+                          Container(
+                            width: 7,
+                            height: 7,
+                            decoration: BoxDecoration(
+                              color: statusColor,
+                              shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: statusColor.withValues(alpha: 0.6),
+                                  blurRadius: 4,
+                                  spreadRadius: 0.5,
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
                       ],
                     ),
 

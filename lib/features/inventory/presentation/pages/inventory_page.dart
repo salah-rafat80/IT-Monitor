@@ -1004,40 +1004,69 @@ class _InventoryPageState extends State<InventoryPage>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // Factory Switcher Tabs
-                  Row(
-                    children: [
-                      for (final f in factories) ...[
-                        _FactoryTabButton(
-                          code: f.code,
-                          name: f.name,
-                          isSelected: activeFactoryId == f.id,
-                          onTap: () => _onFactoryTabChanged(f.id),
-                        ),
-                        const SizedBox(width: 8),
-                      ],
-                      _FactoryTabButton(
-                        code: 'ALL',
-                        name: 'All Factories (Consolidated)',
-                        isSelected: isConsolidated,
-                        onTap: () => _onFactoryTabChanged(null),
-                      ),
-                      const Spacer(),
-                      if (isAdmin)
-                        OutlinedButton.icon(
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: Colors.amber,
-                            side: const BorderSide(color: Colors.amber),
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      final tabs = Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          for (final f in factories)
+                            _FactoryTabButton(
+                              code: f.code,
+                              name: f.name,
+                              isSelected: activeFactoryId == f.id,
+                              onTap: () => _onFactoryTabChanged(f.id),
+                            ),
+                          _FactoryTabButton(
+                            code: 'ALL',
+                            name: 'All Factories (Consolidated)',
+                            isSelected: isConsolidated,
+                            onTap: () => _onFactoryTabChanged(null),
                           ),
-                          onPressed: () => setState(
-                            () => _isShowingUnassignedRecovery = true,
-                          ),
-                          icon: const Icon(
-                            Icons.inventory_2_outlined,
-                            size: 16,
-                          ),
-                          label: const Text('Legacy Unassigned Recovery'),
-                        ),
-                    ],
+                        ],
+                      );
+
+                      final recoveryButton = isAdmin
+                          ? OutlinedButton.icon(
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: Colors.amber,
+                                side: const BorderSide(color: Colors.amber),
+                              ),
+                              onPressed: () => setState(
+                                () => _isShowingUnassignedRecovery = true,
+                              ),
+                              icon: const Icon(
+                                Icons.inventory_2_outlined,
+                                size: 16,
+                              ),
+                              label: const Text('Legacy Unassigned Recovery'),
+                            )
+                          : null;
+
+                      if (recoveryButton == null) {
+                        return tabs;
+                      }
+
+                      final isCompact = constraints.maxWidth < 840;
+                      if (isCompact) {
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            tabs,
+                            const SizedBox(height: 8),
+                            recoveryButton,
+                          ],
+                        );
+                      }
+
+                      return Row(
+                        children: [
+                          Expanded(child: tabs),
+                          recoveryButton,
+                        ],
+                      );
+                    },
                   ),
                   const SizedBox(height: 12),
 

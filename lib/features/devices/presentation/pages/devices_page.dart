@@ -1076,31 +1076,30 @@ class _DevicesPageState extends State<DevicesPage> {
                         // Top Search & Filter Bar
                         Padding(
                           padding: const EdgeInsets.all(16.0),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                flex: 3,
-                                child: TextField(
-                                  controller: _searchController,
-                                  decoration: const InputDecoration(
-                                    hintText:
-                                        'Search by Owner, Department, Name, IP, MAC, Hostname...',
-                                    prefixIcon: Icon(Icons.search),
-                                    border: OutlineInputBorder(),
-                                    contentPadding: EdgeInsets.symmetric(
-                                      horizontal: 16,
-                                      vertical: 12,
-                                    ),
+                          child: LayoutBuilder(
+                            builder: (context, constraints) {
+                              final isCompact = constraints.maxWidth < 980;
+
+                              final searchField = TextField(
+                                controller: _searchController,
+                                decoration: const InputDecoration(
+                                  hintText:
+                                      'Search by Owner, Department, Name, IP, MAC, Hostname...',
+                                  prefixIcon: Icon(Icons.search),
+                                  border: OutlineInputBorder(),
+                                  contentPadding: EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 12,
                                   ),
-                                  onChanged: (val) {
-                                    context.read<DevicesCubit>().filterDevices(
-                                      query: val,
-                                    );
-                                  },
                                 ),
-                              ),
-                              const SizedBox(width: 12),
-                              DropdownButton<String>(
+                                onChanged: (val) {
+                                  context.read<DevicesCubit>().filterDevices(
+                                    query: val,
+                                  );
+                                },
+                              );
+
+                              final categoryDropdown = DropdownButton<String>(
                                 value:
                                     categories.contains(state.selectedCategory)
                                     ? state.selectedCategory
@@ -1120,9 +1119,9 @@ class _DevicesPageState extends State<DevicesPage> {
                                     );
                                   }
                                 },
-                              ),
-                              const SizedBox(width: 12),
-                              DropdownButton<String>(
+                              );
+
+                              final departmentDropdown = DropdownButton<String>(
                                 value:
                                     departments.contains(
                                       state.selectedDepartment,
@@ -1144,9 +1143,9 @@ class _DevicesPageState extends State<DevicesPage> {
                                     );
                                   }
                                 },
-                              ),
-                              const SizedBox(width: 12),
-                              DropdownButton<String>(
+                              );
+
+                              final monitoringDropdown = DropdownButton<String>(
                                 value: state.selectedMonitoring,
                                 items: const [
                                   DropdownMenuItem(
@@ -1169,13 +1168,49 @@ class _DevicesPageState extends State<DevicesPage> {
                                     );
                                   }
                                 },
-                              ),
-                              const SizedBox(width: 16),
-                              Text(
+                              );
+
+                              final showingText = Text(
                                 'Showing: ${state.filteredDevices.length} / ${state.allDevices.length}',
                                 style: Theme.of(context).textTheme.titleSmall,
-                              ),
-                            ],
+                              );
+
+                              if (isCompact) {
+                                return Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    searchField,
+                                    const SizedBox(height: 10),
+                                    Wrap(
+                                      spacing: 12,
+                                      runSpacing: 8,
+                                      crossAxisAlignment:
+                                          WrapCrossAlignment.center,
+                                      children: [
+                                        categoryDropdown,
+                                        departmentDropdown,
+                                        monitoringDropdown,
+                                        showingText,
+                                      ],
+                                    ),
+                                  ],
+                                );
+                              }
+
+                              return Row(
+                                children: [
+                                  Expanded(flex: 3, child: searchField),
+                                  const SizedBox(width: 12),
+                                  categoryDropdown,
+                                  const SizedBox(width: 12),
+                                  departmentDropdown,
+                                  const SizedBox(width: 12),
+                                  monitoringDropdown,
+                                  const SizedBox(width: 16),
+                                  showingText,
+                                ],
+                              );
+                            },
                           ),
                         ),
                         const Divider(height: 1),

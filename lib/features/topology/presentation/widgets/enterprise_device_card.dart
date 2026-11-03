@@ -163,7 +163,7 @@ class _EnterpriseDeviceCardState extends State<EnterpriseDeviceCard> {
             children: [
               // ── Main Card Content ──────────────────────────────────────────
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -173,15 +173,15 @@ class _EnterpriseDeviceCardState extends State<EnterpriseDeviceCard> {
                       children: [
                         // Category Icon in subtle soft badge
                         Container(
-                          width: 20,
-                          height: 20,
+                          width: 18,
+                          height: 18,
                           decoration: BoxDecoration(
                             color: themeColor.withValues(alpha: 0.16),
-                            borderRadius: BorderRadius.circular(4),
+                            borderRadius: BorderRadius.circular(3.5),
                           ),
                           child: Icon(
                             _getCategoryIcon(widget.node.category),
-                            size: 12,
+                            size: 11,
                             color: themeColor,
                           ),
                         ),
@@ -253,7 +253,7 @@ class _EnterpriseDeviceCardState extends State<EnterpriseDeviceCard> {
                         fontSize: 11.5,
                         fontWeight: FontWeight.w700,
                         color: Color(0xFFF8FAFC), // White / Slate 50
-                        height: 1.1,
+                        height: 1.05,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -269,9 +269,10 @@ class _EnterpriseDeviceCardState extends State<EnterpriseDeviceCard> {
                             widget.node.subtitle ?? widget.node.ip ?? '--',
                             style: const TextStyle(
                               fontFamily: 'Consolas',
-                              fontSize: 10.0,
+                              fontSize: 9.5,
                               fontWeight: FontWeight.w600,
                               color: Color(0xFF94A3B8), // Slate 400
+                              height: 1.1,
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -282,8 +283,8 @@ class _EnterpriseDeviceCardState extends State<EnterpriseDeviceCard> {
                             widget.node.lastLatencyMs! > 0)
                           Container(
                             padding: const EdgeInsets.symmetric(
-                              horizontal: 4,
-                              vertical: 1,
+                              horizontal: 3.5,
+                              vertical: 0.5,
                             ),
                             decoration: BoxDecoration(
                               color: const Color(0xFF0F172A),
@@ -295,9 +296,10 @@ class _EnterpriseDeviceCardState extends State<EnterpriseDeviceCard> {
                             child: Text(
                               '${widget.node.lastLatencyMs}ms',
                               style: const TextStyle(
-                                fontSize: 8.5,
+                                fontSize: 8.0,
                                 fontWeight: FontWeight.w600,
                                 color: Color(0xFF94A3B8),
+                                height: 1.0,
                               ),
                             ),
                           ),

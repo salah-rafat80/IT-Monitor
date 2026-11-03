@@ -103,37 +103,41 @@ class _InfrastructureDevicesTableState
           children: [
             // ── Toolbar & KPI Summary ──
             if (widget.showHeaderActions) ...[
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Row(
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final isCompact = constraints.maxWidth < 720;
+                  final badges = Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
                       _buildSummaryBadge(
                         'Total Assets: ${state.totalCount}',
                         AppColors.primary,
                         isDark,
                       ),
-                      const SizedBox(width: 8),
                       _buildSummaryBadge(
                         'Up: ${state.upCount}',
                         AppColors.statusUp,
                         isDark,
                       ),
-                      const SizedBox(width: 8),
                       _buildSummaryBadge(
                         'Down: ${state.downCount}',
                         AppColors.statusDown,
                         isDark,
                       ),
-                      const SizedBox(width: 8),
                       _buildSummaryBadge(
                         'Unknown: ${state.unknownCount}',
                         AppColors.statusUnknown,
                         isDark,
                       ),
                     ],
-                  ),
-                  Row(
+                  );
+
+                  final actions = Wrap(
+                    spacing: 12,
+                    runSpacing: 8,
+                    crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
                       ElevatedButton.icon(
                         onPressed: state.isCheckingAll
@@ -159,123 +163,166 @@ class _InfrastructureDevicesTableState
                           foregroundColor: Colors.white,
                         ),
                       ),
-                      if (isAdmin) ...[
-                        const SizedBox(width: 12),
+                      if (isAdmin)
                         OutlinedButton.icon(
                           onPressed: () =>
                               ManageInfrastructureDialog.show(context),
                           icon: const Icon(Icons.settings_outlined, size: 16),
                           label: const Text('Manage Assets'),
                         ),
-                      ],
                     ],
-                  ),
-                ],
+                  );
+
+                  if (isCompact) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [badges, const SizedBox(height: 12), actions],
+                    );
+                  }
+
+                  return Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [badges, actions],
+                  );
+                },
               ),
               const SizedBox(height: 16),
             ],
 
             // ── Search & Filter Controls ──
-            Row(
-              children: [
-                Expanded(
-                  flex: 3,
-                  child: TextField(
-                    controller: _searchController,
-                    onChanged: (_) => setState(() {}),
-                    decoration: InputDecoration(
-                      hintText: 'Search by AP name, IP address, or location...',
-                      prefixIcon: const Icon(Icons.search, size: 18),
-                      suffixIcon: _searchController.text.isNotEmpty
-                          ? IconButton(
-                              icon: const Icon(Icons.clear, size: 16),
-                              onPressed: () {
-                                _searchController.clear();
-                                setState(() {});
-                              },
-                            )
-                          : null,
-                      isDense: true,
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 10,
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final isNarrow = constraints.maxWidth < 620;
+
+                final searchField = TextField(
+                  controller: _searchController,
+                  onChanged: (_) => setState(() {}),
+                  decoration: InputDecoration(
+                    hintText: 'Search by AP name, IP address, or location...',
+                    prefixIcon: const Icon(Icons.search, size: 18),
+                    suffixIcon: _searchController.text.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear, size: 16),
+                            onPressed: () {
+                              _searchController.clear();
+                              setState(() {});
+                            },
+                          )
+                        : null,
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
                     ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  flex: 2,
-                  child: DropdownButtonFormField<UniFiDeviceRole?>(
-                    initialValue: _roleFilter,
-                    decoration: InputDecoration(
-                      labelText: 'Filter Role',
-                      isDense: true,
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
+                );
+
+                final roleDropdown = DropdownButtonFormField<UniFiDeviceRole?>(
+                  isExpanded: true,
+                  initialValue: _roleFilter,
+                  decoration: InputDecoration(
+                    labelText: 'Filter Role',
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
                     ),
-                    items: [
-                      const DropdownMenuItem(
-                        value: null,
-                        child: Text('All Roles'),
-                      ),
-                      ...UniFiDeviceRole.values.map(
-                        (r) => DropdownMenuItem(
-                          value: r,
-                          child: Text(r.displayName),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  items: [
+                    const DropdownMenuItem(
+                      value: null,
+                      child: Text('All Roles', overflow: TextOverflow.ellipsis),
+                    ),
+                    ...UniFiDeviceRole.values.map(
+                      (r) => DropdownMenuItem(
+                        value: r,
+                        child: Text(
+                          r.displayName,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                    ],
-                    onChanged: (val) => setState(() => _roleFilter = val),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  flex: 2,
-                  child: DropdownButtonFormField<DeviceStatusEnum?>(
-                    initialValue: _statusFilter,
-                    decoration: InputDecoration(
-                      labelText: 'Filter Status',
-                      isDense: true,
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
                     ),
-                    items: const [
-                      DropdownMenuItem(
-                        value: null,
-                        child: Text('All Statuses'),
+                  ],
+                  onChanged: (val) => setState(() => _roleFilter = val),
+                );
+
+                final statusDropdown =
+                    DropdownButtonFormField<DeviceStatusEnum?>(
+                      isExpanded: true,
+                      initialValue: _statusFilter,
+                      decoration: InputDecoration(
+                        labelText: 'Filter Status',
+                        isDense: true,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
                       ),
-                      DropdownMenuItem(
-                        value: DeviceStatusEnum.up,
-                        child: Text('Up'),
-                      ),
-                      DropdownMenuItem(
-                        value: DeviceStatusEnum.down,
-                        child: Text('Disconnected'),
-                      ),
-                      DropdownMenuItem(
-                        value: DeviceStatusEnum.degraded,
-                        child: Text('Degraded'),
+                      items: const [
+                        DropdownMenuItem(
+                          value: null,
+                          child: Text(
+                            'All Statuses',
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        DropdownMenuItem(
+                          value: DeviceStatusEnum.up,
+                          child: Text('Up', overflow: TextOverflow.ellipsis),
+                        ),
+                        DropdownMenuItem(
+                          value: DeviceStatusEnum.down,
+                          child: Text(
+                            'Disconnected',
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        DropdownMenuItem(
+                          value: DeviceStatusEnum.degraded,
+                          child: Text(
+                            'Degraded',
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                      onChanged: (val) => setState(() => _statusFilter = val),
+                    );
+
+                if (isNarrow) {
+                  return Column(
+                    children: [
+                      searchField,
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(child: roleDropdown),
+                          const SizedBox(width: 10),
+                          Expanded(child: statusDropdown),
+                        ],
                       ),
                     ],
+                  );
+                }
 
-                    onChanged: (val) => setState(() => _statusFilter = val),
-                  ),
-                ),
-              ],
+                return Row(
+                  children: [
+                    Expanded(flex: 3, child: searchField),
+                    const SizedBox(width: 12),
+                    Expanded(flex: 2, child: roleDropdown),
+                    const SizedBox(width: 12),
+                    Expanded(flex: 2, child: statusDropdown),
+                  ],
+                );
+              },
             ),
             const SizedBox(height: 16),
 

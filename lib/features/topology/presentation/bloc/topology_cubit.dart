@@ -88,15 +88,34 @@ class TopologyCubit extends Cubit<TopologyState> {
         statusMap[s.deviceId] = s;
       }
 
+      // Map infrastructure statuses using stable virtual ID (10000 + infra.id)
+      final infraStatuses = <String, DeviceStatusEnum>{};
+      for (final infra in _cachedInfra) {
+        final virtualId = 10000 + infra.id;
+        final st = statusMap[virtualId];
+        infraStatuses[infra.ip] =
+            st?.effectiveStatus() ?? DeviceStatusEnum.unknown;
+      }
+
+      // Map registered factory gateways: RNF (50001, 192.168.22.1) & BNF (50002, 192.168.21.1)
+      if (statusMap.containsKey(50001)) {
+        infraStatuses['192.168.22.1'] = statusMap[50001]!.effectiveStatus();
+      }
+      if (statusMap.containsKey(50002)) {
+        infraStatuses['192.168.21.1'] = statusMap[50002]!.effectiveStatus();
+      }
+
       final monitoredList = _cachedDevices.map((d) {
         final status = statusMap[d.id] ?? _unknownStatus(d.id);
         return MonitoredDevice(device: d, status: status);
       }).toList();
 
-      // Build enterprise hierarchical layout graph
+      // Build enterprise hierarchical layout graph with authoritative infrastructure statuses
       final graph = _builder.build(
         monitoredDevices: monitoredList,
         infraDevices: _cachedInfra,
+        infraStatuses: infraStatuses,
+        factoryId: _factoryId,
       );
 
       final locationNodes = _grouper.group(monitoredList);

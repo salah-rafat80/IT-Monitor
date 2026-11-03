@@ -48,7 +48,8 @@ MonitoredDevice _makeDevice({
     status: DeviceStatusEntity(
       deviceId: id,
       status: status,
-      statusChangedAt: DateTime(2025),
+      statusChangedAt: DateTime.now(),
+      lastCheckAt: DateTime.now(),
     ),
   );
 }
@@ -511,6 +512,7 @@ void main() {
             deviceId: 1,
             status: DeviceStatusEnum.down,
             statusChangedAt: DateTime.now(),
+            lastCheckAt: DateTime.now(),
           ),
         });
 

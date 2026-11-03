@@ -15,38 +15,23 @@ class EnterpriseTopologyBuilder {
     required List<MonitoredDevice> monitoredDevices,
     required List<UniFiDeviceEntity> infraDevices,
     Map<String, DeviceStatusEnum>? infraStatuses,
+    String? factoryId,
   }) {
     final Map<String, EnterpriseTopologyNode> nodes = {};
     final List<EnterpriseTopologyLink> links = [];
     final List<EnterpriseTopologyNode> unlinkedNodes = [];
 
-    // ── 1. LEVEL 0: WAN / Internet ──────────────────────────────────────────
-    const wanId = 'wan_internet';
-    nodes[wanId] = const EnterpriseTopologyNode(
-      id: wanId,
-      title: 'Internet / WAN',
-      subtitle: 'Fiber Uplink (Corporate)',
-      category: TopologyDeviceCategory.wan,
-      status: DeviceStatusEnum.up,
-      level: 0,
-      location: 'External WAN',
-      vendor: 'ISP / Telecom',
-      isMonitored: true,
-      size: Size(168, 60),
-    );
-
-    // ── 2. LEVEL 1: Gateways & Core Routers ──────────────────────────────────
-    // Determine gateways from infra devices or standard subnet gateways
+    // ── 1. LEVEL 1: Gateways & Core Routers ──────────────────────────────────
+    // Core gateways MUST come only from registered factory gateways or verified infrastructure records.
+    // Never fabricate guessed gateways (e.g. 192.168.27.1 or dynamic $subnet.1).
     final List<String> gatewayIds = [];
-
-    // Check if infrastructure devices contain a gateway
     final infraGateways = infraDevices.where((d) => d.isGateway).toList();
+
     if (infraGateways.isNotEmpty) {
       for (final ig in infraGateways) {
         final id = 'gw_${ig.id}';
-        final status =
-            infraStatuses?[ig.ip] ??
-            (ig.isEnabled ? DeviceStatusEnum.up : DeviceStatusEnum.unknown);
+        // Status must come strictly from authoritative probe results, defaulting to Unknown (never UP).
+        final status = infraStatuses?[ig.ip] ?? DeviceStatusEnum.unknown;
         nodes[id] = EnterpriseTopologyNode(
           id: id,
           title: ig.name,
@@ -58,117 +43,121 @@ class EnterpriseTopologyBuilder {
           mac: ig.mac,
           vendor: 'UniFi Gateway',
           infraRef: ig,
+          isInferred: false,
           size: const Size(168, 60),
         );
         gatewayIds.add(id);
-        links.add(
-          EnterpriseTopologyLink(
-            id: 'link_wan_$id',
-            fromNodeId: wanId,
-            toNodeId: id,
-            fromPort: 'WAN1',
-            toPort: 'Uplink',
-            status: status,
-          ),
-        );
       }
-    } else {
-      // Primary Subnet Gateway 192.168.27.1
-      const gwPrimaryId = 'gw_core_27';
-      final gwPrimaryStatus =
-          infraStatuses?['192.168.27.1'] ?? DeviceStatusEnum.up;
-      nodes[gwPrimaryId] = EnterpriseTopologyNode(
-        id: gwPrimaryId,
-        title: 'Core Gateway (VLAN 27)',
-        subtitle: '192.168.27.1',
-        category: TopologyDeviceCategory.gateway,
-        status: gwPrimaryStatus,
-        level: 1,
-        location: 'Server Room',
-        vendor: 'Cisco / Enterprise Gateway',
-        size: const Size(168, 60),
-      );
-      gatewayIds.add(gwPrimaryId);
-      links.add(
-        EnterpriseTopologyLink(
-          id: 'link_wan_gw27',
-          fromNodeId: wanId,
-          toNodeId: gwPrimaryId,
-          fromPort: 'WAN1',
-          toPort: 'Uplink',
-          status: gwPrimaryStatus,
-        ),
-      );
+    }
 
-      // Secondary Subnet Gateway 192.168.22.1
-      const gwSecondaryId = 'gw_core_22';
-      final gwSecondaryStatus =
-          infraStatuses?['192.168.22.1'] ?? DeviceStatusEnum.up;
-      nodes[gwSecondaryId] = EnterpriseTopologyNode(
-        id: gwSecondaryId,
-        title: 'Subnet Gateway (VLAN 22)',
+    // Include registered factory gateways: RNF (192.168.22.1) and BNF (192.168.21.1)
+    final includeRnf = factoryId == null || factoryId.toLowerCase() == 'rnf';
+    final includeBnf = factoryId == null || factoryId.toLowerCase() == 'bnf';
+
+    if (includeRnf && !nodes.values.any((n) => n.subtitle == '192.168.22.1')) {
+      const gwRnfId = 'gw_rnf_22';
+      final gwRnfStatus =
+          infraStatuses?['192.168.22.1'] ?? DeviceStatusEnum.unknown;
+      nodes[gwRnfId] = EnterpriseTopologyNode(
+        id: gwRnfId,
+        title: 'RNF Factory Gateway',
         subtitle: '192.168.22.1',
         category: TopologyDeviceCategory.gateway,
-        status: gwSecondaryStatus,
+        status: gwRnfStatus,
         level: 1,
-        location: 'Server Room',
+        location: 'RNF Server Room',
         vendor: 'Cisco / Enterprise Gateway',
+        isInferred: false,
         size: const Size(168, 60),
       );
-      gatewayIds.add(gwSecondaryId);
+      gatewayIds.add(gwRnfId);
+    }
+
+    if (includeBnf && !nodes.values.any((n) => n.subtitle == '192.168.21.1')) {
+      const gwBnfId = 'gw_bnf_21';
+      final gwBnfStatus =
+          infraStatuses?['192.168.21.1'] ?? DeviceStatusEnum.unknown;
+      nodes[gwBnfId] = EnterpriseTopologyNode(
+        id: gwBnfId,
+        title: 'BNF Factory Gateway',
+        subtitle: '192.168.21.1',
+        category: TopologyDeviceCategory.gateway,
+        status: gwBnfStatus,
+        level: 1,
+        location: 'BNF Server Room',
+        vendor: 'Cisco / Enterprise Gateway',
+        isInferred: false,
+        size: const Size(168, 60),
+      );
+      gatewayIds.add(gwBnfId);
+    }
+
+    // Fallback if no gateways were configured (e.g. unassigned factory filter)
+    if (gatewayIds.isEmpty) {
+      const fallbackGwId = 'gw_rnf_22';
+      final fallbackStatus =
+          infraStatuses?['192.168.22.1'] ?? DeviceStatusEnum.unknown;
+      nodes[fallbackGwId] = EnterpriseTopologyNode(
+        id: fallbackGwId,
+        title: 'Factory Gateway',
+        subtitle: '192.168.22.1',
+        category: TopologyDeviceCategory.gateway,
+        status: fallbackStatus,
+        level: 1,
+        location: 'Server Room',
+        vendor: 'Enterprise Gateway',
+        isInferred: false,
+        size: const Size(168, 60),
+      );
+      gatewayIds.add(fallbackGwId);
+    }
+
+    // ── 2. LEVEL 0: WAN / Internet ──────────────────────────────────────────
+    // WAN status is dynamically derived from verified core gateway reachability.
+    // Never hardcoded to UP!
+    final gwStatuses = gatewayIds.map((id) => nodes[id]?.status).toList();
+    DeviceStatusEnum wanStatus = DeviceStatusEnum.unknown;
+    if (gwStatuses.any((s) => s == DeviceStatusEnum.up)) {
+      wanStatus = DeviceStatusEnum.up;
+    } else if (gwStatuses.isNotEmpty &&
+        gwStatuses.every((s) => s == DeviceStatusEnum.down)) {
+      wanStatus = DeviceStatusEnum.down;
+    } else if (gwStatuses.any((s) => s == DeviceStatusEnum.degraded)) {
+      wanStatus = DeviceStatusEnum.degraded;
+    } else if (gwStatuses.any((s) => s == DeviceStatusEnum.stale)) {
+      wanStatus = DeviceStatusEnum.stale;
+    }
+
+    const wanId = 'wan_internet';
+    nodes[wanId] = EnterpriseTopologyNode(
+      id: wanId,
+      title: 'Internet / WAN',
+      subtitle: 'Corporate Uplink',
+      category: TopologyDeviceCategory.wan,
+      status: wanStatus,
+      level: 0,
+      location: 'External WAN',
+      vendor: 'ISP / Telecom',
+      isMonitored: true,
+      isInferred: false,
+      size: const Size(168, 60),
+    );
+
+    // Links from WAN to Core Gateways
+    for (int i = 0; i < gatewayIds.length; i++) {
+      final gId = gatewayIds[i];
+      final gStatus = nodes[gId]?.status ?? DeviceStatusEnum.unknown;
       links.add(
         EnterpriseTopologyLink(
-          id: 'link_wan_gw22',
+          id: 'link_wan_$gId',
           fromNodeId: wanId,
-          toNodeId: gwSecondaryId,
-          fromPort: 'WAN2',
+          toNodeId: gId,
+          fromPort: 'WAN${i + 1}',
           toPort: 'Uplink',
-          status: gwSecondaryStatus,
+          status: gStatus,
+          isInferred: false,
         ),
       );
-
-      // Dynamically add gateways for any additional subnets discovered
-      final otherSubnets = <String, String>{};
-      for (final md in monitoredDevices) {
-        final ipParts = md.device.ip.split('.');
-        if (ipParts.length == 4) {
-          final prefix = '${ipParts[0]}.${ipParts[1]}.${ipParts[2]}';
-          if (prefix != '192.168.27' && prefix != '192.168.22') {
-            otherSubnets.putIfAbsent(prefix, () => '$prefix.1');
-          }
-        }
-      }
-
-      var gwIndex = 3;
-      for (final entry in otherSubnets.entries) {
-        final prefix = entry.key;
-        final gwIp = entry.value;
-        final gwId = 'gw_dynamic_${prefix.replaceAll('.', '_')}';
-        final gwStatus = infraStatuses?[gwIp] ?? DeviceStatusEnum.up;
-        nodes[gwId] = EnterpriseTopologyNode(
-          id: gwId,
-          title: 'Gateway ($gwIp)',
-          subtitle: gwIp,
-          category: TopologyDeviceCategory.gateway,
-          status: gwStatus,
-          level: 1,
-          location: 'Server Room',
-          vendor: 'Enterprise Gateway',
-          size: const Size(168, 60),
-        );
-        gatewayIds.add(gwId);
-        links.add(
-          EnterpriseTopologyLink(
-            id: 'link_wan_$gwId',
-            fromNodeId: wanId,
-            toNodeId: gwId,
-            fromPort: 'WAN$gwIndex',
-            toPort: 'Uplink',
-            status: gwStatus,
-          ),
-        );
-        gwIndex++;
-      }
     }
 
     // ── 3. Group Monitored Endpoints by Location / Switch ──────────────────
@@ -182,7 +171,7 @@ class EnterpriseTopologyBuilder {
       locationGroups.putIfAbsent(loc, () => []).add(md);
     }
 
-    // Deterministic sorting of locations: primary VLAN 27 locations first, then VLAN 22 locations, then by name
+    // Deterministic sorting of locations: BNF (.21.) / RNF (.22.) / other, then endpoint count, then name
     final sortedLocations = locationGroups.keys.toList()
       ..sort((a, b) {
         final aIs22 =
@@ -192,18 +181,18 @@ class EnterpriseTopologyBuilder {
             b.toLowerCase().contains('22') ||
             (locationGroups[b]?.first.device.ip.contains('.22.') ?? false);
         if (aIs22 != bIs22) return aIs22 ? 1 : -1;
-        // Place locations with higher endpoint count first for visual balance
         final countA = locationGroups[a]?.length ?? 0;
         final countB = locationGroups[b]?.length ?? 0;
         if (countA != countB) return countB.compareTo(countA);
         return a.compareTo(b);
       });
 
-    // ── 4. LEVEL 2: Distribution / Location Switches ────────────────────────
+    // ── 4. LEVEL 2: Distribution / Inferred Location Groups ────────────────
     final List<String> switchIds = [];
-    int switchIndex = 1;
+    final verifiedSwitches = infraDevices
+        .where((d) => d.role == UniFiDeviceRole.switchDevice)
+        .toList();
 
-    // Map each location to a dedicated switch node
     final Map<String, String> locationToSwitchId = {};
     for (final loc in sortedLocations) {
       final swId = 'sw_${loc.replaceAll(RegExp(r'\s+'), '_').toLowerCase()}';
@@ -211,47 +200,112 @@ class EnterpriseTopologyBuilder {
       switchIds.add(swId);
 
       final childrenCount = locationGroups[loc]?.length ?? 0;
+
       // Determine upstream gateway
       final firstDeviceIp = locationGroups[loc]?.first.device.ip;
       String upstreamGwId = gatewayIds.first;
-      if (loc.toLowerCase().contains('22') ||
+      if (loc.toLowerCase().contains('21') ||
+          (firstDeviceIp?.contains('.21.') ?? false)) {
+        final bnfMatch = gatewayIds
+            .where((id) => id.contains('bnf'))
+            .firstOrNull;
+        if (bnfMatch != null) upstreamGwId = bnfMatch;
+      } else if (loc.toLowerCase().contains('22') ||
           (firstDeviceIp?.contains('.22.') ?? false)) {
-        upstreamGwId = gatewayIds.length > 1 ? gatewayIds[1] : gatewayIds.first;
-      } else if (firstDeviceIp != null) {
-        final parts = firstDeviceIp.split('.');
-        if (parts.length == 4) {
-          final prefix = '${parts[0]}.${parts[1]}.${parts[2]}';
-          final targetGwId = 'gw_dynamic_${prefix.replaceAll('.', '_')}';
-          if (nodes.containsKey(targetGwId)) {
-            upstreamGwId = targetGwId;
-          }
-        }
+        final rnfMatch = gatewayIds
+            .where((id) => id.contains('rnf'))
+            .firstOrNull;
+        if (rnfMatch != null) upstreamGwId = rnfMatch;
       }
 
-      nodes[swId] = EnterpriseTopologyNode(
-        id: swId,
-        title: '$loc Switch',
-        subtitle: 'L2 Managed Switch',
-        category: TopologyDeviceCategory.switchDevice,
-        status: DeviceStatusEnum.up,
-        level: 2,
-        location: loc,
-        vendor: 'Cisco Catalyst / Managed',
-        activePortCount: childrenCount,
-        totalPortCount: childrenCount > 16 ? 48 : 24,
-        size: const Size(168, 60),
-      );
+      // Check if there is an actual verified switch record matching this location
+      final matchingVerifiedSwitch = verifiedSwitches.where((s) {
+        return s.location != null &&
+            s.location!.toLowerCase().contains(loc.toLowerCase());
+      }).firstOrNull;
 
-      links.add(
-        EnterpriseTopologyLink(
-          id: 'link_${upstreamGwId}_$swId',
-          fromNodeId: upstreamGwId,
-          toNodeId: swId,
-          fromPort: 'Gi0/${switchIndex++}',
-          toPort: 'Uplink (Trunk)',
-          status: DeviceStatusEnum.up,
-        ),
-      );
+      if (matchingVerifiedSwitch != null) {
+        final swStatus =
+            infraStatuses?[matchingVerifiedSwitch.ip] ??
+            DeviceStatusEnum.unknown;
+        nodes[swId] = EnterpriseTopologyNode(
+          id: swId,
+          title: matchingVerifiedSwitch.name,
+          subtitle: matchingVerifiedSwitch.ip,
+          category: TopologyDeviceCategory.switchDevice,
+          status: swStatus,
+          level: 2,
+          location: loc,
+          vendor: 'UniFi Switch',
+          infraRef: matchingVerifiedSwitch,
+          isInferred: false,
+          size: const Size(168, 60),
+        );
+
+        links.add(
+          EnterpriseTopologyLink(
+            id: 'link_${upstreamGwId}_$swId',
+            fromNodeId: upstreamGwId,
+            toNodeId: swId,
+            status: swStatus,
+            isInferred: false,
+          ),
+        );
+      } else {
+        // Inferred logical grouping — clearly labeled, never claimed as verified hardware
+        nodes[swId] = EnterpriseTopologyNode(
+          id: swId,
+          title: '$loc (Logical Group)',
+          subtitle: 'Inferred Grouping ($childrenCount endpoints)',
+          category: TopologyDeviceCategory.switchDevice,
+          status: DeviceStatusEnum.unknown,
+          level: 2,
+          location: loc,
+          isInferred: true,
+          size: const Size(168, 60),
+        );
+
+        links.add(
+          EnterpriseTopologyLink(
+            id: 'link_${upstreamGwId}_$swId',
+            fromNodeId: upstreamGwId,
+            toNodeId: swId,
+            status: DeviceStatusEnum.unknown,
+            isInferred: true,
+          ),
+        );
+      }
+    }
+
+    // If no locations exist (empty endpoints), ensure at least one distribution node if verified switches exist
+    if (switchIds.isEmpty) {
+      for (final vSw in verifiedSwitches) {
+        final swId = 'sw_${vSw.id}';
+        switchIds.add(swId);
+        final swStatus = infraStatuses?[vSw.ip] ?? DeviceStatusEnum.unknown;
+        nodes[swId] = EnterpriseTopologyNode(
+          id: swId,
+          title: vSw.name,
+          subtitle: vSw.ip,
+          category: TopologyDeviceCategory.switchDevice,
+          status: swStatus,
+          level: 2,
+          location: vSw.location,
+          vendor: 'UniFi Switch',
+          infraRef: vSw,
+          isInferred: false,
+          size: const Size(168, 60),
+        );
+        links.add(
+          EnterpriseTopologyLink(
+            id: 'link_${gatewayIds.first}_$swId',
+            fromNodeId: gatewayIds.first,
+            toNodeId: swId,
+            status: swStatus,
+            isInferred: false,
+          ),
+        );
+      }
     }
 
     // ── 5. LEVEL 3: UniFi Access Points (from Infrastructure Devices) ─────────
@@ -261,12 +315,12 @@ class EnterpriseTopologyBuilder {
     for (int i = 0; i < unifiAps.length; i++) {
       final ap = unifiAps[i];
       final apId = 'ap_${ap.id}';
-      final status =
-          infraStatuses?[ap.ip] ??
-          (ap.isEnabled ? DeviceStatusEnum.up : DeviceStatusEnum.unknown);
+      // Status must come strictly from authoritative probe results, never defaulting to UP based on isEnabled.
+      final status = infraStatuses?[ap.ip] ?? DeviceStatusEnum.unknown;
 
-      // Map AP to appropriate location switch or default to first/Main Office switch
-      String parentSwId = switchIds.first;
+      String parentSwId = switchIds.isNotEmpty
+          ? switchIds.first
+          : gatewayIds.first;
       for (final loc in sortedLocations) {
         if (ap.location != null &&
             ap.location!.toLowerCase().contains(loc.toLowerCase())) {
@@ -286,24 +340,28 @@ class EnterpriseTopologyBuilder {
         mac: ap.mac,
         vendor: 'Ubiquiti UniFi AP',
         infraRef: ap,
+        isInferred: false,
         size: const Size(168, 60),
       );
 
+      final isParentInferred = nodes[parentSwId]?.isInferred ?? true;
       links.add(
         EnterpriseTopologyLink(
           id: 'link_${parentSwId}_$apId',
           fromNodeId: parentSwId,
           toNodeId: apId,
-          fromPort: 'PoE+ / Gi0/${20 + i}',
-          toPort: 'ETH0',
-          status: status,
+          toPort: isParentInferred ? null : 'ETH0',
+          status: isParentInferred ? DeviceStatusEnum.unknown : status,
+          isInferred: isParentInferred,
         ),
       );
     }
 
     // ── 6. LEVEL 4: Endpoints & Clients (Monitored Devices) ─────────────────
     for (final loc in sortedLocations) {
-      final swId = locationToSwitchId[loc] ?? switchIds.first;
+      final swId =
+          locationToSwitchId[loc] ??
+          (switchIds.isNotEmpty ? switchIds.first : gatewayIds.first);
       final devList = locationGroups[loc] ?? [];
 
       for (int i = 0; i < devList.length; i++) {
@@ -320,12 +378,14 @@ class EnterpriseTopologyBuilder {
           cat = TopologyDeviceCategory.printer;
         }
 
+        final effectiveStatus = md.status.effectiveStatus();
+
         nodes[devId] = EnterpriseTopologyNode(
           id: devId,
           title: md.device.name,
           subtitle: md.device.ip,
           category: cat,
-          status: md.status.status,
+          status: effectiveStatus,
           level: 4,
           location: md.device.officeLocation,
           department: md.device.department,
@@ -334,19 +394,26 @@ class EnterpriseTopologyBuilder {
           model: md.device.model,
           hostname: md.device.hostname,
           lastLatencyMs: md.status.lastLatencyMs,
+          lastSuccessfulLatencyMs: md.status.lastSuccessfulLatencyMs,
+          lastCheckAt: md.status.lastCheckAt,
+          lastSuccessfulCheckAt: md.status.lastSeen,
+          failureReason: md.status.lastFailureReason,
+          consecutiveFailures: md.status.consecutiveFailures,
           isMonitored: md.device.isMonitored,
+          isInferred: false,
           deviceRef: md.device,
           size: const Size(168, 60),
         );
 
+        final isSwInferred = nodes[swId]?.isInferred ?? true;
         links.add(
           EnterpriseTopologyLink(
             id: 'link_${swId}_$devId',
             fromNodeId: swId,
             toNodeId: devId,
-            fromPort: 'Port ${i + 1}',
-            toPort: 'ETH',
-            status: md.status.status,
+            toPort: isSwInferred ? null : 'ETH',
+            status: isSwInferred ? DeviceStatusEnum.unknown : effectiveStatus,
+            isInferred: isSwInferred,
           ),
         );
       }
@@ -559,12 +626,29 @@ class EnterpriseTopologyBuilder {
     }
     double maxY = currentY + padY;
 
-    // Calculate Summary Stats
-    final Map<TopologyDeviceCategory, (int online, int total)> stats = {};
+    // Calculate Summary Stats strictly from real registered assets (exclude inferred groups & WAN)
+    final Map<TopologyDeviceCategory, CategoryStatusCount> stats = {};
     for (final n in positionedNodes.values) {
-      final existing = stats[n.category] ?? (0, 0);
+      if (n.isInferred || n.category == TopologyDeviceCategory.wan) {
+        continue;
+      }
+      final current = stats[n.category] ?? const CategoryStatusCount();
       final isOnline = n.status == DeviceStatusEnum.up;
-      stats[n.category] = (existing.$1 + (isOnline ? 1 : 0), existing.$2 + 1);
+      final isOffline =
+          n.status == DeviceStatusEnum.down ||
+          n.status == DeviceStatusEnum.unreachable;
+      final isDegraded = n.status == DeviceStatusEnum.degraded;
+      final isStale = n.status == DeviceStatusEnum.stale;
+      final isUnknown = n.status == DeviceStatusEnum.unknown;
+
+      stats[n.category] = CategoryStatusCount(
+        online: current.online + (isOnline ? 1 : 0),
+        offline: current.offline + (isOffline ? 1 : 0),
+        degraded: current.degraded + (isDegraded ? 1 : 0),
+        unknown: current.unknown + (isUnknown ? 1 : 0),
+        stale: current.stale + (isStale ? 1 : 0),
+        total: current.total + 1,
+      );
     }
 
     return EnterpriseTopologyGraph(

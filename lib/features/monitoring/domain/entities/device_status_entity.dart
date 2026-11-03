@@ -6,7 +6,8 @@ enum DeviceStatusEnum {
   degraded,
   down,
   unreachable,
-  maintenance;
+  maintenance,
+  stale;
 
   static DeviceStatusEnum fromString(String value) {
     switch (value.toLowerCase().trim()) {
@@ -24,12 +25,33 @@ enum DeviceStatusEnum {
         return DeviceStatusEnum.unreachable;
       case 'maintenance':
         return DeviceStatusEnum.maintenance;
+      case 'stale':
+        return DeviceStatusEnum.stale;
       default:
         return DeviceStatusEnum.unknown;
     }
   }
 
   String toValue() => name;
+
+  String get displayName {
+    switch (this) {
+      case DeviceStatusEnum.up:
+        return 'Online';
+      case DeviceStatusEnum.degraded:
+        return 'Degraded';
+      case DeviceStatusEnum.down:
+        return 'Offline';
+      case DeviceStatusEnum.unreachable:
+        return 'Unreachable';
+      case DeviceStatusEnum.maintenance:
+        return 'Maintenance';
+      case DeviceStatusEnum.stale:
+        return 'Stale';
+      case DeviceStatusEnum.unknown:
+        return 'Unknown';
+    }
+  }
 }
 
 class DeviceStatusEntity extends Equatable {
@@ -72,6 +94,41 @@ class DeviceStatusEntity extends Equatable {
       statusChangedAt: DateTime.now(),
       hasInternet: false,
     );
+  }
+
+  /// Standard freshness limit window: 180 seconds (3 minutes / 3 intervals).
+  static const int defaultFreshnessWindowSeconds = 180;
+
+  bool isStale({DateTime? now, int? freshnessWindowSeconds}) {
+    if (lastCheckAt == null) return false;
+    final current = now ?? DateTime.now();
+    final window = freshnessWindowSeconds ?? defaultFreshnessWindowSeconds;
+    return current.difference(lastCheckAt!).inSeconds > window;
+  }
+
+  DeviceStatusEnum effectiveStatus({
+    DateTime? now,
+    int? freshnessWindowSeconds,
+  }) {
+    if (lastCheckAt == null) {
+      return DeviceStatusEnum.unknown;
+    }
+    if (isMaintenance) {
+      return DeviceStatusEnum.maintenance;
+    }
+    if (isStale(now: now, freshnessWindowSeconds: freshnessWindowSeconds)) {
+      return DeviceStatusEnum.stale;
+    }
+    return status;
+  }
+
+  String get freshnessDescription {
+    if (lastCheckAt == null) return 'Never checked';
+    final diff = DateTime.now().difference(lastCheckAt!);
+    if (diff.inSeconds < 60) return 'Fresh (${diff.inSeconds}s ago)';
+    if (diff.inMinutes < 60) return 'Recent (${diff.inMinutes}m ago)';
+    if (diff.inHours < 24) return 'Stale (${diff.inHours}h ago)';
+    return 'Stale (${diff.inDays}d ago)';
   }
 
   String get displayLatency {

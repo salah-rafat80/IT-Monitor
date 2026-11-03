@@ -549,9 +549,12 @@ class _InfrastructureDeviceDetailsModalState
       case DeviceStatusEnum.degraded:
         return AppColors.statusDegraded;
       case DeviceStatusEnum.down:
-      case DeviceStatusEnum.unknown:
       case DeviceStatusEnum.unreachable:
         return AppColors.statusDown;
+      case DeviceStatusEnum.unknown:
+        return AppColors.statusUnknown;
+      case DeviceStatusEnum.stale:
+        return AppColors.statusDegraded;
       case DeviceStatusEnum.maintenance:
         return AppColors.statusMaintenance;
     }

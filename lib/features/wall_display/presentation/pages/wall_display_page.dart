@@ -357,10 +357,17 @@ class _WallDisplayViewState extends State<_WallDisplayView> {
         statusText = 'DEGRADED';
         break;
       case DeviceStatusEnum.down:
-      case DeviceStatusEnum.unknown:
       case DeviceStatusEnum.unreachable:
         color = tokens.statusOffline;
-        statusText = 'DISCONNECTED';
+        statusText = 'OFFLINE';
+        break;
+      case DeviceStatusEnum.unknown:
+        color = tokens.statusUnknown;
+        statusText = 'UNKNOWN';
+        break;
+      case DeviceStatusEnum.stale:
+        color = tokens.statusDegraded;
+        statusText = 'STALE';
         break;
       case DeviceStatusEnum.maintenance:
         color = tokens.statusMaintenance;

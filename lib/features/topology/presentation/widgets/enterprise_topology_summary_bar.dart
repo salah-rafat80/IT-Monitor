@@ -15,7 +15,7 @@ import '../../domain/entities/enterprise_topology_models.dart';
 /// Numerator = verified online devices in that category.
 /// Denominator = total monitored devices in that category.
 class EnterpriseTopologySummaryBar extends StatelessWidget {
-  final Map<TopologyDeviceCategory, (int online, int total)> stats;
+  final Map<TopologyDeviceCategory, dynamic> stats;
   final String searchQuery;
   final ValueChanged<String> onSearchChanged;
   final VoidCallback onClearSearch;
@@ -183,7 +183,7 @@ class EnterpriseTopologySummaryBar extends StatelessWidget {
 class _CategoryStatPill extends StatelessWidget {
   final IconData icon;
   final String label;
-  final (int online, int total) stats;
+  final dynamic stats;
   final Color color;
 
   const _CategoryStatPill({
@@ -195,48 +195,88 @@ class _CategoryStatPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final (online, total) = stats;
-    final allOnline = total > 0 && online == total;
-    final hasDown = total > 0 && online < total;
+    int online = 0;
+    int offline = 0;
+    int degraded = 0;
+    int unknown = 0;
+    int stale = 0;
+    int total = 0;
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: const Color(0xFF0F172A),
-        borderRadius: BorderRadius.circular(5),
-        border: Border.all(
-          color: hasDown
-              ? const Color(0xFFEF4444).withValues(alpha: 0.6)
-              : const Color(0xFF334155),
+    if (stats is CategoryStatusCount) {
+      final c = stats as CategoryStatusCount;
+      online = c.online;
+      offline = c.offline;
+      degraded = c.degraded;
+      unknown = c.unknown;
+      stale = c.stale;
+      total = c.total;
+    } else if (stats is (int, int)) {
+      final t = stats as (int, int);
+      online = t.$1;
+      total = t.$2;
+      offline = total > online ? total - online : 0;
+    }
+
+    final allOnline =
+        total > 0 && online == total && stale == 0 && degraded == 0;
+    final hasDown = offline > 0;
+    final hasWarning = !hasDown && (stale > 0 || degraded > 0);
+
+    final tooltipMsg =
+        '$label Status Breakdown:\n'
+        '• Online: $online\n'
+        '• Stale: $stale\n'
+        '• Degraded: $degraded\n'
+        '• Offline: $offline\n'
+        '• Unknown: $unknown\n'
+        '• Total Registered: $total';
+
+    return Tooltip(
+      message: tooltipMsg,
+      preferBelow: false,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: const Color(0xFF0F172A),
+          borderRadius: BorderRadius.circular(5),
+          border: Border.all(
+            color: hasDown
+                ? const Color(0xFFEF4444).withValues(alpha: 0.6)
+                : hasWarning
+                ? const Color(0xFFF59E0B).withValues(alpha: 0.6)
+                : const Color(0xFF334155),
+          ),
         ),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14, color: color),
-          const SizedBox(width: 5),
-          Text(
-            '$label: ',
-            style: const TextStyle(
-              fontSize: 11.5,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFF94A3B8),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 14, color: color),
+            const SizedBox(width: 5),
+            Text(
+              '$label: ',
+              style: const TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF94A3B8),
+              ),
             ),
-          ),
-          Text(
-            '$online/$total',
-            style: TextStyle(
-              fontSize: 11.5,
-              fontWeight: FontWeight.w700,
-              fontFamily: 'Consolas',
-              color: hasDown
-                  ? const Color(0xFFEF4444)
-                  : allOnline
-                  ? const Color(0xFF10B981)
-                  : const Color(0xFF94A3B8),
+            Text(
+              '$online/$total',
+              style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w700,
+                fontFamily: 'Consolas',
+                color: hasDown
+                    ? const Color(0xFFEF4444)
+                    : hasWarning
+                    ? const Color(0xFFF59E0B)
+                    : allOnline
+                    ? const Color(0xFF10B981)
+                    : const Color(0xFF94A3B8),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

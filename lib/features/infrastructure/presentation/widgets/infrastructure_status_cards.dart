@@ -79,7 +79,9 @@ class InfrastructureStatusCards extends StatelessWidget {
                         ),
                       ),
                       child: Text(
-                        '${state.totalCount} Assets (${state.upCount} Up, ${state.downCount} Down, ${state.unknownCount} Unknown)',
+                        state.staleCount > 0
+                            ? '${state.totalCount} Assets (${state.upCount} Online, ${state.downCount} Offline, ${state.unknownCount} Unknown, ${state.staleCount} Stale)'
+                            : '${state.totalCount} Assets (${state.upCount} Online, ${state.downCount} Offline, ${state.unknownCount} Unknown)',
                         style: const TextStyle(
                           color: AppColors.primary,
                           fontWeight: FontWeight.w600,

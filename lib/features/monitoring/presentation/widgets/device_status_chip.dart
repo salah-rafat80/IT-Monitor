@@ -52,6 +52,11 @@ class DeviceStatusChip extends StatelessWidget {
         color = tokens.statusMaintenance;
         text = 'Maintenance';
         break;
+      case DeviceStatusEnum.stale:
+        iconData = Icons.history_rounded;
+        color = const Color(0xFFF59E0B);
+        text = 'Stale';
+        break;
     }
 
     if (compact) {

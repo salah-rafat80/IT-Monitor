@@ -135,6 +135,22 @@ class MonitoringScheduler {
   }
 
   Future<void> triggerSingleCheck(int deviceId) async {
+    if (deviceId >= 50000 && _factoryRepo != null) {
+      final factoryId = deviceId == 50001
+          ? 'rnf'
+          : (deviceId == 50002 ? 'bnf' : null);
+      if (factoryId != null) {
+        final fRes = await _factoryRepo.getFactoryById(factoryId);
+        final factory = fRes.dataOrNull;
+        if (factory != null &&
+            factory.gatewayIp != null &&
+            factory.gatewayIp!.trim().isNotEmpty) {
+          await _runCheckForGateway(factory, deviceId);
+        }
+      }
+      return;
+    }
+
     if (deviceId >= 10000 && _infrastructureRepo != null) {
       final infraId = deviceId - 10000;
       final infraRes = await _infrastructureRepo.getDeviceById(infraId);
@@ -466,6 +482,33 @@ class MonitoringScheduler {
         );
 
         await _factoryRepo.saveGatewayStatus(updatedStatus);
+
+        // Also persist gateway status to authoritative DeviceStatuses table (virtual ID 50001 / 50002)
+        final gwDeviceStatus = DeviceStatusEntity(
+          deviceId: virtualId,
+          status: newHealth == GatewayHealthStatus.online
+              ? DeviceStatusEnum.up
+              : (newHealth == GatewayHealthStatus.degraded
+                    ? DeviceStatusEnum.degraded
+                    : (newHealth == GatewayHealthStatus.down
+                          ? DeviceStatusEnum.down
+                          : DeviceStatusEnum.unknown)),
+          lastCheckAt: checkTime,
+          lastSeen: checkResult.isSuccess ? checkTime : lastSuccessful,
+          lastLatencyMs: checkResult.latencyMs,
+          lastSuccessfulLatencyMs: lastSuccessful != null
+              ? (checkResult.latencyMs ?? currentStat.latencyMs)
+              : null,
+          consecutiveFailures: consecutiveFailures,
+          consecutiveSuccesses: consecutiveSuccesses,
+          lastFailureReason: checkResult.errorMessage,
+          statusChangedAt: checkTime,
+          hasInternet: checkResult.isSuccess,
+        );
+        await _monitoringRepo.saveDeviceStatus(gwDeviceStatus);
+        if (!_statusUpdateController.isClosed) {
+          _statusUpdateController.add(gwDeviceStatus);
+        }
       }
     } catch (e, st) {
       _unexpectedExceptionCount++;
@@ -494,10 +537,24 @@ class MonitoringScheduler {
       _lastCheckTimestamps[virtualId] = DateTime.now();
       _totalChecksExecuted++;
 
-      final checkResult = await _pingChecker.checkPing(
+      final pingRes = await _pingChecker.checkPing(
         deviceId: virtualId,
         targetIp: infra.ip,
         timeout: Duration(seconds: _config.timeoutSeconds),
+      );
+
+      final checkResult = CheckResult(
+        deviceId: virtualId,
+        assetId: 'infra_${infra.id}',
+        factoryId: infra.factoryId,
+        targetIp: infra.ip,
+        checkType: CheckType.icmp,
+        isSuccess: pingRes.isSuccess,
+        latencyMs: pingRes.latencyMs,
+        packetLossPercent: pingRes.packetLossPercent,
+        errorMessage: pingRes.errorMessage,
+        failureReason: pingRes.failureReason,
+        timestamp: DateTime.now(),
       );
 
       if (!_checkResultController.isClosed) {

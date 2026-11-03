@@ -3,9 +3,12 @@ import 'dart:async';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:injectable/injectable.dart';
 
+import '../../../../core/config/app_run_mode.dart';
+import '../../../../core/di/injection.dart';
 import '../../../incidents/domain/entities/incident_entity.dart';
 import '../../../incidents/domain/repositories/incident_repository.dart';
 import '../../../incidents/domain/services/incident_engine.dart';
+import '../../../monitoring/data/datasources/monitoring_service_client.dart';
 import '../../../monitoring/domain/entities/check_result.dart';
 import '../../../monitoring/domain/entities/device_status_entity.dart';
 import '../../../monitoring/domain/entities/monitoring_config.dart';
@@ -95,8 +98,9 @@ class InfrastructureCubit extends Cubit<InfrastructureState> {
         _onIncidentsUpdated(activeIncRes.dataOrNull ?? []);
       }
 
-      // Automatically run an initial reachability probe so real statuses and latencies are known
-      if (triggerPing && devices.isNotEmpty) {
+      // In development / standalone mode, probe initial reachability.
+      // In production client mode, the authoritative service daemon manages probe schedules.
+      if (triggerPing && devices.isNotEmpty && !AppConfig.isProductionClient) {
         unawaited(pingAllInfrastructure());
       }
     } else {
@@ -166,6 +170,48 @@ class InfrastructureCubit extends Cubit<InfrastructureState> {
     }
 
     try {
+      if (AppConfig.isProductionClient) {
+        final client = getIt.isRegistered<MonitoringServiceClient>()
+            ? getIt<MonitoringServiceClient>()
+            : null;
+        if (client != null && client.isAuthenticated) {
+          await client.manualCheck(virtualId);
+          final currentStatusRes = await _monitoringRepo.getDeviceStatus(
+            virtualId,
+          );
+          final currentStatus =
+              currentStatusRes.dataOrNull ??
+              DeviceStatusEntity.initial(virtualId);
+
+          final statusMap = Map<int, DeviceStatusEntity>.from(state.statuses);
+          statusMap[virtualId] = currentStatus;
+
+          if (!isClosed) {
+            final remainingChecking = Set<int>.from(state.checkingDeviceIds)
+              ..remove(virtualId);
+            emit(
+              state.copyWith(
+                statuses: statusMap,
+                checkingDeviceIds: remainingChecking,
+                successMessage: currentStatus.status == DeviceStatusEnum.up
+                    ? '${device.name} (${device.ip}) is UP (${currentStatus.lastLatencyMs ?? 0} ms)'
+                    : '${device.name} (${device.ip}) is DOWN / ${currentStatus.lastFailureReason ?? "Request timed out"}',
+              ),
+            );
+          }
+
+          return CheckResult(
+            deviceId: virtualId,
+            targetIp: device.ip,
+            checkType: CheckType.icmp,
+            isSuccess: currentStatus.status == DeviceStatusEnum.up,
+            latencyMs: currentStatus.lastLatencyMs,
+            errorMessage: currentStatus.lastFailureReason,
+            timestamp: DateTime.now(),
+          );
+        }
+      }
+
       final checkResult = await _pingChecker.checkPing(
         deviceId: virtualId,
         targetIp: device.ip,

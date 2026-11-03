@@ -22,9 +22,14 @@ class WallDeviceCard extends StatelessWidget {
         statusColor = tokens.statusDegraded;
         break;
       case DeviceStatusEnum.down:
-      case DeviceStatusEnum.unknown:
       case DeviceStatusEnum.unreachable:
         statusColor = tokens.statusOffline;
+        break;
+      case DeviceStatusEnum.unknown:
+        statusColor = tokens.statusUnknown;
+        break;
+      case DeviceStatusEnum.stale:
+        statusColor = tokens.statusDegraded;
         break;
       case DeviceStatusEnum.maintenance:
         statusColor = tokens.statusMaintenance;

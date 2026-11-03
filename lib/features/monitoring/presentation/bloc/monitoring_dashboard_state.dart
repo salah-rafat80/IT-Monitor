@@ -51,6 +51,7 @@ final class MonitoringDashboardLoaded extends MonitoringDashboardState {
   final int degradedCount;
   final int downCount;
   final int unknownCount;
+  final int staleCount;
   final int maintenanceCount;
   final List<MonitoredDevice> activeIncidents;
   final List<IncidentEntity> realActiveIncidents;
@@ -74,6 +75,7 @@ final class MonitoringDashboardLoaded extends MonitoringDashboardState {
     required this.degradedCount,
     required this.downCount,
     required this.unknownCount,
+    this.staleCount = 0,
     required this.maintenanceCount,
     required this.activeIncidents,
     this.realActiveIncidents = const [],
@@ -103,6 +105,7 @@ final class MonitoringDashboardLoaded extends MonitoringDashboardState {
     int? degradedCount,
     int? downCount,
     int? unknownCount,
+    int? staleCount,
     int? maintenanceCount,
     List<MonitoredDevice>? activeIncidents,
     List<IncidentEntity>? realActiveIncidents,
@@ -134,6 +137,7 @@ final class MonitoringDashboardLoaded extends MonitoringDashboardState {
       degradedCount: degradedCount ?? this.degradedCount,
       downCount: downCount ?? this.downCount,
       unknownCount: unknownCount ?? this.unknownCount,
+      staleCount: staleCount ?? this.staleCount,
       maintenanceCount: maintenanceCount ?? this.maintenanceCount,
       activeIncidents: activeIncidents ?? this.activeIncidents,
       realActiveIncidents: realActiveIncidents ?? this.realActiveIncidents,
@@ -160,6 +164,7 @@ final class MonitoringDashboardLoaded extends MonitoringDashboardState {
     degradedCount,
     downCount,
     unknownCount,
+    staleCount,
     maintenanceCount,
     activeIncidents,
     realActiveIncidents,

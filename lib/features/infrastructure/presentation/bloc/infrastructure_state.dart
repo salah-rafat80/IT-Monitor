@@ -51,20 +51,34 @@ class InfrastructureState extends Equatable {
 
   int get totalCount => devices.length;
   int get upCount => devices
-      .where((d) => getStatusFor(d)?.status == DeviceStatusEnum.up)
+      .where((d) => getStatusFor(d)?.effectiveStatus() == DeviceStatusEnum.up)
       .length;
   int get degradedCount => devices
-      .where((d) => getStatusFor(d)?.status == DeviceStatusEnum.degraded)
+      .where(
+        (d) => getStatusFor(d)?.effectiveStatus() == DeviceStatusEnum.degraded,
+      )
       .length;
   int get downCount => devices
-      .where((d) => getStatusFor(d)?.status == DeviceStatusEnum.down)
+      .where(
+        (d) =>
+            getStatusFor(d)?.effectiveStatus() == DeviceStatusEnum.down ||
+            getStatusFor(d)?.effectiveStatus() == DeviceStatusEnum.unreachable,
+      )
+      .length;
+  int get staleCount => devices
+      .where(
+        (d) => getStatusFor(d)?.effectiveStatus() == DeviceStatusEnum.stale,
+      )
       .length;
   int get unknownCount => devices.where((d) {
-    final s = getStatusFor(d)?.status;
+    final s = getStatusFor(d)?.effectiveStatus();
     return s == null || s == DeviceStatusEnum.unknown;
   }).length;
   int get maintenanceCount => devices
-      .where((d) => getStatusFor(d)?.status == DeviceStatusEnum.maintenance)
+      .where(
+        (d) =>
+            getStatusFor(d)?.effectiveStatus() == DeviceStatusEnum.maintenance,
+      )
       .length;
 
   InfrastructureState copyWith({

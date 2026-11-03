@@ -118,6 +118,12 @@ void main() {
         final graph = builder.build(
           monitoredDevices: realEndpoints,
           infraDevices: realAps,
+          infraStatuses: {
+            '192.168.7.6': DeviceStatusEnum.up,
+            '192.168.7.4': DeviceStatusEnum.up,
+            '192.168.7.2': DeviceStatusEnum.up,
+            '192.168.8.5': DeviceStatusEnum.up,
+          },
         );
 
         expect(graph.nodes.containsKey('wan_internet'), isTrue);
@@ -158,6 +164,12 @@ void main() {
         final graph = builder.build(
           monitoredDevices: realEndpoints,
           infraDevices: realAps,
+          infraStatuses: {
+            '192.168.7.6': DeviceStatusEnum.up,
+            '192.168.7.4': DeviceStatusEnum.up,
+            '192.168.7.2': DeviceStatusEnum.up,
+            '192.168.8.5': DeviceStatusEnum.up,
+          },
         );
 
         final wan = graph.nodes['wan_internet']!;
@@ -203,15 +215,22 @@ void main() {
     });
 
     test(
-      '4. Switch Port Badges report correct active downstream connection counts',
+      '4. Inferred location switch groups are marked inferred without synthetic port counts',
       () {
         final graph = builder.build(
           monitoredDevices: realEndpoints,
           infraDevices: realAps,
+          infraStatuses: {
+            '192.168.7.6': DeviceStatusEnum.up,
+            '192.168.7.4': DeviceStatusEnum.up,
+            '192.168.7.2': DeviceStatusEnum.up,
+            '192.168.8.5': DeviceStatusEnum.up,
+          },
         );
         final swMain = graph.nodes['sw_main_office'];
         expect(swMain, isNotNull);
-        expect(swMain!.activePortCount, 1);
+        expect(swMain!.isInferred, isTrue);
+        expect(swMain.activePortCount, isNull);
       },
     );
 
@@ -242,6 +261,7 @@ void main() {
           deviceId: 101,
           status: DeviceStatusEnum.down,
           statusChangedAt: DateTime.now(),
+          lastCheckAt: DateTime.now(),
         ),
       });
 
@@ -255,6 +275,12 @@ void main() {
         final graph = builder.build(
           monitoredDevices: realEndpoints,
           infraDevices: realAps,
+          infraStatuses: {
+            '192.168.7.6': DeviceStatusEnum.up,
+            '192.168.7.4': DeviceStatusEnum.up,
+            '192.168.7.2': DeviceStatusEnum.up,
+            '192.168.8.5': DeviceStatusEnum.up,
+          },
         );
         final node = graph.nodes['dev_101']!;
 
@@ -276,6 +302,12 @@ void main() {
         final graph = builder.build(
           monitoredDevices: realEndpoints,
           infraDevices: realAps,
+          infraStatuses: {
+            '192.168.7.6': DeviceStatusEnum.up,
+            '192.168.7.4': DeviceStatusEnum.up,
+            '192.168.7.2': DeviceStatusEnum.up,
+            '192.168.8.5': DeviceStatusEnum.up,
+          },
         );
 
         await tester.pumpWidget(

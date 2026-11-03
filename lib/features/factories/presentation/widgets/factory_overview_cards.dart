@@ -136,10 +136,14 @@ class _FactoryCard extends StatelessWidget {
     final monitoredDevices = devices.where((d) => d.isMonitored).toList();
     final onlineCount = monitoredDevices.where((d) {
       final st = statuses[d.id];
-      return st?.status == DeviceStatusEnum.up ||
-          st?.status == DeviceStatusEnum.degraded;
+      return st?.effectiveStatus() == DeviceStatusEnum.up;
     }).length;
-    final offlineCount = monitoredDevices.length - onlineCount;
+    final offlineCount = monitoredDevices.where((d) {
+      final st = statuses[d.id];
+      final eff = st?.effectiveStatus();
+      return eff == DeviceStatusEnum.down ||
+          eff == DeviceStatusEnum.unreachable;
+    }).length;
 
     final enabledRanges = ranges.where((r) => r.isEnabled).length;
     final activeAlerts = incidents

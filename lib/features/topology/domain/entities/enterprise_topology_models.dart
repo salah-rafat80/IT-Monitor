@@ -87,10 +87,16 @@ class EnterpriseTopologyNode extends Equatable {
   final String? model;
   final String? hostname;
   final int? lastLatencyMs;
+  final int? lastSuccessfulLatencyMs;
   final int? activePortCount;
   final int? totalPortCount;
   final bool isMonitored;
   final bool isUnlinked;
+  final bool isInferred;
+  final DateTime? lastCheckAt;
+  final DateTime? lastSuccessfulCheckAt;
+  final String? failureReason;
+  final int consecutiveFailures;
   final Offset position;
   final Size size;
   final DeviceEntity? deviceRef;
@@ -110,10 +116,16 @@ class EnterpriseTopologyNode extends Equatable {
     this.model,
     this.hostname,
     this.lastLatencyMs,
+    this.lastSuccessfulLatencyMs,
     this.activePortCount,
     this.totalPortCount,
     this.isMonitored = true,
     this.isUnlinked = false,
+    this.isInferred = false,
+    this.lastCheckAt,
+    this.lastSuccessfulCheckAt,
+    this.failureReason,
+    this.consecutiveFailures = 0,
     this.position = Offset.zero,
     this.size = const Size(168, 60),
     this.deviceRef,
@@ -134,10 +146,16 @@ class EnterpriseTopologyNode extends Equatable {
     String? model,
     String? hostname,
     int? lastLatencyMs,
+    int? lastSuccessfulLatencyMs,
     int? activePortCount,
     int? totalPortCount,
     bool? isMonitored,
     bool? isUnlinked,
+    bool? isInferred,
+    DateTime? lastCheckAt,
+    DateTime? lastSuccessfulCheckAt,
+    String? failureReason,
+    int? consecutiveFailures,
     Offset? position,
     Size? size,
     DeviceEntity? deviceRef,
@@ -157,10 +175,18 @@ class EnterpriseTopologyNode extends Equatable {
       model: model ?? this.model,
       hostname: hostname ?? this.hostname,
       lastLatencyMs: lastLatencyMs ?? this.lastLatencyMs,
+      lastSuccessfulLatencyMs:
+          lastSuccessfulLatencyMs ?? this.lastSuccessfulLatencyMs,
       activePortCount: activePortCount ?? this.activePortCount,
       totalPortCount: totalPortCount ?? this.totalPortCount,
       isMonitored: isMonitored ?? this.isMonitored,
       isUnlinked: isUnlinked ?? this.isUnlinked,
+      isInferred: isInferred ?? this.isInferred,
+      lastCheckAt: lastCheckAt ?? this.lastCheckAt,
+      lastSuccessfulCheckAt:
+          lastSuccessfulCheckAt ?? this.lastSuccessfulCheckAt,
+      failureReason: failureReason ?? this.failureReason,
+      consecutiveFailures: consecutiveFailures ?? this.consecutiveFailures,
       position: position ?? this.position,
       size: size ?? this.size,
       deviceRef: deviceRef ?? this.deviceRef,
@@ -191,32 +217,115 @@ class EnterpriseTopologyNode extends Equatable {
     model,
     hostname,
     lastLatencyMs,
+    lastSuccessfulLatencyMs,
     activePortCount,
     totalPortCount,
     isMonitored,
     isUnlinked,
+    isInferred,
+    lastCheckAt,
+    lastSuccessfulCheckAt,
+    failureReason,
+    consecutiveFailures,
     position,
     size,
   ];
+}
+
+class CategoryStatusCount extends Equatable {
+  final int online;
+  final int offline;
+  final int degraded;
+  final int unknown;
+  final int stale;
+  final int total;
+
+  const CategoryStatusCount({
+    this.online = 0,
+    this.offline = 0,
+    this.degraded = 0,
+    this.unknown = 0,
+    this.stale = 0,
+    this.total = 0,
+  });
+
+  factory CategoryStatusCount.fromStatuses(
+    Iterable<DeviceStatusEntity?> statuses, {
+    DateTime? now,
+    int freshnessWindowSeconds =
+        DeviceStatusEntity.defaultFreshnessWindowSeconds,
+  }) {
+    int on = 0;
+    int off = 0;
+    int deg = 0;
+    int unk = 0;
+    int st = 0;
+    int tot = 0;
+
+    for (final s in statuses) {
+      tot++;
+      final eff =
+          s?.effectiveStatus(
+            now: now,
+            freshnessWindowSeconds: freshnessWindowSeconds,
+          ) ??
+          DeviceStatusEnum.unknown;
+      switch (eff) {
+        case DeviceStatusEnum.up:
+          on++;
+          break;
+        case DeviceStatusEnum.down:
+        case DeviceStatusEnum.unreachable:
+          off++;
+          break;
+        case DeviceStatusEnum.degraded:
+          deg++;
+          break;
+        case DeviceStatusEnum.stale:
+          st++;
+          break;
+        case DeviceStatusEnum.unknown:
+        case DeviceStatusEnum.maintenance:
+          unk++;
+          break;
+      }
+    }
+
+    return CategoryStatusCount(
+      online: on,
+      offline: off,
+      degraded: deg,
+      unknown: unk,
+      stale: st,
+      total: tot,
+    );
+  }
+
+  (int online, int total) toRatio() => (online, total);
+
+  @override
+  List<Object?> get props => [online, offline, degraded, unknown, stale, total];
 }
 
 class EnterpriseTopologyLink extends Equatable {
   final String id;
   final String fromNodeId;
   final String toNodeId;
-  final String fromPort;
+  final String? fromPort;
   final String? toPort;
   final DeviceStatusEnum status;
   final String? speed;
+  final bool isInferred;
 
   const EnterpriseTopologyLink({
     required this.id,
     required this.fromNodeId,
     required this.toNodeId,
-    required this.fromPort,
+    this.fromPort,
     this.toPort,
-    this.status = DeviceStatusEnum.up,
-    this.speed = '1 Gbps',
+    this.status = DeviceStatusEnum.unknown,
+    this.speed,
+    this.isInferred = false,
   });
 
   @override
@@ -228,6 +337,7 @@ class EnterpriseTopologyLink extends Equatable {
     toPort,
     status,
     speed,
+    isInferred,
   ];
 }
 
@@ -236,7 +346,7 @@ class EnterpriseTopologyGraph extends Equatable {
   final List<EnterpriseTopologyLink> links;
   final List<EnterpriseTopologyNode> unlinkedNodes;
   final Size canvasSize;
-  final Map<TopologyDeviceCategory, (int online, int total)> categoryStats;
+  final Map<TopologyDeviceCategory, CategoryStatusCount> categoryStats;
 
   const EnterpriseTopologyGraph({
     required this.nodes,
@@ -251,30 +361,96 @@ class EnterpriseTopologyGraph extends Equatable {
     ...unlinkedNodes,
   ];
 
+  Map<TopologyDeviceCategory, (int online, int total)> get ratioStats =>
+      categoryStats.map((k, v) => MapEntry(k, v.toRatio()));
+
   EnterpriseTopologyGraph updateStatuses(
-    Map<int, DeviceStatusEntity> latestStatusMap,
-  ) {
+    Map<int, DeviceStatusEntity> latestStatusMap, {
+    DateTime? now,
+    int? freshnessWindowSeconds,
+  }) {
     final updatedNodes = <String, EnterpriseTopologyNode>{};
     for (final entry in nodes.entries) {
       final node = entry.value;
+      DeviceStatusEntity? statusEnt;
       if (node.deviceRef != null &&
           latestStatusMap.containsKey(node.deviceRef!.id)) {
-        final statusEnt = latestStatusMap[node.deviceRef!.id]!;
+        statusEnt = latestStatusMap[node.deviceRef!.id];
+      } else if (node.infraRef != null) {
+        final virtualId = 10000 + node.infraRef!.id;
+        statusEnt = latestStatusMap[virtualId];
+      } else if (node.category == TopologyDeviceCategory.gateway) {
+        if (node.id.contains('rnf') ||
+            (node.subtitle?.contains('22.1') ?? false)) {
+          statusEnt = latestStatusMap[50001];
+        } else if (node.id.contains('bnf') ||
+            (node.subtitle?.contains('21.1') ?? false)) {
+          statusEnt = latestStatusMap[50002];
+        }
+      }
+
+      if (statusEnt != null) {
+        final effStatus = statusEnt.effectiveStatus(
+          now: now,
+          freshnessWindowSeconds: freshnessWindowSeconds,
+        );
         updatedNodes[entry.key] = node.copyWith(
-          status: statusEnt.status,
+          status: effStatus,
           lastLatencyMs: statusEnt.lastLatencyMs,
+          lastSuccessfulLatencyMs: statusEnt.lastSuccessfulLatencyMs,
+          failureReason: statusEnt.lastFailureReason,
+          consecutiveFailures: statusEnt.consecutiveFailures,
+          lastCheckAt: statusEnt.lastCheckAt,
+          lastSuccessfulCheckAt: statusEnt.lastSeen,
         );
       } else {
         updatedNodes[entry.key] = node;
       }
     }
 
-    // Recompute category stats
-    final Map<TopologyDeviceCategory, (int online, int total)> stats = {};
+    // Dynamic WAN reachability calculation based on gateways
+    final wanNode = updatedNodes['wan_internet'];
+    if (wanNode != null) {
+      final gwNodes = updatedNodes.values
+          .where((n) => n.category == TopologyDeviceCategory.gateway)
+          .toList();
+      DeviceStatusEnum wanStatus = DeviceStatusEnum.unknown;
+      if (gwNodes.any((g) => g.status == DeviceStatusEnum.up)) {
+        wanStatus = DeviceStatusEnum.up;
+      } else if (gwNodes.isNotEmpty &&
+          gwNodes.every((g) => g.status == DeviceStatusEnum.down)) {
+        wanStatus = DeviceStatusEnum.down;
+      } else if (gwNodes.any((g) => g.status == DeviceStatusEnum.degraded)) {
+        wanStatus = DeviceStatusEnum.degraded;
+      } else if (gwNodes.any((g) => g.status == DeviceStatusEnum.stale)) {
+        wanStatus = DeviceStatusEnum.stale;
+      }
+      updatedNodes['wan_internet'] = wanNode.copyWith(status: wanStatus);
+    }
+
+    // Recompute category stats strictly from registered assets (exclude inferred & WAN)
+    final Map<TopologyDeviceCategory, CategoryStatusCount> stats = {};
     for (final n in updatedNodes.values) {
-      final existing = stats[n.category] ?? (0, 0);
+      if (n.isInferred || n.category == TopologyDeviceCategory.wan) {
+        continue;
+      }
+      final current = stats[n.category] ?? const CategoryStatusCount();
       final isOnline = n.status == DeviceStatusEnum.up;
-      stats[n.category] = (existing.$1 + (isOnline ? 1 : 0), existing.$2 + 1);
+      final isOffline =
+          n.status == DeviceStatusEnum.down ||
+          n.status == DeviceStatusEnum.unreachable;
+      final isDegraded = n.status == DeviceStatusEnum.degraded;
+      final isStale = n.status == DeviceStatusEnum.stale;
+      final isUnknown = n.status == DeviceStatusEnum.unknown;
+
+      stats[n.category] = CategoryStatusCount(
+        online: current.online + (isOnline ? 1 : 0),
+        offline: current.offline + (isOffline ? 1 : 0),
+        degraded: current.degraded + (isDegraded ? 1 : 0),
+        unknown: current.unknown + (isUnknown ? 1 : 0),
+        stale: current.stale + (isStale ? 1 : 0),
+        total: current.total + 1,
+      );
     }
 
     return EnterpriseTopologyGraph(

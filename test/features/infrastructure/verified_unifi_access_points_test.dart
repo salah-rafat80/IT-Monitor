@@ -312,11 +312,13 @@ void main() {
               status: DeviceStatusEnum.up,
               lastLatencyMs: 12,
               statusChangedAt: DateTime.now(),
+              lastCheckAt: DateTime.now(),
             ),
             10002: DeviceStatusEntity(
               deviceId: 10002,
               status: DeviceStatusEnum.down,
               statusChangedAt: DateTime.now(),
+              lastCheckAt: DateTime.now(),
             ),
             10003: DeviceStatusEntity(
               deviceId: 10003,
@@ -328,6 +330,7 @@ void main() {
               status: DeviceStatusEnum.degraded,
               lastLatencyMs: 85,
               statusChangedAt: DateTime.now(),
+              lastCheckAt: DateTime.now(),
             ),
           },
         );

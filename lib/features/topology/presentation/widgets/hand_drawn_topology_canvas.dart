@@ -239,7 +239,7 @@ class _HandDrawnTopologyCanvasState extends State<HandDrawnTopologyCanvas>
           maintenanceCount++;
           continue;
         }
-        switch (dev.status.status) {
+        switch (dev.status.effectiveStatus()) {
           case DeviceStatusEnum.up:
             upCount++;
             break;
@@ -249,6 +249,7 @@ class _HandDrawnTopologyCanvasState extends State<HandDrawnTopologyCanvas>
             downCount++;
             break;
           case DeviceStatusEnum.degraded:
+          case DeviceStatusEnum.stale:
             degradedCount++;
             break;
           case DeviceStatusEnum.maintenance:

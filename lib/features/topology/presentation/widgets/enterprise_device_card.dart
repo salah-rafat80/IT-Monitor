@@ -40,11 +40,14 @@ class _EnterpriseDeviceCardState extends State<EnterpriseDeviceCard> {
       case DeviceStatusEnum.up:
         return const Color(0xFF10B981); // Emerald Green
       case DeviceStatusEnum.down:
-      case DeviceStatusEnum.unknown:
       case DeviceStatusEnum.unreachable:
         return const Color(0xFFEF4444); // Alert Red
+      case DeviceStatusEnum.unknown:
+        return const Color(0xFF94A3B8); // Neutral Slate
       case DeviceStatusEnum.degraded:
         return const Color(0xFFF59E0B); // Warning Amber
+      case DeviceStatusEnum.stale:
+        return const Color(0xFFEAB308); // Stale Amber
       case DeviceStatusEnum.maintenance:
         return const Color(0xFF64748B); // Slate
     }

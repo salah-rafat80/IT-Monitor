@@ -297,11 +297,12 @@ class MonitoringDashboardCubit extends Cubit<MonitoringDashboardState> {
     int degraded = 0;
     int down = 0;
     int unknown = 0;
+    int stale = 0;
     int maintenance = 0;
     final incidents = <MonitoredDevice>[];
 
     for (final md in allMonitoredDevices) {
-      switch (md.status.status) {
+      switch (md.status.effectiveStatus()) {
         case DeviceStatusEnum.up:
           up++;
           break;
@@ -312,6 +313,9 @@ class MonitoringDashboardCubit extends Cubit<MonitoringDashboardState> {
         case DeviceStatusEnum.down:
           down++;
           incidents.add(md);
+          break;
+        case DeviceStatusEnum.stale:
+          stale++;
           break;
         case DeviceStatusEnum.unknown:
           unknown++;
@@ -334,6 +338,7 @@ class MonitoringDashboardCubit extends Cubit<MonitoringDashboardState> {
             degradedCount: degraded,
             downCount: down,
             unknownCount: unknown,
+            staleCount: stale,
             maintenanceCount: maintenance,
             activeIncidents: incidents,
             realActiveIncidents: _cachedRealIncidents,
@@ -352,6 +357,7 @@ class MonitoringDashboardCubit extends Cubit<MonitoringDashboardState> {
             degradedCount: degraded,
             downCount: down,
             unknownCount: unknown,
+            staleCount: stale,
             maintenanceCount: maintenance,
             activeIncidents: incidents,
             realActiveIncidents: _cachedRealIncidents,
@@ -481,8 +487,10 @@ class MonitoringDashboardCubit extends Cubit<MonitoringDashboardState> {
         return 1;
       case DeviceStatusEnum.degraded:
         return 2;
-      case DeviceStatusEnum.unreachable:
+      case DeviceStatusEnum.stale:
         return 3;
+      case DeviceStatusEnum.unreachable:
+        return 4;
       case DeviceStatusEnum.unknown:
         return 4;
       case DeviceStatusEnum.maintenance:

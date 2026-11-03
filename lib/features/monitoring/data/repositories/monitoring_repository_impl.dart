@@ -66,9 +66,17 @@ class MonitoringRepositoryImpl implements MonitoringRepository {
           ),
         );
       }
-      final res = await client.getDevices();
+      final res = await client.getDeviceStatuses();
       if (res.isSuccess && res.data != null) {
-        final list = res.data!.map((item) {
+        final list = res.data!
+            .map((item) => DeviceStatusEntity.fromJson(item))
+            .toList();
+        return Result.success(list);
+      }
+      // Fallback to getDevices if needed
+      final devRes = await client.getDevices();
+      if (devRes.isSuccess && devRes.data != null) {
+        final list = devRes.data!.map((item) {
           final stMap = item['status'] as Map<String, dynamic>;
           return DeviceStatusEntity.fromJson(stMap);
         }).toList();
@@ -76,7 +84,7 @@ class MonitoringRepositoryImpl implements MonitoringRepository {
       } else {
         return Result.failure(
           NetworkFailure(
-            'Authoritative monitoring service is unreachable (${res.errorMessage}). '
+            'Authoritative monitoring service is unreachable (${res.errorMessage ?? devRes.errorMessage}). '
             'Ensure IT Network Monitor Service is running.',
           ),
         );

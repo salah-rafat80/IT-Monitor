@@ -569,7 +569,9 @@ class _EnterpriseLinksPainter extends CustomPainter {
       canvas.drawPath(path, linePaint);
 
       // Draw port labels if available (e.g. Gi0/1 on source, Port 1 or ETH on dest)
-      _drawPortPill(canvas, link.fromPort, Offset(start.dx + 26, start.dy));
+      if (link.fromPort != null && link.fromPort!.isNotEmpty) {
+        _drawPortPill(canvas, link.fromPort!, Offset(start.dx + 26, start.dy));
+      }
       if (link.toPort != null && link.toPort!.isNotEmpty) {
         _drawPortPill(canvas, link.toPort!, Offset(end.dx - 26, end.dy));
       }

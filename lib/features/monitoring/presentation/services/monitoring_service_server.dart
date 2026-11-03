@@ -1450,6 +1450,28 @@ Write-Output 'OK'
             'error': 'Failed to load devices',
           }, status: 500);
         }
+      } else if (path == '/api/device-statuses' && request.method == 'GET') {
+        final session = _authenticateRequest(request);
+        if (session == null) {
+          await _jsonResponse(request, {
+            'success': false,
+            'error': 'Unauthorized: Valid session token required',
+          }, status: HttpStatus.unauthorized);
+          return;
+        }
+
+        final monitoringRepo = getIt<MonitoringRepository>();
+        final statRes = await monitoringRepo.getDeviceStatuses();
+        if (statRes.isSuccess) {
+          final list = statRes.dataOrNull!.map((s) => s.toJson()).toList();
+          await _jsonResponse(request, {'success': true, 'statuses': list});
+        } else {
+          await _jsonResponse(request, {
+            'success': false,
+            'error':
+                statRes.failureOrNull?.message ?? 'Failed to load statuses',
+          }, status: 500);
+        }
       } else if (path == '/api/devices' && request.method == 'POST') {
         final session = _authenticateRequest(request);
         if (session == null) {
@@ -1875,25 +1897,36 @@ Write-Output 'OK'
           factoryId: factoryId,
         );
         if (res.isSuccess) {
-          final list = res.dataOrNull!
-              .map(
-                (d) => {
-                  'id': d.id,
-                  'factoryId': d.factoryId,
-                  'name': d.name,
-                  'ip': d.ip,
-                  'mac': d.mac,
-                  'role': d.role.toValue(),
-                  'roleDisplayName': d.role.displayName,
-                  'isCriticalInfrastructure': d.isCriticalInfrastructure,
-                  'requiresAdminConfirmation': d.requiresAdminConfirmation,
-                  'linkedSubnets': d.linkedSubnets,
-                  'controllerUrl': d.controllerUrl,
-                  'isEnabled': d.isEnabled,
-                  'isReadOnly': d.isReadOnly,
-                },
-              )
-              .toList();
+          final monitoringRepo = getIt<MonitoringRepository>();
+          final allStatusesRes = await monitoringRepo.getDeviceStatuses();
+          final statusMap = <int, DeviceStatusEntity>{};
+          if (allStatusesRes.isSuccess) {
+            for (final s in allStatusesRes.dataOrNull!) {
+              statusMap[s.deviceId] = s;
+            }
+          }
+
+          final list = res.dataOrNull!.map((d) {
+            final virtualId = 10000 + d.id;
+            final st =
+                statusMap[virtualId] ?? DeviceStatusEntity.initial(virtualId);
+            return {
+              'id': d.id,
+              'factoryId': d.factoryId,
+              'name': d.name,
+              'ip': d.ip,
+              'mac': d.mac,
+              'role': d.role.toValue(),
+              'roleDisplayName': d.role.displayName,
+              'isCriticalInfrastructure': d.isCriticalInfrastructure,
+              'requiresAdminConfirmation': d.requiresAdminConfirmation,
+              'linkedSubnets': d.linkedSubnets,
+              'controllerUrl': d.controllerUrl,
+              'isEnabled': d.isEnabled,
+              'isReadOnly': d.isReadOnly,
+              'status': st.toJson(),
+            };
+          }).toList();
           await _jsonResponse(request, {'success': true, 'devices': list});
         } else {
           await _jsonResponse(request, {

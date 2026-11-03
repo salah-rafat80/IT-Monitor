@@ -631,6 +631,27 @@ class MonitoringServiceClient {
     );
   }
 
+  /// Fetch all authoritative statuses (inventory + infrastructure + gateways).
+  Future<ServiceApiResponse<List<Map<String, dynamic>>>>
+  getDeviceStatuses() async {
+    final response = await _sendRequest(
+      method: 'GET',
+      endpoint: '/api/device-statuses',
+      requireAuth: true,
+    );
+    if (response.isSuccess) {
+      final json = response.data as Map<String, dynamic>;
+      final list =
+          (json['statuses'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ??
+          [];
+      return ServiceApiResponse.success(list);
+    }
+    return ServiceApiResponse.failure(
+      response.errorMessage,
+      statusCode: response.statusCode,
+    );
+  }
+
   /// Assign owner to a device (Server-side Admin role required).
   Future<ServiceApiResponse<Map<String, dynamic>>> assignDeviceOwner({
     required int deviceId,
@@ -1458,6 +1479,10 @@ class MonitoringServiceClient {
       statusCode: response.statusCode,
     );
   }
+
+  /// Alias for manualCheck
+  Future<ServiceApiResponse<void>> triggerManualCheck(int deviceId) =>
+      manualCheck(deviceId);
 
   /// Set maintenance mode for a device via the service.
   Future<ServiceApiResponse<void>> setMaintenanceMode({

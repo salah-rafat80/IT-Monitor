@@ -425,6 +425,7 @@ class _MonitoringDashboardViewState extends State<MonitoringDashboardView> {
                   MonitoredDevicesTable(
                     devices: state.filteredDevices,
                     userRole: userRole,
+                    failureThreshold: state.config.failureThreshold,
                     selectedDeviceIds: _selectedDeviceIds,
                     onToggleSelect: (deviceId, selected) {
                       setState(() {

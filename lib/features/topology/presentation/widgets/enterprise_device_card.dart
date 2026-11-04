@@ -219,7 +219,7 @@ class _EnterpriseDeviceCardState extends State<EnterpriseDeviceCard> {
                               ),
                             ),
                             child: Text(
-                              '${widget.node.consecutiveFailures}/3 FAIL',
+                              '${widget.node.consecutiveFailures}/${widget.node.failureThreshold} FAIL',
                               style: const TextStyle(
                                 fontSize: 7,
                                 fontWeight: FontWeight.w800,

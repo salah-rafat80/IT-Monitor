@@ -17,6 +17,7 @@ class EnterpriseTopologyBuilder {
     Map<dynamic, DeviceStatusEnum>? infraStatuses,
     Map<int, DeviceStatusEntity>? statuses,
     String? factoryId,
+    int failureThreshold = 3,
   }) {
     final Map<String, EnterpriseTopologyNode> nodes = {};
     final List<EnterpriseTopologyLink> links = [];
@@ -72,16 +73,19 @@ class EnterpriseTopologyBuilder {
           failureReason: ent?.lastFailureReason,
           consecutiveFailures: ent?.consecutiveFailures ?? 0,
           size: const Size(168, 60),
+          failureThreshold: ent?.failureThreshold ?? failureThreshold,
         );
         gatewayIds.add(id);
       }
     }
 
     // Include registered factory gateways: RNF (192.168.22.1) and BNF (192.168.21.1)
-    final includeRnf = factoryId == null || factoryId.toLowerCase() == 'rnf';
-    final includeBnf = factoryId == null || factoryId.toLowerCase() == 'bnf';
+    final isAllFactories = factoryId == null;
+    final isRnf = factoryId?.toLowerCase() == 'rnf';
+    final isBnf = factoryId?.toLowerCase() == 'bnf';
 
-    if (includeRnf && !nodes.values.any((n) => n.subtitle == '192.168.22.1')) {
+    if ((isAllFactories || isRnf) &&
+        !nodes.values.any((n) => n.subtitle == '192.168.22.1')) {
       const gwRnfId = 'gw_rnf_22';
       final gwRnfStatus = resolveInfraStatus(50001, '192.168.22.1');
       final ent = getStatusEntity(50001);
@@ -102,11 +106,13 @@ class EnterpriseTopologyBuilder {
         failureReason: ent?.lastFailureReason,
         consecutiveFailures: ent?.consecutiveFailures ?? 0,
         size: const Size(168, 60),
+        failureThreshold: ent?.failureThreshold ?? failureThreshold,
       );
       gatewayIds.add(gwRnfId);
     }
 
-    if (includeBnf && !nodes.values.any((n) => n.subtitle == '192.168.21.1')) {
+    if ((isAllFactories || isBnf) &&
+        !nodes.values.any((n) => n.subtitle == '192.168.21.1')) {
       const gwBnfId = 'gw_bnf_21';
       final gwBnfStatus = resolveInfraStatus(50002, '192.168.21.1');
       final ent = getStatusEntity(50002);
@@ -127,35 +133,13 @@ class EnterpriseTopologyBuilder {
         failureReason: ent?.lastFailureReason,
         consecutiveFailures: ent?.consecutiveFailures ?? 0,
         size: const Size(168, 60),
+        failureThreshold: ent?.failureThreshold ?? failureThreshold,
       );
       gatewayIds.add(gwBnfId);
     }
 
-    // Fallback if no gateways were configured (e.g. unassigned factory filter)
-    if (gatewayIds.isEmpty) {
-      const fallbackGwId = 'gw_rnf_22';
-      final fallbackStatus = resolveInfraStatus(50001, '192.168.22.1');
-      final ent = getStatusEntity(50001);
-      nodes[fallbackGwId] = EnterpriseTopologyNode(
-        id: fallbackGwId,
-        title: 'Factory Gateway',
-        subtitle: '192.168.22.1',
-        category: TopologyDeviceCategory.gateway,
-        status: fallbackStatus,
-        level: 1,
-        location: 'Server Room',
-        vendor: 'Enterprise Gateway',
-        isInferred: false,
-        lastLatencyMs: ent?.lastLatencyMs,
-        lastSuccessfulLatencyMs: ent?.lastSuccessfulLatencyMs,
-        lastCheckAt: ent?.lastCheckAt,
-        lastSuccessfulCheckAt: ent?.lastSeen,
-        failureReason: ent?.lastFailureReason,
-        consecutiveFailures: ent?.consecutiveFailures ?? 0,
-        size: const Size(168, 60),
-      );
-      gatewayIds.add(fallbackGwId);
-    }
+    // Never fabricate a fallback gateway when none is registered!
+    // Respects RNF, BNF, All Factories, and unknown factory contexts.
 
     // ── 2. LEVEL 0: WAN / Internet ──────────────────────────────────────────
     // WAN / Internet status remains strictly Unknown until externally verified.
@@ -173,6 +157,7 @@ class EnterpriseTopologyBuilder {
       location: 'External WAN',
       vendor: 'ISP / Telecom',
       isMonitored: false,
+      failureThreshold: failureThreshold,
       isInferred: false,
       size: const Size(168, 60),
     );
@@ -236,7 +221,7 @@ class EnterpriseTopologyBuilder {
 
       // Determine upstream gateway
       final firstDeviceIp = locationGroups[loc]?.first.device.ip;
-      String upstreamGwId = gatewayIds.first;
+      String? upstreamGwId = gatewayIds.firstOrNull;
       if (loc.toLowerCase().contains('21') ||
           (firstDeviceIp?.contains('.21.') ?? false)) {
         final bnfMatch = gatewayIds
@@ -282,28 +267,37 @@ class EnterpriseTopologyBuilder {
           failureReason: ent?.lastFailureReason,
           consecutiveFailures: ent?.consecutiveFailures ?? 0,
           size: const Size(168, 60),
+          failureThreshold: ent?.failureThreshold ?? failureThreshold,
         );
 
-        final gwStatus =
-            nodes[upstreamGwId]?.status ?? DeviceStatusEnum.unknown;
-        DeviceStatusEnum swLinkStatus = DeviceStatusEnum.unknown;
-        if (gwStatus == DeviceStatusEnum.down ||
-            swStatus == DeviceStatusEnum.down) {
-          swLinkStatus = DeviceStatusEnum.down;
-        } else if (gwStatus == DeviceStatusEnum.up &&
-            swStatus == DeviceStatusEnum.up) {
-          swLinkStatus = DeviceStatusEnum.up;
+        if (upstreamGwId != null) {
+          final gwNode = nodes[upstreamGwId];
+          final gwStatus = gwNode?.status ?? DeviceStatusEnum.unknown;
+          DeviceStatusEnum swLinkStatus = DeviceStatusEnum.unknown;
+          if (gwStatus == DeviceStatusEnum.down ||
+              swStatus == DeviceStatusEnum.down) {
+            swLinkStatus = DeviceStatusEnum.down;
+          } else if ((gwNode?.consecutiveFailures ?? 0) > 0 ||
+              (ent?.consecutiveFailures ?? 0) > 0 ||
+              gwStatus == DeviceStatusEnum.degraded ||
+              swStatus == DeviceStatusEnum.degraded) {
+            // Amber when either endpoint has consecutiveFailures > 0!
+            swLinkStatus = DeviceStatusEnum.degraded;
+          } else if (gwStatus == DeviceStatusEnum.up &&
+              swStatus == DeviceStatusEnum.up) {
+            swLinkStatus = DeviceStatusEnum.up;
+          }
+
+          links.add(
+            EnterpriseTopologyLink(
+              id: 'link_${upstreamGwId}_$swId',
+              fromNodeId: upstreamGwId,
+              toNodeId: swId,
+              status: swLinkStatus,
+              isInferred: false,
+            ),
+          );
         }
-
-        links.add(
-          EnterpriseTopologyLink(
-            id: 'link_${upstreamGwId}_$swId',
-            fromNodeId: upstreamGwId,
-            toNodeId: swId,
-            status: swLinkStatus,
-            isInferred: false,
-          ),
-        );
       } else {
         // Inferred logical grouping — clearly labeled, never claimed as verified hardware
         nodes[swId] = EnterpriseTopologyNode(
@@ -316,17 +310,20 @@ class EnterpriseTopologyBuilder {
           location: loc,
           isInferred: true,
           size: const Size(168, 60),
+          failureThreshold: failureThreshold,
         );
 
-        links.add(
-          EnterpriseTopologyLink(
-            id: 'link_${upstreamGwId}_$swId',
-            fromNodeId: upstreamGwId,
-            toNodeId: swId,
-            status: DeviceStatusEnum.unknown,
-            isInferred: true,
-          ),
-        );
+        if (upstreamGwId != null) {
+          links.add(
+            EnterpriseTopologyLink(
+              id: 'link_${upstreamGwId}_$swId',
+              fromNodeId: upstreamGwId,
+              toNodeId: swId,
+              status: DeviceStatusEnum.unknown,
+              isInferred: true,
+            ),
+          );
+        }
       }
     }
 
@@ -356,26 +353,35 @@ class EnterpriseTopologyBuilder {
           failureReason: ent?.lastFailureReason,
           consecutiveFailures: ent?.consecutiveFailures ?? 0,
           size: const Size(168, 60),
+          failureThreshold: ent?.failureThreshold ?? failureThreshold,
         );
-        final gwStatus =
-            nodes[gatewayIds.first]?.status ?? DeviceStatusEnum.unknown;
-        DeviceStatusEnum swLinkStatus = DeviceStatusEnum.unknown;
-        if (gwStatus == DeviceStatusEnum.down ||
-            swStatus == DeviceStatusEnum.down) {
-          swLinkStatus = DeviceStatusEnum.down;
-        } else if (gwStatus == DeviceStatusEnum.up &&
-            swStatus == DeviceStatusEnum.up) {
-          swLinkStatus = DeviceStatusEnum.up;
+        final gwId = gatewayIds.firstOrNull;
+        if (gwId != null) {
+          final gwNode = nodes[gwId];
+          final gwStatus = gwNode?.status ?? DeviceStatusEnum.unknown;
+          DeviceStatusEnum swLinkStatus = DeviceStatusEnum.unknown;
+          if (gwStatus == DeviceStatusEnum.down ||
+              swStatus == DeviceStatusEnum.down) {
+            swLinkStatus = DeviceStatusEnum.down;
+          } else if ((gwNode?.consecutiveFailures ?? 0) > 0 ||
+              (ent?.consecutiveFailures ?? 0) > 0 ||
+              gwStatus == DeviceStatusEnum.degraded ||
+              swStatus == DeviceStatusEnum.degraded) {
+            swLinkStatus = DeviceStatusEnum.degraded;
+          } else if (gwStatus == DeviceStatusEnum.up &&
+              swStatus == DeviceStatusEnum.up) {
+            swLinkStatus = DeviceStatusEnum.up;
+          }
+          links.add(
+            EnterpriseTopologyLink(
+              id: 'link_${gwId}_$swId',
+              fromNodeId: gwId,
+              toNodeId: swId,
+              status: swLinkStatus,
+              isInferred: false,
+            ),
+          );
         }
-        links.add(
-          EnterpriseTopologyLink(
-            id: 'link_${gatewayIds.first}_$swId',
-            fromNodeId: gatewayIds.first,
-            toNodeId: swId,
-            status: swLinkStatus,
-            isInferred: false,
-          ),
-        );
       }
     }
 
@@ -390,9 +396,9 @@ class EnterpriseTopologyBuilder {
       final status = resolveInfraStatus(virtualId, ap.ip);
       final ent = getStatusEntity(virtualId);
 
-      String parentSwId = switchIds.isNotEmpty
+      String? parentSwId = switchIds.isNotEmpty
           ? switchIds.first
-          : gatewayIds.first;
+          : gatewayIds.firstOrNull;
       for (final loc in sortedLocations) {
         if (ap.location != null &&
             ap.location!.toLowerCase().contains(loc.toLowerCase())) {
@@ -420,39 +426,47 @@ class EnterpriseTopologyBuilder {
         failureReason: ent?.lastFailureReason,
         consecutiveFailures: ent?.consecutiveFailures ?? 0,
         size: const Size(168, 60),
+        failureThreshold: ent?.failureThreshold ?? failureThreshold,
       );
 
-      final isParentInferred = nodes[parentSwId]?.isInferred ?? true;
-      final parentStatus =
-          nodes[parentSwId]?.status ?? DeviceStatusEnum.unknown;
-      DeviceStatusEnum apLinkStatus = DeviceStatusEnum.unknown;
-      if (!isParentInferred) {
-        if (parentStatus == DeviceStatusEnum.down ||
-            status == DeviceStatusEnum.down) {
-          apLinkStatus = DeviceStatusEnum.down;
-        } else if (parentStatus == DeviceStatusEnum.up &&
-            status == DeviceStatusEnum.up) {
-          apLinkStatus = DeviceStatusEnum.up;
+      if (parentSwId != null) {
+        final parentNode = nodes[parentSwId];
+        final isParentInferred = parentNode?.isInferred ?? true;
+        final parentStatus = parentNode?.status ?? DeviceStatusEnum.unknown;
+        DeviceStatusEnum apLinkStatus = DeviceStatusEnum.unknown;
+        if (!isParentInferred) {
+          if (parentStatus == DeviceStatusEnum.down ||
+              status == DeviceStatusEnum.down) {
+            apLinkStatus = DeviceStatusEnum.down;
+          } else if ((parentNode?.consecutiveFailures ?? 0) > 0 ||
+              (ent?.consecutiveFailures ?? 0) > 0 ||
+              parentStatus == DeviceStatusEnum.degraded ||
+              status == DeviceStatusEnum.degraded) {
+            apLinkStatus = DeviceStatusEnum.degraded;
+          } else if (parentStatus == DeviceStatusEnum.up &&
+              status == DeviceStatusEnum.up) {
+            apLinkStatus = DeviceStatusEnum.up;
+          }
         }
-      }
 
-      links.add(
-        EnterpriseTopologyLink(
-          id: 'link_${parentSwId}_$apId',
-          fromNodeId: parentSwId,
-          toNodeId: apId,
-          toPort: isParentInferred ? null : 'ETH0',
-          status: isParentInferred ? DeviceStatusEnum.unknown : apLinkStatus,
-          isInferred: isParentInferred,
-        ),
-      );
+        links.add(
+          EnterpriseTopologyLink(
+            id: 'link_${parentSwId}_$apId',
+            fromNodeId: parentSwId,
+            toNodeId: apId,
+            toPort: isParentInferred ? null : 'ETH0',
+            status: isParentInferred ? DeviceStatusEnum.unknown : apLinkStatus,
+            isInferred: isParentInferred,
+          ),
+        );
+      }
     }
 
     // ── 6. LEVEL 4: Endpoints & Clients (Monitored Devices) ─────────────────
     for (final loc in sortedLocations) {
       final swId =
           locationToSwitchId[loc] ??
-          (switchIds.isNotEmpty ? switchIds.first : gatewayIds.first);
+          (switchIds.isNotEmpty ? switchIds.first : gatewayIds.firstOrNull);
       final devList = locationGroups[loc] ?? [];
 
       for (int i = 0; i < devList.length; i++) {
@@ -490,23 +504,26 @@ class EnterpriseTopologyBuilder {
           lastSuccessfulCheckAt: md.status.lastSeen,
           failureReason: md.status.lastFailureReason,
           consecutiveFailures: md.status.consecutiveFailures,
+          failureThreshold: md.status.failureThreshold,
           isMonitored: md.device.isMonitored,
           isInferred: false,
           deviceRef: md.device,
           size: const Size(168, 60),
         );
 
-        final isSwInferred = nodes[swId]?.isInferred ?? true;
-        links.add(
-          EnterpriseTopologyLink(
-            id: 'link_${swId}_$devId',
-            fromNodeId: swId,
-            toNodeId: devId,
-            toPort: isSwInferred ? null : 'ETH',
-            status: isSwInferred ? DeviceStatusEnum.unknown : effectiveStatus,
-            isInferred: isSwInferred,
-          ),
-        );
+        if (swId != null) {
+          final isSwInferred = nodes[swId]?.isInferred ?? true;
+          links.add(
+            EnterpriseTopologyLink(
+              id: 'link_${swId}_$devId',
+              fromNodeId: swId,
+              toNodeId: devId,
+              toPort: isSwInferred ? null : 'ETH',
+              status: isSwInferred ? DeviceStatusEnum.unknown : effectiveStatus,
+              isInferred: isSwInferred,
+            ),
+          );
+        }
       }
     }
 

@@ -16,6 +16,7 @@ class MonitoredDevicesTable extends StatelessWidget {
   final ValueChanged<MonitoredDevice>? onTriggerCheck;
   final Function(MonitoredDevice device, bool isMaintenance)?
   onToggleMaintenance;
+  final int failureThreshold;
 
   const MonitoredDevicesTable({
     super.key,
@@ -27,6 +28,7 @@ class MonitoredDevicesTable extends StatelessWidget {
     this.onSelectAll,
     this.onTriggerCheck,
     this.onToggleMaintenance,
+    this.failureThreshold = 3,
   });
 
   @override
@@ -247,6 +249,11 @@ class MonitoredDevicesTable extends StatelessWidget {
                       status: status.status,
                       isMaintenance: status.isMaintenance,
                       compact: true,
+                      consecutiveFailures: status.consecutiveFailures,
+                      failureThreshold: status.failureThreshold > 0
+                          ? status.failureThreshold
+                          : failureThreshold,
+                      failureReason: status.lastFailureReason,
                     ),
                   ),
                   // 7. Latency

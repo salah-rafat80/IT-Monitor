@@ -101,6 +101,7 @@ class EnterpriseTopologyNode extends Equatable {
   final Size size;
   final DeviceEntity? deviceRef;
   final UniFiDeviceEntity? infraRef;
+  final int failureThreshold;
 
   const EnterpriseTopologyNode({
     required this.id,
@@ -130,6 +131,7 @@ class EnterpriseTopologyNode extends Equatable {
     this.size = const Size(168, 60),
     this.deviceRef,
     this.infraRef,
+    this.failureThreshold = 3,
   });
 
   EnterpriseTopologyNode copyWith({
@@ -160,6 +162,7 @@ class EnterpriseTopologyNode extends Equatable {
     Size? size,
     DeviceEntity? deviceRef,
     UniFiDeviceEntity? infraRef,
+    int? failureThreshold,
   }) {
     return EnterpriseTopologyNode(
       id: id ?? this.id,
@@ -191,6 +194,7 @@ class EnterpriseTopologyNode extends Equatable {
       size: size ?? this.size,
       deviceRef: deviceRef ?? this.deviceRef,
       infraRef: infraRef ?? this.infraRef,
+      failureThreshold: failureThreshold ?? this.failureThreshold,
     );
   }
 
@@ -210,7 +214,7 @@ class EnterpriseTopologyNode extends Equatable {
   /// Clear transitional human-readable label when failing below threshold.
   String get transitionalLabel {
     if (isTransitionalFailing) {
-      return 'Previously Online · $consecutiveFailures/3 Failed Checks';
+      return 'Previously Online · $consecutiveFailures/$failureThreshold Failed Checks';
     }
     return status.displayName;
   }
@@ -242,6 +246,7 @@ class EnterpriseTopologyNode extends Equatable {
     consecutiveFailures,
     position,
     size,
+    failureThreshold,
   ];
 }
 
@@ -435,6 +440,7 @@ class EnterpriseTopologyGraph extends Equatable {
           lastSuccessfulLatencyMs: statusEnt.lastSuccessfulLatencyMs,
           failureReason: statusEnt.lastFailureReason,
           consecutiveFailures: statusEnt.consecutiveFailures,
+          failureThreshold: statusEnt.failureThreshold,
           lastCheckAt: statusEnt.lastCheckAt,
           lastSuccessfulCheckAt: statusEnt.lastSeen,
         );
@@ -489,15 +495,20 @@ class EnterpriseTopologyGraph extends Equatable {
           toNode.status == DeviceStatusEnum.down ||
           toNode.status == DeviceStatusEnum.unreachable) {
         updatedLinks.add(link.copyWith(status: DeviceStatusEnum.down));
-      } else if (fromNode.status == DeviceStatusEnum.degraded ||
+      } else if (fromNode.consecutiveFailures > 0 ||
+          toNode.consecutiveFailures > 0 ||
+          fromNode.status == DeviceStatusEnum.degraded ||
           toNode.status == DeviceStatusEnum.degraded) {
+        // Fix 1: Verified topology links must show Amber (degraded) when either endpoint
+        // has consecutiveFailures > 0, even while its retained status is UP.
+        // Never show a green link after the latest failed probe!
         updatedLinks.add(link.copyWith(status: DeviceStatusEnum.degraded));
       } else if (fromNode.status == DeviceStatusEnum.stale ||
           toNode.status == DeviceStatusEnum.stale) {
         updatedLinks.add(link.copyWith(status: DeviceStatusEnum.stale));
       } else if (fromNode.status == DeviceStatusEnum.up &&
           toNode.status == DeviceStatusEnum.up) {
-        // Both endpoints verified fresh Online!
+        // Both endpoints verified fresh Online with 0 consecutive failures!
         updatedLinks.add(link.copyWith(status: DeviceStatusEnum.up));
       } else {
         updatedLinks.add(link.copyWith(status: DeviceStatusEnum.unknown));

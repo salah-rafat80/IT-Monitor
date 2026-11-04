@@ -70,6 +70,7 @@ class DeviceStatusEntity extends Equatable {
   final bool isMaintenance;
   final bool hasInternet;
   final bool isSubMillisecond;
+  final int failureThreshold;
 
   const DeviceStatusEntity({
     required this.deviceId,
@@ -85,6 +86,7 @@ class DeviceStatusEntity extends Equatable {
     this.isMaintenance = false,
     this.hasInternet = true,
     this.isSubMillisecond = false,
+    this.failureThreshold = 3,
   });
 
   factory DeviceStatusEntity.initial(int deviceId) {
@@ -130,7 +132,7 @@ class DeviceStatusEntity extends Equatable {
   /// Clear transitional human-readable label when failing below threshold.
   String get transitionalLabel {
     if (isTransitionalFailing) {
-      return 'Previously Online · $consecutiveFailures/3 Failed Checks';
+      return 'Previously Online · $consecutiveFailures/$failureThreshold Failed Checks';
     }
     return effectiveStatus().displayName;
   }
@@ -166,6 +168,7 @@ class DeviceStatusEntity extends Equatable {
     bool? isMaintenance,
     bool? hasInternet,
     bool? isSubMillisecond,
+    int? failureThreshold,
   }) {
     return DeviceStatusEntity(
       deviceId: deviceId ?? this.deviceId,
@@ -188,6 +191,7 @@ class DeviceStatusEntity extends Equatable {
       isSubMillisecond:
           isSubMillisecond ??
           (clearLastLatency ? false : this.isSubMillisecond),
+      failureThreshold: failureThreshold ?? this.failureThreshold,
     );
   }
 
@@ -206,6 +210,7 @@ class DeviceStatusEntity extends Equatable {
       'isMaintenance': isMaintenance,
       'hasInternet': hasInternet,
       'isSubMillisecond': isSubMillisecond,
+      'failureThreshold': failureThreshold,
     };
   }
 
@@ -239,6 +244,9 @@ class DeviceStatusEntity extends Equatable {
       isMaintenance: json['isMaintenance'] == true,
       hasInternet: json['hasInternet'] != false,
       isSubMillisecond: json['isSubMillisecond'] == true,
+      failureThreshold: json['failureThreshold'] is int
+          ? json['failureThreshold'] as int
+          : int.tryParse(json['failureThreshold']?.toString() ?? '3') ?? 3,
     );
   }
 
@@ -257,5 +265,6 @@ class DeviceStatusEntity extends Equatable {
     isMaintenance,
     hasInternet,
     isSubMillisecond,
+    failureThreshold,
   ];
 }

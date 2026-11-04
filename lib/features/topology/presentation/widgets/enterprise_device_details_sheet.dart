@@ -41,7 +41,7 @@ class EnterpriseDeviceDetailsSheet extends StatelessWidget {
         ? const Color(0xFFF59E0B)
         : _getStatusColor(node.status);
     final statusLabel = isTransitional
-        ? 'PREVIOUSLY ONLINE · ${node.consecutiveFailures}/3 FAILED'
+        ? 'PREVIOUSLY ONLINE · ${node.consecutiveFailures}/${node.failureThreshold} FAILED'
         : node.status.name.toUpperCase();
 
     return Container(
@@ -165,7 +165,7 @@ class EnterpriseDeviceDetailsSheet extends StatelessWidget {
                   if (node.isTransitionalFailing)
                     _buildDetailRow(
                       'Failure Threshold',
-                      '${node.consecutiveFailures} of 3 consecutive probe failures',
+                      '${node.consecutiveFailures} of ${node.failureThreshold} consecutive probe failures',
                     ),
                   _buildDetailRow(
                     'Status Freshness',

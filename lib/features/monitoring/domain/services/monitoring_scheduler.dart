@@ -504,6 +504,7 @@ class MonitoringScheduler {
           lastFailureReason: checkResult.errorMessage,
           statusChangedAt: checkTime,
           hasInternet: checkResult.isSuccess,
+          failureThreshold: _config.failureThreshold,
         );
         await _monitoringRepo.saveDeviceStatus(gwDeviceStatus);
         if (!_statusUpdateController.isClosed) {

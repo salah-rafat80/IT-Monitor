@@ -507,12 +507,45 @@ class _EnterpriseLinksPainter extends CustomPainter {
       // Determine path color based on link and endpoint status
       final isDown =
           link.status == DeviceStatusEnum.down ||
+          link.status == DeviceStatusEnum.unreachable ||
           fromNode.status == DeviceStatusEnum.down ||
-          toNode.status == DeviceStatusEnum.down;
+          fromNode.status == DeviceStatusEnum.unreachable ||
+          toNode.status == DeviceStatusEnum.down ||
+          toNode.status == DeviceStatusEnum.unreachable;
 
-      final linkColor = isDown
-          ? const Color(0xFFEF4444) // Alert red
-          : const Color(0xFF10B981); // Enterprise Emerald green
+      final isAmber =
+          !isDown &&
+          (link.status == DeviceStatusEnum.degraded ||
+              fromNode.consecutiveFailures > 0 ||
+              toNode.consecutiveFailures > 0 ||
+              fromNode.status == DeviceStatusEnum.degraded ||
+              toNode.status == DeviceStatusEnum.degraded);
+
+      final isUnknown =
+          !isDown &&
+          !isAmber &&
+          (link.isInferred ||
+              link.status == DeviceStatusEnum.unknown ||
+              link.status == DeviceStatusEnum.stale ||
+              fromNode.isInferred ||
+              toNode.isInferred ||
+              fromNode.status == DeviceStatusEnum.unknown ||
+              fromNode.status == DeviceStatusEnum.stale ||
+              toNode.status == DeviceStatusEnum.unknown ||
+              toNode.status == DeviceStatusEnum.stale ||
+              fromNode.category == TopologyDeviceCategory.wan ||
+              toNode.category == TopologyDeviceCategory.wan);
+
+      final Color linkColor;
+      if (isDown) {
+        linkColor = const Color(0xFFEF4444); // Alert red
+      } else if (isAmber) {
+        linkColor = const Color(0xFFF59E0B); // Amber warning
+      } else if (isUnknown) {
+        linkColor = const Color(0xFF64748B); // Slate 500 / Unknown
+      } else {
+        linkColor = const Color(0xFF10B981); // Enterprise Emerald green
+      }
 
       linePaint
         ..color = linkColor.withValues(

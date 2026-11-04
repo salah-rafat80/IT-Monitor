@@ -7,6 +7,7 @@ class DeviceStatusChip extends StatelessWidget {
   final bool isMaintenance;
   final bool compact;
   final int consecutiveFailures;
+  final int failureThreshold;
   final String? failureReason;
 
   const DeviceStatusChip({
@@ -15,6 +16,7 @@ class DeviceStatusChip extends StatelessWidget {
     this.isMaintenance = false,
     this.compact = false,
     this.consecutiveFailures = 0,
+    this.failureThreshold = 3,
     this.failureReason,
   });
 
@@ -35,8 +37,8 @@ class DeviceStatusChip extends StatelessWidget {
           iconData = Icons.warning_amber_rounded;
           color = const Color(0xFFF59E0B);
           text = compact
-              ? '$consecutiveFailures/3 Fail'
-              : 'Previously Online · $consecutiveFailures/3 Failed Checks';
+              ? '$consecutiveFailures/$failureThreshold Fail'
+              : 'Previously Online · $consecutiveFailures/$failureThreshold Failed Checks';
         } else {
           iconData = Icons.check_circle_rounded;
           color = tokens.statusOnline;

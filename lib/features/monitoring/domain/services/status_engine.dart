@@ -70,6 +70,7 @@ class StatusEngine {
         consecutiveSuccesses: newSuccesses,
         statusChangedAt: statusChangedAt,
         hasInternet: checkResult.hasInternet ?? true,
+        failureThreshold: config.failureThreshold,
       );
     } else {
       // Failure Check
@@ -99,6 +100,7 @@ class StatusEngine {
         consecutiveSuccesses: newSuccesses,
         statusChangedAt: statusChangedAt,
         hasInternet: false,
+        failureThreshold: config.failureThreshold,
       );
     }
   }

@@ -110,6 +110,10 @@ class TopologyCubit extends Cubit<TopologyState> {
         return MonitoredDevice(device: d, status: status);
       }).toList();
 
+      final activeThreshold = statusMap.values
+          .map((s) => s.failureThreshold)
+          .firstWhere((t) => t > 0, orElse: () => 3);
+
       // Build enterprise hierarchical layout graph with authoritative infrastructure statuses
       final graph = _builder.build(
         monitoredDevices: monitoredList,
@@ -117,6 +121,7 @@ class TopologyCubit extends Cubit<TopologyState> {
         infraStatuses: infraStatuses,
         statuses: statusMap,
         factoryId: _factoryId,
+        failureThreshold: activeThreshold,
       );
 
       final locationNodes = _grouper.group(monitoredList);

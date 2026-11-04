@@ -43,6 +43,8 @@ class MonitoringScheduler {
       StreamController<CheckResult>.broadcast();
   final StreamController<DeviceStatusEntity> _statusUpdateController =
       StreamController<DeviceStatusEntity>.broadcast();
+  final StreamController<MonitoringConfig> _configUpdateController =
+      StreamController<MonitoringConfig>.broadcast();
 
   // Internal health and error diagnostics telemetry
   int _cycleCount = 0;
@@ -69,6 +71,8 @@ class MonitoringScheduler {
   Stream<CheckResult> get checkResultsStream => _checkResultController.stream;
   Stream<DeviceStatusEntity> get statusUpdatesStream =>
       _statusUpdateController.stream;
+  Stream<MonitoringConfig> get configUpdatesStream =>
+      _configUpdateController.stream;
 
   int get cycleCount => _cycleCount;
   int get totalChecksExecuted => _totalChecksExecuted;
@@ -82,6 +86,9 @@ class MonitoringScheduler {
   void updateConfig(MonitoringConfig newConfig) {
     _config = newConfig;
     _concurrencyLimiter.updatePermits(newConfig.maxConcurrentChecks);
+    if (!_configUpdateController.isClosed) {
+      _configUpdateController.add(newConfig);
+    }
   }
 
   void _logDiagnostic(String message, {Object? error, StackTrace? stackTrace}) {
@@ -721,6 +728,9 @@ class MonitoringScheduler {
     }
     if (!_statusUpdateController.isClosed) {
       _statusUpdateController.close();
+    }
+    if (!_configUpdateController.isClosed) {
+      _configUpdateController.close();
     }
   }
 }

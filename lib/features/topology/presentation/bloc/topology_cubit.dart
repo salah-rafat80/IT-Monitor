@@ -8,7 +8,9 @@ import '../../../infrastructure/domain/entities/unifi_device_entity.dart';
 import '../../../infrastructure/domain/repositories/infrastructure_repository.dart';
 import '../../../monitoring/domain/entities/device_status_entity.dart';
 import '../../../monitoring/domain/entities/monitored_device.dart';
+import '../../../monitoring/domain/entities/monitoring_config.dart';
 import '../../../monitoring/domain/repositories/monitoring_repository.dart';
+import '../../../monitoring/domain/services/monitoring_scheduler.dart';
 import '../../domain/entities/enterprise_topology_models.dart';
 import '../../domain/services/enterprise_topology_builder.dart';
 import '../../domain/services/topology_grouper.dart';
@@ -27,21 +29,48 @@ class TopologyCubit extends Cubit<TopologyState> {
   final MonitoringRepository _monitoringRepo;
   final TopologyGrouper _grouper;
   final EnterpriseTopologyBuilder _builder;
+  final MonitoringScheduler? _scheduler;
 
   StreamSubscription<List<DeviceStatusEntity>>? _statusSubscription;
+  StreamSubscription<MonitoringConfig>? _configSubscription;
   List<DeviceEntity> _cachedDevices = [];
   List<UniFiDeviceEntity> _cachedInfra = [];
   String? _factoryId;
+  int _activeFailureThreshold = 3;
 
   TopologyCubit(
     this._deviceRepo,
     this._infraRepo,
     this._monitoringRepo,
     this._grouper,
-    this._builder,
-  ) : super(const TopologyLoading());
+    this._builder, [
+    this._scheduler,
+  ]) : super(const TopologyLoading()) {
+    if (_scheduler != null) {
+      _activeFailureThreshold = _scheduler.config.failureThreshold;
+      _configSubscription = _scheduler.configUpdatesStream.listen((cfg) {
+        updateFailureThreshold(cfg.failureThreshold);
+      });
+    }
+  }
 
   String? get currentFactoryId => _factoryId;
+  int get activeFailureThreshold => _activeFailureThreshold;
+
+  void updateFailureThreshold(int newThreshold) {
+    _activeFailureThreshold = newThreshold;
+    final current = state;
+    if (current is TopologyLoaded) {
+      final updatedGraph = current.enterpriseGraph?.updateThreshold(
+        newThreshold,
+      );
+      emit(current.copyWith(enterpriseGraph: updatedGraph));
+    }
+  }
+
+  void updateConfig(MonitoringConfig newConfig) {
+    updateFailureThreshold(newConfig.failureThreshold);
+  }
 
   void setFactory(String? factoryId) {
     if (_factoryId != factoryId) {
@@ -110,9 +139,9 @@ class TopologyCubit extends Cubit<TopologyState> {
         return MonitoredDevice(device: d, status: status);
       }).toList();
 
-      final activeThreshold = statusMap.values
-          .map((s) => s.failureThreshold)
-          .firstWhere((t) => t > 0, orElse: () => 3);
+      if (_scheduler != null) {
+        _activeFailureThreshold = _scheduler.config.failureThreshold;
+      }
 
       // Build enterprise hierarchical layout graph with authoritative infrastructure statuses
       final graph = _builder.build(
@@ -121,7 +150,7 @@ class TopologyCubit extends Cubit<TopologyState> {
         infraStatuses: infraStatuses,
         statuses: statusMap,
         factoryId: _factoryId,
-        failureThreshold: activeThreshold,
+        failureThreshold: _activeFailureThreshold,
       );
 
       final locationNodes = _grouper.group(monitoredList);
@@ -148,6 +177,7 @@ class TopologyCubit extends Cubit<TopologyState> {
       // Update enterprise graph in-place without moving positions
       final updatedGraph = current.enterpriseGraph?.updateStatuses(
         latestStatusMap,
+        failureThreshold: _activeFailureThreshold,
       );
 
       final monitoredList = _cachedDevices.map((d) {
@@ -251,6 +281,7 @@ class TopologyCubit extends Cubit<TopologyState> {
   @override
   Future<void> close() {
     _statusSubscription?.cancel();
+    _configSubscription?.cancel();
     return super.close();
   }
 }

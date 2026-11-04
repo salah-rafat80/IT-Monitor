@@ -66,7 +66,12 @@ class MonitoringCubit extends Cubit<MonitoringState> {
       );
       return;
     }
-    final initialStatuses = initialStatusesRes.dataOrNull ?? [];
+    final initialStatuses = (initialStatusesRes.dataOrNull ?? [])
+        .map(
+          (s) =>
+              s.copyWith(failureThreshold: _scheduler.config.failureThreshold),
+        )
+        .toList();
 
     emit(
       MonitoringActive(
@@ -84,9 +89,16 @@ class MonitoringCubit extends Cubit<MonitoringState> {
       if (isClosed) return;
       final current = state;
       if (current is MonitoringActive) {
+        final syncedStatuses = statuses
+            .map(
+              (s) => s.copyWith(
+                failureThreshold: _scheduler.config.failureThreshold,
+              ),
+            )
+            .toList();
         emit(
           MonitoringActive(
-            statuses: statuses,
+            statuses: syncedStatuses,
             isRunning: _scheduler.isRunning,
             isPaused: _scheduler.isPaused,
             config: _scheduler.config,
@@ -141,9 +153,12 @@ class MonitoringCubit extends Cubit<MonitoringState> {
     _scheduler.updateConfig(newConfig);
     final current = state;
     if (current is MonitoringActive) {
+      final updatedStatuses = current.statuses
+          .map((s) => s.copyWith(failureThreshold: newConfig.failureThreshold))
+          .toList();
       emit(
         MonitoringActive(
-          statuses: current.statuses,
+          statuses: updatedStatuses,
           isRunning: current.isRunning,
           isPaused: current.isPaused,
           config: newConfig,

@@ -256,10 +256,7 @@ class MonitoringDashboardCubit extends Cubit<MonitoringDashboardState> {
 
   void updateConfig(MonitoringConfig newConfig) {
     _scheduler.updateConfig(newConfig);
-    final current = state;
-    if (current is MonitoringDashboardLoaded) {
-      emit(current.copyWith(config: newConfig));
-    }
+    _rebuildAndEmitLoaded();
   }
 
   void toggleEngine() {
@@ -288,9 +285,13 @@ class MonitoringDashboardCubit extends Cubit<MonitoringDashboardState> {
 
   void _rebuildAndEmitLoaded() {
     if (isClosed) return;
+    final activeConfig = _scheduler.config;
     final allMonitoredDevices = _cachedDevices.map((d) {
       final status = _cachedStatusMap[d.id] ?? DeviceStatusEntity.initial(d.id);
-      return MonitoredDevice(device: d, status: status);
+      final syncedStatus = status.copyWith(
+        failureThreshold: activeConfig.failureThreshold,
+      );
+      return MonitoredDevice(device: d, status: syncedStatus);
     }).toList();
 
     int up = 0;

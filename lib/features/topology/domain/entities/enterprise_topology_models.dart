@@ -404,10 +404,35 @@ class EnterpriseTopologyGraph extends Equatable {
   Map<TopologyDeviceCategory, (int online, int total)> get ratioStats =>
       categoryStats.map((k, v) => MapEntry(k, v.toRatio()));
 
+  EnterpriseTopologyGraph copyWith({
+    Map<String, EnterpriseTopologyNode>? nodes,
+    List<EnterpriseTopologyLink>? links,
+    List<EnterpriseTopologyNode>? unlinkedNodes,
+    Size? canvasSize,
+    Map<TopologyDeviceCategory, CategoryStatusCount>? categoryStats,
+  }) {
+    return EnterpriseTopologyGraph(
+      nodes: nodes ?? this.nodes,
+      links: links ?? this.links,
+      unlinkedNodes: unlinkedNodes ?? this.unlinkedNodes,
+      canvasSize: canvasSize ?? this.canvasSize,
+      categoryStats: categoryStats ?? this.categoryStats,
+    );
+  }
+
+  EnterpriseTopologyGraph updateThreshold(int newThreshold) {
+    final updatedNodes = <String, EnterpriseTopologyNode>{
+      for (final entry in nodes.entries)
+        entry.key: entry.value.copyWith(failureThreshold: newThreshold),
+    };
+    return copyWith(nodes: updatedNodes);
+  }
+
   EnterpriseTopologyGraph updateStatuses(
     Map<int, DeviceStatusEntity> latestStatusMap, {
     DateTime? now,
     int? freshnessWindowSeconds,
+    int? failureThreshold,
   }) {
     final updatedNodes = <String, EnterpriseTopologyNode>{};
     for (final entry in nodes.entries) {
@@ -440,12 +465,14 @@ class EnterpriseTopologyGraph extends Equatable {
           lastSuccessfulLatencyMs: statusEnt.lastSuccessfulLatencyMs,
           failureReason: statusEnt.lastFailureReason,
           consecutiveFailures: statusEnt.consecutiveFailures,
-          failureThreshold: statusEnt.failureThreshold,
+          failureThreshold: failureThreshold ?? node.failureThreshold,
           lastCheckAt: statusEnt.lastCheckAt,
           lastSuccessfulCheckAt: statusEnt.lastSeen,
         );
       } else {
-        updatedNodes[entry.key] = node;
+        updatedNodes[entry.key] = failureThreshold != null
+            ? node.copyWith(failureThreshold: failureThreshold)
+            : node;
       }
     }
 
@@ -489,26 +516,29 @@ class EnterpriseTopologyGraph extends Equatable {
       }
 
       // Authoritative status resolution between two verified physical endpoints:
-      // If either endpoint is Down or Unreachable -> link is Down.
+      // 1. If either endpoint is Down or Unreachable -> link is Down.
       if (fromNode.status == DeviceStatusEnum.down ||
           fromNode.status == DeviceStatusEnum.unreachable ||
           toNode.status == DeviceStatusEnum.down ||
           toNode.status == DeviceStatusEnum.unreachable) {
         updatedLinks.add(link.copyWith(status: DeviceStatusEnum.down));
+      } else if (fromNode.status == DeviceStatusEnum.stale ||
+          toNode.status == DeviceStatusEnum.stale ||
+          link.status == DeviceStatusEnum.stale) {
+        // 2. Stale verified link remains Stale!
+        updatedLinks.add(link.copyWith(status: DeviceStatusEnum.stale));
       } else if (fromNode.consecutiveFailures > 0 ||
           toNode.consecutiveFailures > 0 ||
           fromNode.status == DeviceStatusEnum.degraded ||
           toNode.status == DeviceStatusEnum.degraded) {
-        // Fix 1: Verified topology links must show Amber (degraded) when either endpoint
-        // has consecutiveFailures > 0, even while its retained status is UP.
+        // 3. Only verified physical links may become Amber because an endpoint has consecutive probe failures.
         // Never show a green link after the latest failed probe!
         updatedLinks.add(link.copyWith(status: DeviceStatusEnum.degraded));
-      } else if (fromNode.status == DeviceStatusEnum.stale ||
-          toNode.status == DeviceStatusEnum.stale) {
-        updatedLinks.add(link.copyWith(status: DeviceStatusEnum.stale));
       } else if (fromNode.status == DeviceStatusEnum.up &&
-          toNode.status == DeviceStatusEnum.up) {
-        // Both endpoints verified fresh Online with 0 consecutive failures!
+          toNode.status == DeviceStatusEnum.up &&
+          fromNode.consecutiveFailures == 0 &&
+          toNode.consecutiveFailures == 0) {
+        // 4. Both endpoints verified fresh Online with zero consecutive failures!
         updatedLinks.add(link.copyWith(status: DeviceStatusEnum.up));
       } else {
         updatedLinks.add(link.copyWith(status: DeviceStatusEnum.unknown));

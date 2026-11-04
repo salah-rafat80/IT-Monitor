@@ -40,7 +40,9 @@ class _EnterpriseDeviceCardState extends State<EnterpriseDeviceCard> {
     bool isTransitional = false,
   }) {
     if (isTransitional) {
-      return const Color(0xFFF59E0B); // Warning Amber for 1/3 or 2/3 failing
+      return const Color(
+        0xFFF59E0B,
+      ); // Warning Amber for probe failures below threshold
     }
     switch (status) {
       case DeviceStatusEnum.up:

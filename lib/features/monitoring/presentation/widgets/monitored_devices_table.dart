@@ -250,9 +250,7 @@ class MonitoredDevicesTable extends StatelessWidget {
                       isMaintenance: status.isMaintenance,
                       compact: true,
                       consecutiveFailures: status.consecutiveFailures,
-                      failureThreshold: status.failureThreshold > 0
-                          ? status.failureThreshold
-                          : failureThreshold,
+                      failureThreshold: failureThreshold,
                       failureReason: status.lastFailureReason,
                     ),
                   ),

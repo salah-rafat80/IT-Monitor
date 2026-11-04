@@ -504,47 +504,74 @@ class _EnterpriseLinksPainter extends CustomPainter {
       final start = fromNode.rightAnchor + Offset(canvasPadding, canvasPadding);
       final end = toNode.leftAnchor + Offset(canvasPadding, canvasPadding);
 
-      // Determine path color based on link and endpoint status
-      final isDown =
-          link.status == DeviceStatusEnum.down ||
-          link.status == DeviceStatusEnum.unreachable ||
-          fromNode.status == DeviceStatusEnum.down ||
-          fromNode.status == DeviceStatusEnum.unreachable ||
-          toNode.status == DeviceStatusEnum.down ||
-          toNode.status == DeviceStatusEnum.unreachable;
+      // Determine path color based on strict precedence rules:
+      // 1. Inferred links, WAN links, or links connecting to inferred/WAN nodes MUST strictly render Unknown.
+      // Do not infer WAN connectivity from LAN gateway Ping results.
+      // Inferred links must never turn Amber or Green.
+      final isUnverifiedOrWan =
+          link.isInferred ||
+          fromNode.isInferred ||
+          toNode.isInferred ||
+          fromNode.category == TopologyDeviceCategory.wan ||
+          toNode.category == TopologyDeviceCategory.wan ||
+          link.status == DeviceStatusEnum.unknown ||
+          fromNode.status == DeviceStatusEnum.unknown ||
+          toNode.status == DeviceStatusEnum.unknown;
 
-      final isAmber =
+      // 2. Down / Unreachable
+      final isDown =
+          !isUnverifiedOrWan &&
+          (link.status == DeviceStatusEnum.down ||
+              link.status == DeviceStatusEnum.unreachable ||
+              fromNode.status == DeviceStatusEnum.down ||
+              fromNode.status == DeviceStatusEnum.unreachable ||
+              toNode.status == DeviceStatusEnum.down ||
+              toNode.status == DeviceStatusEnum.unreachable);
+
+      // 3. Stale links must retain their Stale visual state.
+      final isStale =
+          !isUnverifiedOrWan &&
           !isDown &&
+          (link.status == DeviceStatusEnum.stale ||
+              fromNode.status == DeviceStatusEnum.stale ||
+              toNode.status == DeviceStatusEnum.stale);
+
+      // 4. Amber: Only verified physical links may become Amber because an endpoint has consecutive probe failures.
+      final isAmber =
+          !isUnverifiedOrWan &&
+          !isDown &&
+          !isStale &&
           (link.status == DeviceStatusEnum.degraded ||
               fromNode.consecutiveFailures > 0 ||
               toNode.consecutiveFailures > 0 ||
               fromNode.status == DeviceStatusEnum.degraded ||
               toNode.status == DeviceStatusEnum.degraded);
 
-      final isUnknown =
+      // 5. Green: Verified physical links become Green ONLY when both endpoints are UP and have zero consecutive failures.
+      final isGreen =
+          !isUnverifiedOrWan &&
           !isDown &&
+          !isStale &&
           !isAmber &&
-          (link.isInferred ||
-              link.status == DeviceStatusEnum.unknown ||
-              link.status == DeviceStatusEnum.stale ||
-              fromNode.isInferred ||
-              toNode.isInferred ||
-              fromNode.status == DeviceStatusEnum.unknown ||
-              fromNode.status == DeviceStatusEnum.stale ||
-              toNode.status == DeviceStatusEnum.unknown ||
-              toNode.status == DeviceStatusEnum.stale ||
-              fromNode.category == TopologyDeviceCategory.wan ||
-              toNode.category == TopologyDeviceCategory.wan);
+          link.status == DeviceStatusEnum.up &&
+          fromNode.status == DeviceStatusEnum.up &&
+          toNode.status == DeviceStatusEnum.up &&
+          fromNode.consecutiveFailures == 0 &&
+          toNode.consecutiveFailures == 0;
 
       final Color linkColor;
-      if (isDown) {
+      if (isUnverifiedOrWan) {
+        linkColor = const Color(0xFF64748B); // Slate 500 / Unknown
+      } else if (isDown) {
         linkColor = const Color(0xFFEF4444); // Alert red
+      } else if (isStale) {
+        linkColor = const Color(0xFFEAB308); // Stale Amber/Yellow
       } else if (isAmber) {
         linkColor = const Color(0xFFF59E0B); // Amber warning
-      } else if (isUnknown) {
-        linkColor = const Color(0xFF64748B); // Slate 500 / Unknown
-      } else {
+      } else if (isGreen) {
         linkColor = const Color(0xFF10B981); // Enterprise Emerald green
+      } else {
+        linkColor = const Color(0xFF64748B); // Slate 500 / Unknown
       }
 
       linePaint

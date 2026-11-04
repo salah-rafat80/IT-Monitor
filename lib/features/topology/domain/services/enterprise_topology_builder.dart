@@ -73,7 +73,7 @@ class EnterpriseTopologyBuilder {
           failureReason: ent?.lastFailureReason,
           consecutiveFailures: ent?.consecutiveFailures ?? 0,
           size: const Size(168, 60),
-          failureThreshold: ent?.failureThreshold ?? failureThreshold,
+          failureThreshold: failureThreshold,
         );
         gatewayIds.add(id);
       }
@@ -106,7 +106,7 @@ class EnterpriseTopologyBuilder {
         failureReason: ent?.lastFailureReason,
         consecutiveFailures: ent?.consecutiveFailures ?? 0,
         size: const Size(168, 60),
-        failureThreshold: ent?.failureThreshold ?? failureThreshold,
+        failureThreshold: failureThreshold,
       );
       gatewayIds.add(gwRnfId);
     }
@@ -133,7 +133,7 @@ class EnterpriseTopologyBuilder {
         failureReason: ent?.lastFailureReason,
         consecutiveFailures: ent?.consecutiveFailures ?? 0,
         size: const Size(168, 60),
-        failureThreshold: ent?.failureThreshold ?? failureThreshold,
+        failureThreshold: failureThreshold,
       );
       gatewayIds.add(gwBnfId);
     }
@@ -267,7 +267,7 @@ class EnterpriseTopologyBuilder {
           failureReason: ent?.lastFailureReason,
           consecutiveFailures: ent?.consecutiveFailures ?? 0,
           size: const Size(168, 60),
-          failureThreshold: ent?.failureThreshold ?? failureThreshold,
+          failureThreshold: failureThreshold,
         );
 
         if (upstreamGwId != null) {
@@ -277,6 +277,9 @@ class EnterpriseTopologyBuilder {
           if (gwStatus == DeviceStatusEnum.down ||
               swStatus == DeviceStatusEnum.down) {
             swLinkStatus = DeviceStatusEnum.down;
+          } else if (gwStatus == DeviceStatusEnum.stale ||
+              swStatus == DeviceStatusEnum.stale) {
+            swLinkStatus = DeviceStatusEnum.stale;
           } else if ((gwNode?.consecutiveFailures ?? 0) > 0 ||
               (ent?.consecutiveFailures ?? 0) > 0 ||
               gwStatus == DeviceStatusEnum.degraded ||
@@ -284,7 +287,9 @@ class EnterpriseTopologyBuilder {
             // Amber when either endpoint has consecutiveFailures > 0!
             swLinkStatus = DeviceStatusEnum.degraded;
           } else if (gwStatus == DeviceStatusEnum.up &&
-              swStatus == DeviceStatusEnum.up) {
+              swStatus == DeviceStatusEnum.up &&
+              (gwNode?.consecutiveFailures ?? 0) == 0 &&
+              (ent?.consecutiveFailures ?? 0) == 0) {
             swLinkStatus = DeviceStatusEnum.up;
           }
 
@@ -353,7 +358,7 @@ class EnterpriseTopologyBuilder {
           failureReason: ent?.lastFailureReason,
           consecutiveFailures: ent?.consecutiveFailures ?? 0,
           size: const Size(168, 60),
-          failureThreshold: ent?.failureThreshold ?? failureThreshold,
+          failureThreshold: failureThreshold,
         );
         final gwId = gatewayIds.firstOrNull;
         if (gwId != null) {
@@ -363,13 +368,18 @@ class EnterpriseTopologyBuilder {
           if (gwStatus == DeviceStatusEnum.down ||
               swStatus == DeviceStatusEnum.down) {
             swLinkStatus = DeviceStatusEnum.down;
+          } else if (gwStatus == DeviceStatusEnum.stale ||
+              swStatus == DeviceStatusEnum.stale) {
+            swLinkStatus = DeviceStatusEnum.stale;
           } else if ((gwNode?.consecutiveFailures ?? 0) > 0 ||
               (ent?.consecutiveFailures ?? 0) > 0 ||
               gwStatus == DeviceStatusEnum.degraded ||
               swStatus == DeviceStatusEnum.degraded) {
             swLinkStatus = DeviceStatusEnum.degraded;
           } else if (gwStatus == DeviceStatusEnum.up &&
-              swStatus == DeviceStatusEnum.up) {
+              swStatus == DeviceStatusEnum.up &&
+              (gwNode?.consecutiveFailures ?? 0) == 0 &&
+              (ent?.consecutiveFailures ?? 0) == 0) {
             swLinkStatus = DeviceStatusEnum.up;
           }
           links.add(
@@ -426,7 +436,7 @@ class EnterpriseTopologyBuilder {
         failureReason: ent?.lastFailureReason,
         consecutiveFailures: ent?.consecutiveFailures ?? 0,
         size: const Size(168, 60),
-        failureThreshold: ent?.failureThreshold ?? failureThreshold,
+        failureThreshold: failureThreshold,
       );
 
       if (parentSwId != null) {
@@ -438,13 +448,18 @@ class EnterpriseTopologyBuilder {
           if (parentStatus == DeviceStatusEnum.down ||
               status == DeviceStatusEnum.down) {
             apLinkStatus = DeviceStatusEnum.down;
+          } else if (parentStatus == DeviceStatusEnum.stale ||
+              status == DeviceStatusEnum.stale) {
+            apLinkStatus = DeviceStatusEnum.stale;
           } else if ((parentNode?.consecutiveFailures ?? 0) > 0 ||
               (ent?.consecutiveFailures ?? 0) > 0 ||
               parentStatus == DeviceStatusEnum.degraded ||
               status == DeviceStatusEnum.degraded) {
             apLinkStatus = DeviceStatusEnum.degraded;
           } else if (parentStatus == DeviceStatusEnum.up &&
-              status == DeviceStatusEnum.up) {
+              status == DeviceStatusEnum.up &&
+              (parentNode?.consecutiveFailures ?? 0) == 0 &&
+              (ent?.consecutiveFailures ?? 0) == 0) {
             apLinkStatus = DeviceStatusEnum.up;
           }
         }
@@ -504,7 +519,7 @@ class EnterpriseTopologyBuilder {
           lastSuccessfulCheckAt: md.status.lastSeen,
           failureReason: md.status.lastFailureReason,
           consecutiveFailures: md.status.consecutiveFailures,
-          failureThreshold: md.status.failureThreshold,
+          failureThreshold: failureThreshold,
           isMonitored: md.device.isMonitored,
           isInferred: false,
           deviceRef: md.device,
@@ -512,14 +527,37 @@ class EnterpriseTopologyBuilder {
         );
 
         if (swId != null) {
-          final isSwInferred = nodes[swId]?.isInferred ?? true;
+          final swNode = nodes[swId];
+          final isSwInferred = swNode?.isInferred ?? true;
+          final swStatus = swNode?.status ?? DeviceStatusEnum.unknown;
+          DeviceStatusEnum devLinkStatus = DeviceStatusEnum.unknown;
+          if (!isSwInferred) {
+            if (swStatus == DeviceStatusEnum.down ||
+                effectiveStatus == DeviceStatusEnum.down ||
+                effectiveStatus == DeviceStatusEnum.unreachable) {
+              devLinkStatus = DeviceStatusEnum.down;
+            } else if (swStatus == DeviceStatusEnum.stale ||
+                effectiveStatus == DeviceStatusEnum.stale) {
+              devLinkStatus = DeviceStatusEnum.stale;
+            } else if ((swNode?.consecutiveFailures ?? 0) > 0 ||
+                md.status.consecutiveFailures > 0 ||
+                swStatus == DeviceStatusEnum.degraded ||
+                effectiveStatus == DeviceStatusEnum.degraded) {
+              devLinkStatus = DeviceStatusEnum.degraded;
+            } else if (swStatus == DeviceStatusEnum.up &&
+                effectiveStatus == DeviceStatusEnum.up &&
+                (swNode?.consecutiveFailures ?? 0) == 0 &&
+                md.status.consecutiveFailures == 0) {
+              devLinkStatus = DeviceStatusEnum.up;
+            }
+          }
           links.add(
             EnterpriseTopologyLink(
               id: 'link_${swId}_$devId',
               fromNodeId: swId,
               toNodeId: devId,
               toPort: isSwInferred ? null : 'ETH',
-              status: isSwInferred ? DeviceStatusEnum.unknown : effectiveStatus,
+              status: isSwInferred ? DeviceStatusEnum.unknown : devLinkStatus,
               isInferred: isSwInferred,
             ),
           );

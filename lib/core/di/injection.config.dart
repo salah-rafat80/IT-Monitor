@@ -270,6 +270,7 @@ extension GetItInjectableX on _i174.GetIt {
         gh<_i365.MonitoringRepository>(),
         gh<_i289.TopologyGrouper>(),
         gh<_i524.EnterpriseTopologyBuilder>(),
+        gh<_i714.MonitoringScheduler>(),
       ),
     );
     gh.lazySingleton<_i714.MonitoringScheduler>(

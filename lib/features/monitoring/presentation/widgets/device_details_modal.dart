@@ -97,6 +97,9 @@ class DeviceDetailsModal extends StatelessWidget {
                       DeviceStatusChip(
                         status: status.status,
                         isMaintenance: status.isMaintenance,
+                        consecutiveFailures: status.consecutiveFailures,
+                        failureThreshold: config.failureThreshold,
+                        failureReason: status.lastFailureReason,
                       ),
                       const SizedBox(width: 8),
                       IconButton(

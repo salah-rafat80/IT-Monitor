@@ -7,6 +7,7 @@ import '../../../auth/presentation/bloc/auth_cubit.dart';
 import '../../../devices/domain/entities/device_entity.dart';
 import '../../../devices/domain/repositories/device_repository.dart';
 import '../../../devices/presentation/widgets/assign_owner_dialog.dart';
+import '../../domain/entities/monitored_device.dart';
 import '../bloc/monitoring_dashboard_cubit.dart';
 import '../bloc/monitoring_dashboard_state.dart';
 import '../widgets/device_details_modal.dart';
@@ -59,8 +60,80 @@ class MonitoringDashboardPage extends StatelessWidget {
   }
 }
 
-class MonitoringDashboardView extends StatelessWidget {
+class MonitoringDashboardView extends StatefulWidget {
   const MonitoringDashboardView({super.key});
+
+  @override
+  State<MonitoringDashboardView> createState() =>
+      _MonitoringDashboardViewState();
+}
+
+class _MonitoringDashboardViewState extends State<MonitoringDashboardView> {
+  final Set<int> _selectedDeviceIds = {};
+  bool _isBulkChecking = false;
+
+  Future<void> _bulkTriggerCheck(
+    List<MonitoredDevice> devices,
+    MonitoringDashboardCubit cubit,
+  ) async {
+    final targets = devices
+        .where((d) => _selectedDeviceIds.contains(d.device.id))
+        .toList();
+    if (targets.isEmpty) return;
+
+    setState(() => _isBulkChecking = true);
+    try {
+      for (final item in targets) {
+        await cubit.triggerManualCheck(item.device.id);
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Triggered instant check for ${targets.length} device(s)',
+            ),
+            backgroundColor: const Color(0xFF10B981),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isBulkChecking = false);
+      }
+    }
+  }
+
+  Future<void> _bulkSetMaintenance(
+    List<MonitoredDevice> devices,
+    bool isMaintenance,
+    MonitoringDashboardCubit cubit,
+  ) async {
+    final targets = devices
+        .where((d) => _selectedDeviceIds.contains(d.device.id))
+        .toList();
+    if (targets.isEmpty) return;
+
+    for (final item in targets) {
+      await cubit.toggleMaintenanceMode(
+        deviceId: item.device.id,
+        isMaintenance: isMaintenance,
+      );
+    }
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            isMaintenance
+                ? 'Set ${targets.length} device(s) into maintenance mode'
+                : 'Exited maintenance mode for ${targets.length} device(s)',
+          ),
+          backgroundColor: Colors.blue,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -246,10 +319,133 @@ class MonitoringDashboardView extends StatelessWidget {
                   ),
                   const SizedBox(height: 12),
 
+                  // ── Bulk Actions Floating / Sticky Bar ──
+                  if (_selectedDeviceIds.isNotEmpty) ...[
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color: theme.primaryColor.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: theme.primaryColor.withValues(alpha: 0.25),
+                        ),
+                      ),
+                      child: Wrap(
+                        spacing: 12,
+                        runSpacing: 8,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.check_circle_rounded,
+                                size: 18,
+                                color: theme.primaryColor,
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                '${_selectedDeviceIds.length} device(s) selected',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: theme.primaryColor,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ],
+                          ),
+                          ElevatedButton.icon(
+                            onPressed: _isBulkChecking
+                                ? null
+                                : () => _bulkTriggerCheck(
+                                    state.filteredDevices,
+                                    cubit,
+                                  ),
+                            icon: _isBulkChecking
+                                ? const SizedBox(
+                                    width: 14,
+                                    height: 14,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : const Icon(Icons.refresh_rounded, size: 16),
+                            label: Text(
+                              _isBulkChecking
+                                  ? 'Checking...'
+                                  : 'Check Selected (${_selectedDeviceIds.length})',
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: theme.primaryColor,
+                              foregroundColor: Colors.white,
+                            ),
+                          ),
+                          if (isAdmin) ...[
+                            OutlinedButton.icon(
+                              onPressed: () => _bulkSetMaintenance(
+                                state.filteredDevices,
+                                true,
+                                cubit,
+                              ),
+                              icon: const Icon(
+                                Icons.build_circle_rounded,
+                                size: 16,
+                              ),
+                              label: const Text('Set Maintenance'),
+                            ),
+                            OutlinedButton.icon(
+                              onPressed: () => _bulkSetMaintenance(
+                                state.filteredDevices,
+                                false,
+                                cubit,
+                              ),
+                              icon: const Icon(
+                                Icons.build_circle_outlined,
+                                size: 16,
+                              ),
+                              label: const Text('Exit Maintenance'),
+                            ),
+                          ],
+                          TextButton(
+                            onPressed: () =>
+                                setState(() => _selectedDeviceIds.clear()),
+                            child: const Text('Clear Selection'),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+
                   // Prioritized Devices DataTable
                   MonitoredDevicesTable(
                     devices: state.filteredDevices,
                     userRole: userRole,
+                    selectedDeviceIds: _selectedDeviceIds,
+                    onToggleSelect: (deviceId, selected) {
+                      setState(() {
+                        if (selected) {
+                          _selectedDeviceIds.add(deviceId);
+                        } else {
+                          _selectedDeviceIds.remove(deviceId);
+                        }
+                      });
+                    },
+                    onSelectAll: (selectAll) {
+                      setState(() {
+                        if (selectAll) {
+                          _selectedDeviceIds.addAll(
+                            state.filteredDevices.map((d) => d.device.id),
+                          );
+                        } else {
+                          _selectedDeviceIds.clear();
+                        }
+                      });
+                    },
                     onSelectDevice: (item) => _showDeviceDetails(
                       context,
                       item,

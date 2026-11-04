@@ -9,7 +9,10 @@ import 'device_status_chip.dart';
 class MonitoredDevicesTable extends StatelessWidget {
   final List<MonitoredDevice> devices;
   final UserRole userRole;
+  final Set<int> selectedDeviceIds;
   final ValueChanged<MonitoredDevice> onSelectDevice;
+  final Function(int deviceId, bool selected)? onToggleSelect;
+  final Function(bool selectAll)? onSelectAll;
   final ValueChanged<MonitoredDevice>? onTriggerCheck;
   final Function(MonitoredDevice device, bool isMaintenance)?
   onToggleMaintenance;
@@ -19,6 +22,9 @@ class MonitoredDevicesTable extends StatelessWidget {
     required this.devices,
     required this.userRole,
     required this.onSelectDevice,
+    this.selectedDeviceIds = const {},
+    this.onToggleSelect,
+    this.onSelectAll,
     this.onTriggerCheck,
     this.onToggleMaintenance,
   });
@@ -76,6 +82,10 @@ class MonitoredDevicesTable extends StatelessWidget {
         child: SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: DataTable(
+            showCheckboxColumn: onToggleSelect != null,
+            onSelectAll: onSelectAll != null
+                ? (selectAll) => onSelectAll!(selectAll ?? false)
+                : null,
             headingRowColor: WidgetStateProperty.all(
               theme.primaryColor.withValues(alpha: 0.04),
             ),
@@ -150,9 +160,14 @@ class MonitoredDevicesTable extends StatelessWidget {
               final lastCheckStr = status.lastCheckAt != null
                   ? dateFormat.format(status.lastCheckAt!)
                   : '-';
+              final isSelected = selectedDeviceIds.contains(device.id);
 
               return DataRow(
-                onSelectChanged: (_) => onSelectDevice(item),
+                selected: isSelected,
+                onSelectChanged: onToggleSelect != null
+                    ? (selected) =>
+                          onToggleSelect!(device.id, selected ?? false)
+                    : null,
                 cells: [
                   // 1. Owner Name (Bold primary text)
                   DataCell(

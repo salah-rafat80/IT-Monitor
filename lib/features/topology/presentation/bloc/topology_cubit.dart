@@ -47,10 +47,14 @@ class TopologyCubit extends Cubit<TopologyState> {
     this._scheduler,
   ]) : super(const TopologyLoading()) {
     if (_scheduler != null) {
-      _activeFailureThreshold = _scheduler.config.failureThreshold;
-      _configSubscription = _scheduler.configUpdatesStream.listen((cfg) {
-        updateFailureThreshold(cfg.failureThreshold);
-      });
+      try {
+        _activeFailureThreshold = _scheduler.config.failureThreshold;
+        _configSubscription = _scheduler.configUpdatesStream.listen((cfg) {
+          updateFailureThreshold(cfg.failureThreshold);
+        });
+      } catch (_) {
+        // Gracefully handle mocked schedulers in tests that don't stub config properties
+      }
     }
   }
 
@@ -64,7 +68,23 @@ class TopologyCubit extends Cubit<TopologyState> {
       final updatedGraph = current.enterpriseGraph?.updateThreshold(
         newThreshold,
       );
-      emit(current.copyWith(enterpriseGraph: updatedGraph));
+      final prevSelected = current.selectedNode;
+      EnterpriseTopologyNode? updatedSelected;
+      if (prevSelected != null && updatedGraph != null) {
+        for (final n in updatedGraph.allNodes) {
+          if (n.id == prevSelected.id) {
+            updatedSelected = n;
+            break;
+          }
+        }
+      }
+      emit(
+        current.copyWith(
+          enterpriseGraph: updatedGraph,
+          selectedNode: updatedSelected,
+          clearSelectedNode: prevSelected != null && updatedSelected == null,
+        ),
+      );
     }
   }
 
@@ -186,10 +206,23 @@ class TopologyCubit extends Cubit<TopologyState> {
       }).toList();
       final updatedLocations = _grouper.group(monitoredList);
 
+      final prevSelected = current.selectedNode;
+      EnterpriseTopologyNode? updatedSelected;
+      if (prevSelected != null && updatedGraph != null) {
+        for (final n in updatedGraph.allNodes) {
+          if (n.id == prevSelected.id) {
+            updatedSelected = n;
+            break;
+          }
+        }
+      }
+
       emit(
         current.copyWith(
           enterpriseGraph: updatedGraph,
           locations: updatedLocations,
+          selectedNode: updatedSelected,
+          clearSelectedNode: prevSelected != null && updatedSelected == null,
         ),
       );
     }

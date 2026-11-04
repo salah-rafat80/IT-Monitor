@@ -425,7 +425,10 @@ class EnterpriseTopologyGraph extends Equatable {
       for (final entry in nodes.entries)
         entry.key: entry.value.copyWith(failureThreshold: newThreshold),
     };
-    return copyWith(nodes: updatedNodes);
+    final updatedUnlinked = unlinkedNodes
+        .map((n) => n.copyWith(failureThreshold: newThreshold))
+        .toList();
+    return copyWith(nodes: updatedNodes, unlinkedNodes: updatedUnlinked);
   }
 
   EnterpriseTopologyGraph updateStatuses(
@@ -523,9 +526,8 @@ class EnterpriseTopologyGraph extends Equatable {
           toNode.status == DeviceStatusEnum.unreachable) {
         updatedLinks.add(link.copyWith(status: DeviceStatusEnum.down));
       } else if (fromNode.status == DeviceStatusEnum.stale ||
-          toNode.status == DeviceStatusEnum.stale ||
-          link.status == DeviceStatusEnum.stale) {
-        // 2. Stale verified link remains Stale!
+          toNode.status == DeviceStatusEnum.stale) {
+        // 2. Stale verified link remains Stale while either endpoint is currently stale.
         updatedLinks.add(link.copyWith(status: DeviceStatusEnum.stale));
       } else if (fromNode.consecutiveFailures > 0 ||
           toNode.consecutiveFailures > 0 ||

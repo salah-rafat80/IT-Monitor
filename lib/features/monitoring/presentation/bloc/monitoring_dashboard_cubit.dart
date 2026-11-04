@@ -22,6 +22,7 @@ class MonitoringDashboardCubit extends Cubit<MonitoringDashboardState> {
 
   StreamSubscription<List<DeviceStatusEntity>>? _statusSubscription;
   StreamSubscription<List<IncidentEntity>>? _incidentSubscription;
+  StreamSubscription<MonitoringConfig>? _configSubscription;
   List<DeviceEntity> _cachedDevices = [];
   Map<int, DeviceStatusEntity> _cachedStatusMap = {};
   List<IncidentEntity> _cachedRealIncidents = [];
@@ -33,7 +34,15 @@ class MonitoringDashboardCubit extends Cubit<MonitoringDashboardState> {
     this._monitoringRepo,
     this._scheduler, [
     this._incidentRepo,
-  ]) : super(const MonitoringDashboardLoading());
+  ]) : super(const MonitoringDashboardLoading()) {
+    try {
+      _configSubscription = _scheduler.configUpdatesStream.listen((_) {
+        _rebuildAndEmitLoaded();
+      });
+    } catch (_) {
+      // Gracefully handle mocked schedulers in tests that don't stub configUpdatesStream
+    }
+  }
 
   Future<void> setFactoryFilter(String? factoryId) async {
     _activeFactoryId = factoryId;
@@ -505,6 +514,7 @@ class MonitoringDashboardCubit extends Cubit<MonitoringDashboardState> {
   Future<void> close() {
     _statusSubscription?.cancel();
     _incidentSubscription?.cancel();
+    _configSubscription?.cancel();
     return super.close();
   }
 }

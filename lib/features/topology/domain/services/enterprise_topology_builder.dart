@@ -275,7 +275,9 @@ class EnterpriseTopologyBuilder {
           final gwStatus = gwNode?.status ?? DeviceStatusEnum.unknown;
           DeviceStatusEnum swLinkStatus = DeviceStatusEnum.unknown;
           if (gwStatus == DeviceStatusEnum.down ||
-              swStatus == DeviceStatusEnum.down) {
+              gwStatus == DeviceStatusEnum.unreachable ||
+              swStatus == DeviceStatusEnum.down ||
+              swStatus == DeviceStatusEnum.unreachable) {
             swLinkStatus = DeviceStatusEnum.down;
           } else if (gwStatus == DeviceStatusEnum.stale ||
               swStatus == DeviceStatusEnum.stale) {
@@ -366,7 +368,9 @@ class EnterpriseTopologyBuilder {
           final gwStatus = gwNode?.status ?? DeviceStatusEnum.unknown;
           DeviceStatusEnum swLinkStatus = DeviceStatusEnum.unknown;
           if (gwStatus == DeviceStatusEnum.down ||
-              swStatus == DeviceStatusEnum.down) {
+              gwStatus == DeviceStatusEnum.unreachable ||
+              swStatus == DeviceStatusEnum.down ||
+              swStatus == DeviceStatusEnum.unreachable) {
             swLinkStatus = DeviceStatusEnum.down;
           } else if (gwStatus == DeviceStatusEnum.stale ||
               swStatus == DeviceStatusEnum.stale) {
@@ -446,7 +450,9 @@ class EnterpriseTopologyBuilder {
         DeviceStatusEnum apLinkStatus = DeviceStatusEnum.unknown;
         if (!isParentInferred) {
           if (parentStatus == DeviceStatusEnum.down ||
-              status == DeviceStatusEnum.down) {
+              parentStatus == DeviceStatusEnum.unreachable ||
+              status == DeviceStatusEnum.down ||
+              status == DeviceStatusEnum.unreachable) {
             apLinkStatus = DeviceStatusEnum.down;
           } else if (parentStatus == DeviceStatusEnum.stale ||
               status == DeviceStatusEnum.stale) {
@@ -533,6 +539,7 @@ class EnterpriseTopologyBuilder {
           DeviceStatusEnum devLinkStatus = DeviceStatusEnum.unknown;
           if (!isSwInferred) {
             if (swStatus == DeviceStatusEnum.down ||
+                swStatus == DeviceStatusEnum.unreachable ||
                 effectiveStatus == DeviceStatusEnum.down ||
                 effectiveStatus == DeviceStatusEnum.unreachable) {
               devLinkStatus = DeviceStatusEnum.down;

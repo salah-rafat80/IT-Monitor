@@ -9,7 +9,6 @@ class WallDisplaySummaryBar extends StatelessWidget {
   final int downCount;
   final int unknownCount;
   final int maintenanceCount;
-  final int activeIncidentsCount;
 
   const WallDisplaySummaryBar({
     super.key,
@@ -19,7 +18,6 @@ class WallDisplaySummaryBar extends StatelessWidget {
     required this.downCount,
     required this.unknownCount,
     required this.maintenanceCount,
-    required this.activeIncidentsCount,
   });
 
   Widget _buildSummaryItem({
@@ -139,17 +137,6 @@ class WallDisplaySummaryBar extends StatelessWidget {
             count: maintenanceCount,
             icon: Icons.build_circle_rounded,
             color: tokens.statusMaintenance,
-          ),
-          const SizedBox(width: 8),
-          _buildSummaryItem(
-            context: context,
-            label: 'ACTIVE INCIDENTS',
-            count: activeIncidentsCount,
-            icon: Icons.report_problem_rounded,
-            color: activeIncidentsCount > 0
-                ? tokens.statusOffline
-                : tokens.statusOnline,
-            isHighlight: activeIncidentsCount > 0,
           ),
         ],
       ),

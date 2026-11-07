@@ -4,8 +4,6 @@ import 'package:injectable/injectable.dart';
 
 import '../../../devices/domain/entities/device_entity.dart';
 import '../../../devices/domain/repositories/device_repository.dart';
-import 'package:it_network_monitor/features/incidents/domain/entities/incident_entity.dart';
-import 'package:it_network_monitor/features/incidents/domain/repositories/incident_repository.dart';
 import '../../domain/entities/device_status_entity.dart';
 import '../../domain/entities/monitoring_config.dart';
 import '../../domain/entities/monitored_device.dart';
@@ -18,24 +16,20 @@ class MonitoringDashboardCubit extends Cubit<MonitoringDashboardState> {
   final DeviceRepository _deviceRepo;
   final MonitoringRepository _monitoringRepo;
   final MonitoringScheduler _scheduler;
-  final IncidentRepository? _incidentRepo;
 
   StreamSubscription<List<DeviceStatusEntity>>? _statusSubscription;
-  StreamSubscription<List<IncidentEntity>>? _incidentSubscription;
   StreamSubscription<MonitoringConfig>? _configSubscription;
   MonitoringConfig? _pendingConfig;
   List<DeviceEntity> _cachedDevices = [];
   Map<int, DeviceStatusEntity> _cachedStatusMap = {};
-  List<IncidentEntity> _cachedRealIncidents = [];
   String? _activeFactoryId;
   String? get activeFactoryId => _activeFactoryId;
 
   MonitoringDashboardCubit(
     this._deviceRepo,
     this._monitoringRepo,
-    this._scheduler, [
-    this._incidentRepo,
-  ]) : super(const MonitoringDashboardLoading()) {
+    this._scheduler,
+  ) : super(const MonitoringDashboardLoading()) {
     try {
       _configSubscription = _scheduler.configUpdatesStream.listen((cfg) {
         _pendingConfig = cfg;
@@ -94,25 +88,6 @@ class MonitoringDashboardCubit extends Cubit<MonitoringDashboardState> {
       _cachedDevices = devicesRes.dataOrNull ?? [];
       final statusList = statusesRes.dataOrNull ?? [];
       _cachedStatusMap = {for (final s in statusList) s.deviceId: s};
-
-      if (_incidentRepo != null) {
-        final incidentsRes = await _incidentRepo.getActiveIncidents(
-          factoryId: _activeFactoryId,
-        );
-        _cachedRealIncidents = incidentsRes.dataOrNull ?? [];
-        _incidentSubscription?.cancel();
-        _incidentSubscription = _incidentRepo
-            .watchActiveIncidents(factoryId: _activeFactoryId)
-            .listen(
-              (incidents) {
-                _cachedRealIncidents = incidents;
-                _rebuildAndEmitLoaded();
-              },
-              onError: (e) {
-                // Stale or interrupted incident stream handled gracefully
-              },
-            );
-      }
 
       _statusSubscription?.cancel();
       _statusSubscription = _monitoringRepo.watchAllDeviceStatuses().listen(
@@ -323,8 +298,6 @@ class MonitoringDashboardCubit extends Cubit<MonitoringDashboardState> {
     int unknown = 0;
     int stale = 0;
     int maintenance = 0;
-    final incidents = <MonitoredDevice>[];
-
     for (final md in allMonitoredDevices) {
       switch (md.status.effectiveStatus()) {
         case DeviceStatusEnum.up:
@@ -332,11 +305,9 @@ class MonitoringDashboardCubit extends Cubit<MonitoringDashboardState> {
           break;
         case DeviceStatusEnum.degraded:
           degraded++;
-          incidents.add(md);
           break;
         case DeviceStatusEnum.down:
           down++;
-          incidents.add(md);
           break;
         case DeviceStatusEnum.stale:
           stale++;
@@ -349,7 +320,6 @@ class MonitoringDashboardCubit extends Cubit<MonitoringDashboardState> {
           break;
         case DeviceStatusEnum.unreachable:
           down++;
-          incidents.add(md);
           break;
       }
     }
@@ -365,8 +335,6 @@ class MonitoringDashboardCubit extends Cubit<MonitoringDashboardState> {
             unknownCount: unknown,
             staleCount: stale,
             maintenanceCount: maintenance,
-            activeIncidents: incidents,
-            realActiveIncidents: _cachedRealIncidents,
             isEngineRunning: _scheduler.isRunning,
             isEnginePaused: _scheduler.isPaused,
             config: activeConfig,
@@ -384,8 +352,6 @@ class MonitoringDashboardCubit extends Cubit<MonitoringDashboardState> {
             unknownCount: unknown,
             staleCount: stale,
             maintenanceCount: maintenance,
-            activeIncidents: incidents,
-            realActiveIncidents: _cachedRealIncidents,
           );
 
     if (isClosed) return;
@@ -528,7 +494,6 @@ class MonitoringDashboardCubit extends Cubit<MonitoringDashboardState> {
   @override
   Future<void> close() {
     _statusSubscription?.cancel();
-    _incidentSubscription?.cancel();
     _configSubscription?.cancel();
     return super.close();
   }

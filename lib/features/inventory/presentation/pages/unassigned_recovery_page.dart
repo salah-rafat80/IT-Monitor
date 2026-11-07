@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/utils/ipv4_utils.dart';
-import '../../../auth/domain/entities/user_entity.dart';
-import '../../../auth/presentation/bloc/auth_cubit.dart';
 import '../../../devices/domain/entities/device_entity.dart';
 import '../../../devices/presentation/bloc/devices_cubit.dart';
 import '../../../factories/domain/entities/factory_entity.dart';
@@ -288,9 +286,7 @@ class _UnassignedRecoveryPageState extends State<UnassignedRecoveryPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final authState = context.watch<AuthCubit>().state;
-    final currentUser = authState is AuthAuthenticated ? authState.user : null;
-    final isAdmin = currentUser?.role == UserRole.admin;
+    final isAdmin = true;
 
     final factoryState = context.watch<FactoryCubit>().state;
     final availableFactories = factoryState.factories

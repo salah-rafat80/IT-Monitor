@@ -5,7 +5,6 @@ import 'package:mocktail/mocktail.dart';
 
 import 'package:it_network_monitor/core/utils/result.dart';
 import 'package:it_network_monitor/features/auth/domain/entities/user_entity.dart';
-import 'package:it_network_monitor/features/auth/presentation/bloc/auth_cubit.dart';
 import 'package:it_network_monitor/features/devices/domain/entities/device_entity.dart';
 import 'package:it_network_monitor/features/devices/domain/repositories/device_repository.dart';
 import 'package:it_network_monitor/features/monitoring/domain/entities/device_status_entity.dart';
@@ -23,8 +22,6 @@ class MockDeviceRepository extends Mock implements DeviceRepository {}
 class MockMonitoringRepository extends Mock implements MonitoringRepository {}
 
 class MockMonitoringScheduler extends Mock implements MonitoringScheduler {}
-
-class MockAuthCubit extends Mock implements AuthCubit {}
 
 void main() {
   late MockDeviceRepository mockDeviceRepo;
@@ -141,7 +138,6 @@ void main() {
         expect(loaded.upCount, equals(1));
         expect(loaded.downCount, equals(1));
         expect(loaded.maintenanceCount, equals(1));
-        expect(loaded.activeIncidents.length, equals(1)); // Down device
 
         // Client mode: scheduler must NOT be started automatically by default
         verifyNever(() => mockScheduler.startMonitoring());

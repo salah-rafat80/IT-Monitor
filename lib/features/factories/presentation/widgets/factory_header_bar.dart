@@ -3,8 +3,6 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/theme_cubit.dart';
-import '../../../auth/domain/entities/user_entity.dart';
-import '../../../auth/presentation/bloc/auth_cubit.dart';
 import '../bloc/factory_cubit.dart';
 import 'add_factory_dialog.dart';
 
@@ -26,14 +24,7 @@ class FactoryHeaderBar extends StatelessWidget {
       return const SizedBox.shrink();
     }
 
-    UserEntity? currentUser;
-    try {
-      final authState = context.watch<AuthCubit>().state;
-      if (authState is AuthAuthenticated) {
-        currentUser = authState.user;
-      }
-    } catch (_) {}
-    final isAdmin = currentUser?.role == UserRole.admin;
+    final isAdmin = true;
 
     final factories = factoryState.factories;
     final selected = factoryState.selectedFactory;

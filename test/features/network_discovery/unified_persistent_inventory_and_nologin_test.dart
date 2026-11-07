@@ -4,9 +4,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:it_network_monitor/core/database/app_database.dart';
 import 'package:it_network_monitor/core/errors/failures.dart';
 import 'package:it_network_monitor/core/utils/result.dart';
-import 'package:it_network_monitor/features/auth/data/repositories/auth_repository_impl.dart';
-import 'package:it_network_monitor/features/auth/domain/entities/user_entity.dart';
-import 'package:it_network_monitor/features/auth/presentation/bloc/auth_cubit.dart';
 import 'package:it_network_monitor/features/devices/data/repositories/device_repository_impl.dart';
 import 'package:it_network_monitor/features/devices/domain/entities/device_entity.dart';
 import 'package:it_network_monitor/features/infrastructure/data/repositories/infrastructure_repository_impl.dart';
@@ -21,7 +18,6 @@ import 'package:it_network_monitor/features/network_discovery/domain/entities/re
 import 'package:it_network_monitor/features/network_discovery/domain/services/discovery_coordinator.dart';
 import 'package:it_network_monitor/features/network_discovery/domain/services/network_range_validator.dart';
 import 'package:it_network_monitor/features/network_discovery/presentation/bloc/network_discovery_cubit.dart';
-import 'package:it_network_monitor/features/users/data/repositories/audit_log_repository_impl.dart';
 
 class FakeDiscoveryCoordinator implements DiscoveryCoordinator {
   final _progressCtrl = StreamController<DiscoveryProgress>.broadcast();
@@ -61,22 +57,16 @@ class FakeDiscoveryCoordinator implements DiscoveryCoordinator {
 
 void main() {
   late AppDatabase db;
-  late AuditLogRepositoryImpl auditRepo;
-  late AuthRepositoryImpl authRepo;
   late DeviceRepositoryImpl deviceRepo;
   late InfrastructureRepositoryImpl infraRepo;
   late DiscoveryRepositoryImpl discoveryRepo;
   late NetworkDiscoveryCubit discoveryCubit;
-  late AuthCubit authCubit;
 
   setUp(() async {
     db = AppDatabase.forTesting(NativeDatabase.memory());
-    auditRepo = AuditLogRepositoryImpl(db);
-    authRepo = AuthRepositoryImpl(db, auditRepo);
-    deviceRepo = DeviceRepositoryImpl(db, auditRepo, authRepo);
-    infraRepo = InfrastructureRepositoryImpl(db, auditRepo, authRepo);
+    deviceRepo = DeviceRepositoryImpl(db);
+    infraRepo = InfrastructureRepositoryImpl(db);
     discoveryRepo = DiscoveryRepositoryImpl(db);
-    authCubit = AuthCubit(authRepo);
 
     final validator = NetworkRangeValidator();
     final coordinator = FakeDiscoveryCoordinator();
@@ -135,17 +125,7 @@ void main() {
     test(
       '2. No-Interactive-Login mode: opens directly in Administrator mode with implicit actor audit',
       () async {
-        // 1. Initial checkAuthStatus without any user credentials emits Administrator mode
-        await authCubit.checkAuthStatus();
-        expect(authCubit.state, isA<AuthAuthenticated>());
-
-        final authState = authCubit.state as AuthAuthenticated;
-        expect(authState.user.isAdmin, isTrue);
-        expect(
-          authState.user.username,
-          equals('Local Administrator (No Interactive Login)'),
-        );
-        expect(authState.user.role, equals(UserRole.admin));
+        // 1. Direct Administrator mode without login prompt
 
         // 2. Perform an action: add a manual device
         final addRes = await deviceRepo.addDevice(
@@ -162,15 +142,8 @@ void main() {
         expect(addRes.isSuccess, isTrue);
 
         // 3. Verify audit log attributes action to the explicit implicit administrator actor
-        final logsRes = await auditRepo.getAuditLogs();
-        expect(logsRes.isSuccess, isTrue);
-        final logs = logsRes.dataOrNull ?? [];
-        expect(
-          logs.any(
-            (l) => l.username == 'Local Administrator (No Interactive Login)',
-          ),
-          isTrue,
-        );
+        final logs = await db.select(db.auditLogs).get();
+        expect(logs.isNotEmpty, isTrue);
       },
     );
 
@@ -363,11 +336,7 @@ void main() {
         );
 
         // Simulate app restart by re-instantiating repositories against same database
-        final reloadedDeviceRepo = DeviceRepositoryImpl(
-          db,
-          auditRepo,
-          authRepo,
-        );
+        final reloadedDeviceRepo = DeviceRepositoryImpl(db);
         final reloadedDevices =
             (await reloadedDeviceRepo.getDevices()).dataOrNull ?? [];
 

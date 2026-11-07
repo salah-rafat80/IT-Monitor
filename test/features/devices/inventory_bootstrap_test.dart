@@ -3,27 +3,21 @@ import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 
 import 'package:it_network_monitor/core/database/app_database.dart';
-import 'package:it_network_monitor/features/auth/data/repositories/auth_repository_impl.dart';
 import 'package:it_network_monitor/features/devices/data/datasources/approved_inventory_seed.dart';
 import 'package:it_network_monitor/features/devices/data/repositories/device_repository_impl.dart';
 import 'package:it_network_monitor/features/devices/domain/entities/device_entity.dart';
 import 'package:it_network_monitor/features/devices/domain/services/inventory_validator.dart';
 import 'package:it_network_monitor/features/monitoring/data/repositories/monitoring_repository_impl.dart';
 import 'package:it_network_monitor/features/monitoring/domain/entities/device_status_entity.dart';
-import 'package:it_network_monitor/features/users/data/repositories/audit_log_repository_impl.dart';
 
 void main() {
   late AppDatabase db;
-  late AuditLogRepositoryImpl auditLogRepo;
-  late AuthRepositoryImpl authRepo;
   late DeviceRepositoryImpl deviceRepo;
   late MonitoringRepositoryImpl monitoringRepo;
 
   setUp(() async {
     db = AppDatabase.forTesting(NativeDatabase.memory());
-    auditLogRepo = AuditLogRepositoryImpl(db);
-    authRepo = AuthRepositoryImpl(db, auditLogRepo);
-    deviceRepo = DeviceRepositoryImpl(db, auditLogRepo, authRepo);
+    deviceRepo = DeviceRepositoryImpl(db);
     monitoringRepo = MonitoringRepositoryImpl(db);
   });
 
@@ -125,11 +119,16 @@ void main() {
             );
 
         // Add pre-existing audit log
-        await auditLogRepo.recordLog(
-          username: 'pre_admin',
-          action: 'PRE_TEST_ACTION',
-          details: 'Pre-existing audit detail',
-        );
+        await db
+            .into(db.auditLogs)
+            .insert(
+              AuditLogsCompanion.insert(
+                action: 'PRE_TEST_ACTION',
+                details: const Value('Pre-existing audit detail'),
+                username: 'pre_admin',
+                timestamp: Value(DateTime.now()),
+              ),
+            );
 
         // Execute bootstrap
         await deviceRepo.bootstrapApprovedInventory();
@@ -139,8 +138,7 @@ void main() {
         expect(users.any((u) => u.username == 'pre_admin'), isTrue);
 
         // Verify audit logs contain pre-existing log + bootstrap log
-        final logsRes = await auditLogRepo.getAuditLogs();
-        final logs = logsRes.dataOrNull!;
+        final logs = await db.select(db.auditLogs).get();
         expect(logs.any((l) => l.action == 'PRE_TEST_ACTION'), isTrue);
         expect(
           logs.any((l) => l.action == 'APPROVED_INVENTORY_BOOTSTRAPPED'),

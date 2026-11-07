@@ -100,6 +100,9 @@ class UniFiDeviceEntity extends Equatable {
 
   bool get isGateway => role == UniFiDeviceRole.gateway;
   bool get isController => role == UniFiDeviceRole.controller;
+  bool get isSwitch => role == UniFiDeviceRole.switchDevice;
+  bool get isAccessPoint => role == UniFiDeviceRole.accessPoint;
+  bool get isUnknown => role == UniFiDeviceRole.otherUnknown;
   bool get performsRouting => isGateway && isCriticalInfrastructure;
 
   UniFiDeviceEntity copyWith({

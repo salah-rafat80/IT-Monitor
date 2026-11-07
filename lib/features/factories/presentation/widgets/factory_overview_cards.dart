@@ -3,7 +3,6 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../devices/domain/entities/device_entity.dart';
-import '../../../incidents/domain/entities/incident_entity.dart';
 import '../../../monitoring/domain/entities/device_status_entity.dart';
 import '../../../network_discovery/domain/entities/discovery_config_entity.dart';
 import '../../../network_discovery/domain/entities/discovery_scan_job.dart';
@@ -18,14 +17,12 @@ import '../bloc/factory_cubit.dart';
 class FactoryOverviewCards extends StatelessWidget {
   final List<DeviceEntity> devices;
   final Map<int, DeviceStatusEntity> statuses;
-  final List<IncidentEntity> incidents;
   final bool isAdmin;
 
   const FactoryOverviewCards({
     super.key,
     required this.devices,
     required this.statuses,
-    required this.incidents,
     required this.isAdmin,
   });
 
@@ -84,9 +81,6 @@ class FactoryOverviewCards extends StatelessWidget {
                       .where((d) => d.factoryId == factory.id)
                       .toList(),
                   statuses: statuses,
-                  incidents: incidents
-                      .where((i) => i.factoryId == factory.id)
-                      .toList(),
                   ranges: allRanges
                       .where((r) => r.factoryId == factory.id)
                       .toList(),
@@ -108,7 +102,6 @@ class _FactoryCard extends StatelessWidget {
   final FactoryEntity factory;
   final List<DeviceEntity> devices;
   final Map<int, DeviceStatusEntity> statuses;
-  final List<IncidentEntity> incidents;
   final List<NetworkRange> ranges;
   final DiscoveryScanJob? latestScan;
   final bool isAdmin;
@@ -117,7 +110,6 @@ class _FactoryCard extends StatelessWidget {
     required this.factory,
     required this.devices,
     required this.statuses,
-    required this.incidents,
     required this.ranges,
     required this.latestScan,
     required this.isAdmin,
@@ -146,9 +138,7 @@ class _FactoryCard extends StatelessWidget {
     }).length;
 
     final enabledRanges = ranges.where((r) => r.isEnabled).length;
-    final activeAlerts = incidents
-        .where((i) => i.status != IncidentStatusEnum.resolved)
-        .length;
+    final activeAlerts = offlineCount;
 
     return Card(
       elevation: isSelected ? 4 : 1,

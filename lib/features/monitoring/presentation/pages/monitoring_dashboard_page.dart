@@ -3,7 +3,6 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/di/injection.dart';
 import '../../../auth/domain/entities/user_entity.dart';
-import '../../../auth/presentation/bloc/auth_cubit.dart';
 import '../../../devices/domain/entities/device_entity.dart';
 import '../../../devices/domain/repositories/device_repository.dart';
 import '../../../devices/presentation/widgets/assign_owner_dialog.dart';
@@ -138,11 +137,8 @@ class _MonitoringDashboardViewState extends State<MonitoringDashboardView> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final authState = context.watch<AuthCubit>().state;
-    final userRole = authState is AuthAuthenticated
-        ? authState.user.role
-        : UserRole.viewer;
-    final isAdmin = userRole == UserRole.admin;
+    const userRole = UserRole.admin;
+    final isAdmin = true;
 
     return Scaffold(
       appBar: AppBar(
@@ -160,22 +156,18 @@ class _MonitoringDashboardViewState extends State<MonitoringDashboardView> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
-                color: isAdmin
-                    ? theme.primaryColor.withValues(alpha: 0.12)
-                    : Colors.grey.withValues(alpha: 0.12),
+                color: theme.primaryColor.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(6),
                 border: Border.all(
-                  color: isAdmin
-                      ? theme.primaryColor.withValues(alpha: 0.3)
-                      : Colors.grey.withValues(alpha: 0.3),
+                  color: theme.primaryColor.withValues(alpha: 0.3),
                 ),
               ),
               child: Text(
-                isAdmin ? 'ADMIN ROLE' : 'VIEWER (READ ONLY)',
+                'ADMIN ROLE',
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.bold,
-                  color: isAdmin ? theme.primaryColor : Colors.grey,
+                  color: theme.primaryColor,
                 ),
               ),
             ),
@@ -270,7 +262,6 @@ class _MonitoringDashboardViewState extends State<MonitoringDashboardView> {
                     statuses: {
                       for (var m in state.allDevices) m.device.id: m.status,
                     },
-                    incidents: state.realActiveIncidents,
                     isAdmin: isAdmin,
                   ),
                   const SizedBox(height: 24),

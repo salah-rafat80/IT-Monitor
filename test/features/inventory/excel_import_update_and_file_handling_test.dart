@@ -8,8 +8,6 @@ import 'package:get_it/get_it.dart';
 import 'package:it_network_monitor/core/config/app_run_mode.dart';
 import 'package:it_network_monitor/core/database/app_database.dart';
 import 'package:it_network_monitor/core/utils/result.dart';
-import 'package:it_network_monitor/features/auth/data/repositories/auth_repository_impl.dart';
-import 'package:it_network_monitor/features/auth/domain/repositories/auth_repository.dart';
 import 'package:it_network_monitor/features/devices/data/repositories/device_repository_impl.dart';
 import 'package:it_network_monitor/features/devices/domain/entities/device_entity.dart';
 import 'package:it_network_monitor/features/devices/domain/entities/device_import_commit_payload.dart';
@@ -21,8 +19,6 @@ import 'package:it_network_monitor/features/monitoring/data/datasources/monitori
 import 'package:it_network_monitor/features/monitoring/data/repositories/monitoring_repository_impl.dart';
 import 'package:it_network_monitor/features/monitoring/domain/repositories/monitoring_repository.dart';
 import 'package:it_network_monitor/features/monitoring/presentation/services/monitoring_service_server.dart';
-import 'package:it_network_monitor/features/users/data/repositories/audit_log_repository_impl.dart';
-import 'package:it_network_monitor/features/users/domain/repositories/audit_log_repository.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -31,8 +27,6 @@ void main() {
     'Issues 1, 2, 4: Excel Import UPDATE, Template Sample Data, and File Type Handling',
     () {
       late AppDatabase db;
-      late AuditLogRepositoryImpl auditRepo;
-      late AuthRepositoryImpl authRepo;
       late FactoryRepositoryImpl factoryRepo;
       late DeviceRepositoryImpl deviceRepo;
       late MonitoringRepositoryImpl monitoringRepo;
@@ -48,15 +42,8 @@ void main() {
         await migrator.createAll();
         await db.ensureDefaultFactoriesSeeded();
 
-        auditRepo = AuditLogRepositoryImpl(db);
-        authRepo = AuthRepositoryImpl(db, auditRepo);
-        await authRepo.createInitialAdmin(
-          username: 'admin',
-          password: 'Password123',
-        );
-
         factoryRepo = FactoryRepositoryImpl(db);
-        deviceRepo = DeviceRepositoryImpl(db, auditRepo, authRepo);
+        deviceRepo = DeviceRepositoryImpl(db);
         monitoringRepo = MonitoringRepositoryImpl(db);
         excelService = ExcelInventoryServiceImpl();
       });
@@ -373,14 +360,7 @@ void main() {
             await getIt.unregister<DeviceRepository>();
           }
           getIt.registerSingleton<DeviceRepository>(deviceRepo);
-          if (getIt.isRegistered<AuthRepository>()) {
-            await getIt.unregister<AuthRepository>();
-          }
-          getIt.registerSingleton<AuthRepository>(authRepo);
-          if (getIt.isRegistered<AuditLogRepository>()) {
-            await getIt.unregister<AuditLogRepository>();
-          }
-          getIt.registerSingleton<AuditLogRepository>(auditRepo);
+
           if (getIt.isRegistered<FactoryRepository>()) {
             await getIt.unregister<FactoryRepository>();
           }
@@ -406,11 +386,10 @@ void main() {
           );
 
           try {
-            final loginRes = await client.login(
-              username: 'admin',
-              password: 'Password123',
+            final authRes = await client.authenticateWithTrustedLocalToken(
+              server.trustedTokenFilePath!,
             );
-            expect(loginRes.isSuccess, isTrue);
+            expect(authRes.isSuccess, isTrue);
 
             // Seed existing device in RNF
             final seedDev =
@@ -486,12 +465,7 @@ void main() {
             if (getIt.isRegistered<FactoryRepository>()) {
               await getIt.unregister<FactoryRepository>();
             }
-            if (getIt.isRegistered<AuditLogRepository>()) {
-              await getIt.unregister<AuditLogRepository>();
-            }
-            if (getIt.isRegistered<AuthRepository>()) {
-              await getIt.unregister<AuthRepository>();
-            }
+
             if (getIt.isRegistered<DeviceRepository>()) {
               await getIt.unregister<DeviceRepository>();
             }

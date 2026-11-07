@@ -4,7 +4,6 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../core/theme/app_colors.dart';
-import '../../../auth/presentation/bloc/auth_cubit.dart';
 import '../../../monitoring/domain/entities/device_status_entity.dart';
 import '../../../monitoring/presentation/widgets/device_status_chip.dart';
 import '../../domain/entities/unifi_device_entity.dart';
@@ -39,8 +38,7 @@ class _InfrastructureDevicesTableState
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final authState = context.watch<AuthCubit>().state;
-    final isAdmin = authState is AuthAuthenticated && authState.user.isAdmin;
+    final isAdmin = true;
 
     return BlocConsumer<InfrastructureCubit, InfrastructureState>(
       listener: (context, state) {
@@ -105,7 +103,7 @@ class _InfrastructureDevicesTableState
             if (widget.showHeaderActions) ...[
               LayoutBuilder(
                 builder: (context, constraints) {
-                  final isCompact = constraints.maxWidth < 720;
+                  final isCompact = constraints.maxWidth < 950;
                   final badges = Wrap(
                     spacing: 8,
                     runSpacing: 8,
@@ -182,7 +180,11 @@ class _InfrastructureDevicesTableState
 
                   return Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [badges, actions],
+                    children: [
+                      Expanded(child: badges),
+                      const SizedBox(width: 12),
+                      actions,
+                    ],
                   );
                 },
               ),
@@ -441,7 +443,6 @@ class _InfrastructureDevicesTableState
                       ],
                       rows: filteredDevices.map((dev) {
                         final status = state.getStatusFor(dev);
-                        final incident = state.getIncidentFor(dev);
                         final statusEnum =
                             status?.status ?? DeviceStatusEnum.unknown;
                         final isChecking = state.isChecking(dev);
@@ -453,19 +454,6 @@ class _InfrastructureDevicesTableState
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   DeviceStatusChip(status: statusEnum),
-                                  if (incident != null) ...[
-                                    const SizedBox(width: 6),
-                                    Tooltip(
-                                      message:
-                                          incident.correlationMessage ??
-                                          'Active incident',
-                                      child: const Icon(
-                                        Icons.warning_amber_rounded,
-                                        size: 16,
-                                        color: AppColors.statusDown,
-                                      ),
-                                    ),
-                                  ],
                                 ],
                               ),
                             ),

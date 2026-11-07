@@ -213,7 +213,6 @@ void main() {
         monitoringRepo,
         pingChecker,
         null,
-        null,
         factoryRepo,
       );
 

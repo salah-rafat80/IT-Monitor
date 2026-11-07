@@ -2,28 +2,18 @@ import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:it_network_monitor/core/database/app_database.dart';
-import 'package:it_network_monitor/features/auth/data/repositories/auth_repository_impl.dart';
 import 'package:it_network_monitor/features/devices/data/repositories/device_repository_impl.dart';
 import 'package:it_network_monitor/features/devices/domain/entities/device_entity.dart';
-import 'package:it_network_monitor/features/users/data/repositories/audit_log_repository_impl.dart';
 
 void main() {
   late AppDatabase db;
-  late AuditLogRepositoryImpl auditLogRepo;
-  late AuthRepositoryImpl authRepo;
   late DeviceRepositoryImpl deviceRepo;
 
   setUp(() async {
     db = AppDatabase.forTesting(NativeDatabase.memory());
-    auditLogRepo = AuditLogRepositoryImpl(db);
-    authRepo = AuthRepositoryImpl(db, auditLogRepo);
-    deviceRepo = DeviceRepositoryImpl(db, auditLogRepo, authRepo);
+    deviceRepo = DeviceRepositoryImpl(db);
 
     // Create admin user for repository operations
-    await authRepo.createInitialAdmin(
-      username: 'admin_test',
-      password: 'Password123',
-    );
   });
 
   tearDown(() async {
@@ -120,11 +110,8 @@ Duplicate User 2,Sales,PC-DUP-02,192.168.2.99,Floor 3,SW-FL3
         );
 
         // Verify Audit Log recorded INVENTORY_IMPORTED
-        final logsRes = await auditLogRepo.getAuditLogs();
-        expect(
-          logsRes.dataOrNull?.any((l) => l.action == 'INVENTORY_IMPORTED'),
-          isTrue,
-        );
+        final logs = await db.select(db.auditLogs).get();
+        expect(logs.any((l) => l.action == 'INVENTORY_IMPORTED'), isTrue);
       },
     );
 

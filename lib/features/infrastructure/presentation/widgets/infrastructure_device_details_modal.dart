@@ -3,7 +3,6 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../core/theme/app_colors.dart';
-import '../../../auth/presentation/bloc/auth_cubit.dart';
 import '../../../monitoring/domain/entities/check_result.dart';
 import '../../../monitoring/domain/entities/device_status_entity.dart';
 import '../../../monitoring/presentation/widgets/device_status_chip.dart';
@@ -61,8 +60,6 @@ class _InfrastructureDeviceDetailsModalState
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final authState = context.watch<AuthCubit>().state;
-    final isAdmin = authState is AuthAuthenticated && authState.user.isAdmin;
 
     return BlocBuilder<InfrastructureCubit, InfrastructureState>(
       builder: (context, state) {
@@ -71,7 +68,6 @@ class _InfrastructureDeviceDetailsModalState
           orElse: () => widget.device,
         );
         final status = state.getStatusFor(currentDevice);
-        final incident = state.getIncidentFor(currentDevice);
         final statusEnum = status?.status ?? DeviceStatusEnum.unknown;
 
         return Dialog(
@@ -151,69 +147,6 @@ class _InfrastructureDeviceDetailsModalState
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // Active Incident Banner (if any)
-                          if (incident != null) ...[
-                            Container(
-                              padding: const EdgeInsets.all(14),
-                              decoration: BoxDecoration(
-                                color: AppColors.statusDown.withValues(
-                                  alpha: 0.1,
-                                ),
-                                borderRadius: BorderRadius.circular(10),
-                                border: Border.all(
-                                  color: AppColors.statusDown.withValues(
-                                    alpha: 0.4,
-                                  ),
-                                ),
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      const Icon(
-                                        Icons.warning_amber_rounded,
-                                        color: AppColors.statusDown,
-                                        size: 20,
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        'Active Incident #${incident.id}: ${incident.incidentType.name}',
-                                        style: const TextStyle(
-                                          color: AppColors.statusDown,
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 13,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    incident.correlationMessage ??
-                                        'Device is unreachable via ping.',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: isDark
-                                          ? AppColors.textPrimaryDark
-                                          : AppColors.textPrimaryLight,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    'Started: ${DateFormat('yyyy-MM-dd HH:mm:ss').format(incident.startedAt)}',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: isDark
-                                          ? AppColors.textSecondaryDark
-                                          : AppColors.textSecondaryLight,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                          ],
-
                           // Specification Details Grid
                           Text(
                             'Device Specifications',
@@ -461,17 +394,14 @@ class _InfrastructureDeviceDetailsModalState
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      if (isAdmin)
-                        OutlinedButton.icon(
-                          onPressed: () {
-                            Navigator.pop(context);
-                            ManageInfrastructureDialog.show(context);
-                          },
-                          icon: const Icon(Icons.edit_outlined, size: 16),
-                          label: const Text('Edit Device Settings'),
-                        )
-                      else
-                        const SizedBox.shrink(),
+                      OutlinedButton.icon(
+                        onPressed: () {
+                          Navigator.pop(context);
+                          ManageInfrastructureDialog.show(context);
+                        },
+                        icon: const Icon(Icons.edit_outlined, size: 16),
+                        label: const Text('Edit Device Settings'),
+                      ),
                       ElevatedButton(
                         onPressed: () => Navigator.pop(context),
                         child: const Text('Close'),

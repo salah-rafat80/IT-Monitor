@@ -1661,12 +1661,6 @@ void main() {
             0,
             reason: 'UNREACHABLE must not be counted as unknown',
           );
-          expect(
-            state.activeIncidents.length,
-            1,
-            reason: 'UNREACHABLE device must produce an active incident',
-          );
-          expect(state.activeIncidents.first.device.id, 401);
 
           await dashboardCubit.close();
           await statusController.close();

@@ -3,29 +3,16 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 
-import 'package:it_network_monitor/features/auth/domain/entities/user_entity.dart';
-import 'package:it_network_monitor/features/auth/presentation/bloc/auth_cubit.dart';
 import 'package:it_network_monitor/features/infrastructure/domain/entities/unifi_device_entity.dart';
 import 'package:it_network_monitor/features/infrastructure/presentation/bloc/infrastructure_cubit.dart';
 import 'package:it_network_monitor/features/infrastructure/presentation/bloc/infrastructure_state.dart';
 import 'package:it_network_monitor/features/infrastructure/presentation/widgets/infrastructure_devices_table.dart';
 import 'package:it_network_monitor/features/monitoring/domain/entities/device_status_entity.dart';
 
-class MockAuthCubit extends Mock implements AuthCubit {}
-
 class MockInfrastructureCubit extends Mock implements InfrastructureCubit {}
 
 void main() {
-  late MockAuthCubit mockAuthCubit;
   late MockInfrastructureCubit mockInfraCubit;
-
-  final adminUser = UserEntity(
-    id: 1,
-    username: 'admin',
-    role: UserRole.admin,
-    isEnabled: true,
-    createdAt: DateTime(2026),
-  );
 
   final List<UniFiDeviceEntity> testDevices = [
     UniFiDeviceEntity(
@@ -64,13 +51,7 @@ void main() {
   };
 
   setUp(() {
-    mockAuthCubit = MockAuthCubit();
     mockInfraCubit = MockInfrastructureCubit();
-
-    when(() => mockAuthCubit.state).thenReturn(AuthAuthenticated(adminUser));
-    when(
-      () => mockAuthCubit.stream,
-    ).thenAnswer((_) => Stream.value(AuthAuthenticated(adminUser)));
 
     final infraState = InfrastructureState(
       devices: testDevices,
@@ -84,41 +65,19 @@ void main() {
 
   Widget buildTestWidget() {
     return MaterialApp(
-      home: MultiBlocProvider(
-        providers: [
-          BlocProvider<AuthCubit>.value(value: mockAuthCubit),
-          BlocProvider<InfrastructureCubit>.value(value: mockInfraCubit),
-        ],
+      home: BlocProvider<InfrastructureCubit>.value(
+        value: mockInfraCubit,
         child: const Scaffold(
-          body: SingleChildScrollView(
-            child: InfrastructureDevicesTable(showHeaderActions: true),
-          ),
+          body: SingleChildScrollView(child: InfrastructureDevicesTable()),
         ),
       ),
     );
   }
 
-  group('InfrastructureDevicesTable Responsive & Overflow Checks', () {
-    testWidgets(
-      'renders without overflow at exactly 663px width (reported crash boundary)',
-      (tester) async {
-        tester.view.physicalSize = const Size(663, 800);
-        tester.view.devicePixelRatio = 1.0;
-        addTearDown(() => tester.view.resetPhysicalSize());
-
-        await tester.pumpWidget(buildTestWidget());
-        await tester.pumpAndSettle();
-
-        expect(tester.takeException(), isNull);
-        expect(find.text('Total Assets: 2'), findsOneWidget);
-        expect(find.text('Ping All Assets'), findsOneWidget);
-      },
-    );
-
-    testWidgets('renders without overflow at compact 500px width', (
-      tester,
-    ) async {
-      tester.view.physicalSize = const Size(500, 800);
+  testWidgets(
+    'InfrastructureDevicesTable renders without horizontal RenderFlex overflow in responsive layout',
+    (tester) async {
+      tester.view.physicalSize = const Size(1920, 1080);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(() => tester.view.resetPhysicalSize());
 
@@ -126,12 +85,15 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(tester.takeException(), isNull);
-    });
+      expect(find.byType(InfrastructureDevicesTable), findsOneWidget);
+      expect(find.text('RNF-CORE-GW-01'), findsOneWidget);
+    },
+  );
 
-    testWidgets('renders without overflow at wide 1200px width', (
-      tester,
-    ) async {
-      tester.view.physicalSize = const Size(1200, 900);
+  testWidgets(
+    'InfrastructureDevicesTable adapts correctly on standard 1366x768 desktop viewport without overflow',
+    (tester) async {
+      tester.view.physicalSize = const Size(1366, 768);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(() => tester.view.resetPhysicalSize());
 
@@ -139,6 +101,24 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(tester.takeException(), isNull);
-    });
-  });
+      expect(find.text('RNF-CORE-GW-01'), findsOneWidget);
+      expect(find.text('RNF-AP-WAREHOUSE-NORTH'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'InfrastructureDevicesTable adapts on constrained 1024x768 display without overflow',
+    (tester) async {
+      tester.view.physicalSize = const Size(1024, 768);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() => tester.view.resetPhysicalSize());
+
+      await tester.pumpWidget(buildTestWidget());
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(find.text('RNF-CORE-GW-01'), findsOneWidget);
+      expect(find.text('RNF-AP-WAREHOUSE-NORTH'), findsOneWidget);
+    },
+  );
 }

@@ -5,7 +5,6 @@ import 'package:mocktail/mocktail.dart';
 
 import 'package:it_network_monitor/features/devices/domain/entities/device_entity.dart';
 import 'package:it_network_monitor/features/devices/domain/repositories/device_repository.dart';
-import 'package:it_network_monitor/features/incidents/domain/repositories/incident_repository.dart';
 import 'package:it_network_monitor/features/monitoring/domain/entities/device_status_entity.dart';
 import 'package:it_network_monitor/features/monitoring/domain/entities/monitored_device.dart';
 import 'package:it_network_monitor/features/monitoring/domain/entities/monitoring_config.dart';
@@ -24,13 +23,10 @@ class MockMonitoringRepository extends Mock implements MonitoringRepository {}
 
 class MockMonitoringScheduler extends Mock implements MonitoringScheduler {}
 
-class MockIncidentRepository extends Mock implements IncidentRepository {}
-
 void main() {
   late MockDeviceRepository mockDeviceRepo;
   late MockMonitoringRepository mockMonitoringRepo;
   late MockMonitoringScheduler mockScheduler;
-  late MockIncidentRepository mockIncidentRepo;
 
   final testDevices = List.generate(
     37,
@@ -52,7 +48,6 @@ void main() {
     mockDeviceRepo = MockDeviceRepository();
     mockMonitoringRepo = MockMonitoringRepository();
     mockScheduler = MockMonitoringScheduler();
-    mockIncidentRepo = MockIncidentRepository();
 
     when(
       () => mockDeviceRepo.bootstrapApprovedInventory(),
@@ -63,12 +58,6 @@ void main() {
     when(
       () => mockMonitoringRepo.getDeviceStatuses(),
     ).thenAnswer((_) async => Result.success([]));
-    when(
-      () => mockIncidentRepo.getActiveIncidents(),
-    ).thenAnswer((_) async => Result.success([]));
-    when(
-      () => mockIncidentRepo.watchActiveIncidents(),
-    ).thenAnswer((_) => const Stream.empty());
     when(
       () => mockMonitoringRepo.watchAllDeviceStatuses(),
     ).thenAnswer((_) => const Stream.empty());
@@ -90,7 +79,6 @@ void main() {
           mockDeviceRepo,
           mockMonitoringRepo,
           mockScheduler,
-          mockIncidentRepo,
         );
 
         await cubit.initDashboard();
@@ -175,7 +163,6 @@ void main() {
                 downCount: 3,
                 unknownCount: 1,
                 maintenanceCount: 1,
-                activeIncidentsCount: 5,
               ),
             ),
           ),
@@ -186,7 +173,6 @@ void main() {
         expect(find.text('2'), findsOneWidget);
         expect(find.text('3'), findsOneWidget);
         expect(find.text('1'), findsNWidgets(2)); // unknown and maintenance
-        expect(find.text('5'), findsOneWidget);
       },
     );
 

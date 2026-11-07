@@ -1,18 +1,14 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:drift/drift.dart' as drift;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:it_network_monitor/core/config/app_run_mode.dart';
 import 'package:it_network_monitor/core/database/app_database.dart';
-import 'package:it_network_monitor/features/auth/data/repositories/auth_repository_impl.dart';
 import 'package:it_network_monitor/features/devices/domain/entities/device_entity.dart';
 import 'package:it_network_monitor/features/devices/data/repositories/device_repository_impl.dart';
 import 'package:it_network_monitor/features/factories/data/repositories/factory_repository_impl.dart';
 import 'package:it_network_monitor/features/factories/domain/entities/factory_entity.dart';
-import 'package:it_network_monitor/features/incidents/domain/entities/incident_entity.dart';
-import 'package:it_network_monitor/features/incidents/data/repositories/incident_repository_impl.dart';
 import 'package:it_network_monitor/features/infrastructure/domain/entities/unifi_device_entity.dart';
 import 'package:it_network_monitor/features/infrastructure/data/repositories/infrastructure_repository_impl.dart';
 import 'package:it_network_monitor/features/network_discovery/data/datasources/strategies/arp_discovery_strategy.dart';
@@ -31,9 +27,6 @@ import 'package:it_network_monitor/features/network_discovery/domain/services/di
 import 'package:it_network_monitor/features/network_discovery/domain/services/mac_vendor_lookup.dart';
 import 'package:it_network_monitor/features/network_discovery/domain/services/network_range_validator.dart';
 import 'package:it_network_monitor/features/network_discovery/data/repositories/discovery_repository_impl.dart';
-import 'package:it_network_monitor/features/reports/domain/entities/report_entity.dart';
-import 'package:it_network_monitor/features/reports/data/repositories/report_repository_impl.dart';
-import 'package:it_network_monitor/features/users/data/repositories/audit_log_repository_impl.dart';
 
 class TestIcmpStrategy extends IcmpDiscoveryStrategy {
   TestIcmpStrategy() : super();
@@ -104,14 +97,10 @@ class TestMdnsStrategy extends MdnsSsdpDiscoveryStrategy {
 void main() {
   group('Multi-Factory Architecture & Full Data Isolation Tests', () {
     late AppDatabase db;
-    late AuditLogRepositoryImpl auditRepo;
-    late AuthRepositoryImpl authRepo;
     late FactoryRepositoryImpl factoryRepo;
     late DeviceRepositoryImpl deviceRepo;
     late InfrastructureRepositoryImpl infraRepo;
-    late IncidentRepositoryImpl incidentRepo;
     late DiscoveryRepositoryImpl discoveryRepo;
-    late ReportRepositoryImpl reportRepo;
     late DiscoveryCoordinator coordinator;
 
     setUp(() async {
@@ -123,19 +112,10 @@ void main() {
       await migrator.createAll();
       await db.ensureDefaultFactoriesSeeded();
 
-      auditRepo = AuditLogRepositoryImpl(db);
-      authRepo = AuthRepositoryImpl(db, auditRepo);
-      await authRepo.createInitialAdmin(
-        username: 'admin',
-        password: 'Password123',
-      );
-
       factoryRepo = FactoryRepositoryImpl(db);
-      deviceRepo = DeviceRepositoryImpl(db, auditRepo, authRepo);
-      infraRepo = InfrastructureRepositoryImpl(db, auditRepo, authRepo);
-      incidentRepo = IncidentRepositoryImpl(db, auditRepo);
+      deviceRepo = DeviceRepositoryImpl(db);
+      infraRepo = InfrastructureRepositoryImpl(db);
       discoveryRepo = DiscoveryRepositoryImpl(db);
-      reportRepo = ReportRepositoryImpl(db);
 
       final validator = NetworkRangeValidator();
       final vendorLookup = MacVendorLookup();
@@ -433,81 +413,36 @@ void main() {
       },
     );
 
-    test(
-      'Scenario 9: Infrastructure, Incidents, Reports respect factory scope',
-      () async {
-        // 1. Infrastructure
-        final now = DateTime.now();
-        final bnfSwitch = UniFiDeviceEntity(
-          id: 0,
-          factoryId: 'bnf',
-          name: 'BNF Switch 1',
-          ip: '10.10.20.2',
-          role: UniFiDeviceRole.switchDevice,
-          isCriticalInfrastructure: true,
-          createdAt: now,
-        );
-        final rnfSwitch = UniFiDeviceEntity(
-          id: 0,
-          factoryId: 'rnf',
-          name: 'RNF Switch 1',
-          ip: '192.168.40.2',
-          role: UniFiDeviceRole.switchDevice,
-          isCriticalInfrastructure: true,
-          createdAt: now,
-        );
-        await infraRepo.saveInfrastructureDevice(bnfSwitch);
-        await infraRepo.saveInfrastructureDevice(rnfSwitch);
+    test('Scenario 9: Infrastructure respects factory scope', () async {
+      // 1. Infrastructure
+      final now = DateTime.now();
+      final bnfSwitch = UniFiDeviceEntity(
+        id: 0,
+        factoryId: 'bnf',
+        name: 'BNF Switch 1',
+        ip: '10.10.20.2',
+        role: UniFiDeviceRole.switchDevice,
+        isCriticalInfrastructure: true,
+        createdAt: now,
+      );
+      final rnfSwitch = UniFiDeviceEntity(
+        id: 0,
+        factoryId: 'rnf',
+        name: 'RNF Switch 1',
+        ip: '192.168.40.2',
+        role: UniFiDeviceRole.switchDevice,
+        isCriticalInfrastructure: true,
+        createdAt: now,
+      );
+      await infraRepo.saveInfrastructureDevice(bnfSwitch);
+      await infraRepo.saveInfrastructureDevice(rnfSwitch);
 
-        final bnfInfra = (await infraRepo.getInfrastructureDevices(
-          factoryId: 'bnf',
-        )).dataOrNull!;
-        expect(bnfInfra.length, equals(1));
-        expect(bnfInfra.first.name, equals('BNF Switch 1'));
-
-        // 2. Incidents
-        final bnfInc = IncidentEntity(
-          id: 0,
-          factoryId: 'bnf',
-          deviceId: 1,
-          deviceName: 'BNF Server',
-          ownerName: 'Admin',
-          department: 'IT',
-          deviceIp: '10.10.20.5',
-          incidentType: IncidentTypeEnum.deviceDown,
-          severity: IncidentSeverityEnum.critical,
-          status: IncidentStatusEnum.active,
-          startedAt: DateTime.now(),
-        );
-        await incidentRepo.createIncident(bnfInc);
-
-        final bnfActiveInc = (await incidentRepo.getActiveIncidents(
-          factoryId: 'bnf',
-        )).dataOrNull!;
-        final rnfActiveInc = (await incidentRepo.getActiveIncidents(
-          factoryId: 'rnf',
-        )).dataOrNull!;
-        expect(bnfActiveInc.length, equals(1));
-        expect(rnfActiveInc.length, equals(0));
-
-        // 3. Reports
-        final bnfReport = (await reportRepo.generateReport(
-          ReportPeriod.last24Hours,
-          factoryId: 'bnf',
-        )).dataOrNull!;
-        expect(bnfReport, isNotNull);
-
-        final csvBnf = (await reportRepo.exportReportToCsv(
-          bnfReport,
-          null,
-          'bnf',
-        )).dataOrNull!;
-        final csvFile = File(csvBnf);
-        expect(csvFile.existsSync(), isTrue);
-        final csvContent = await csvFile.readAsString();
-        expect(csvContent, contains('IT NETWORK MONITOR'));
-      },
-    );
+      final bnfInfra = (await infraRepo.getInfrastructureDevices(
+        factoryId: 'bnf',
+      )).dataOrNull!;
+      expect(bnfInfra.length, equals(1));
+      expect(bnfInfra.first.name, equals('BNF Switch 1'));
+    });
 
     test(
       'Scenario 10: All-factories dashboard aggregates correctly without merging records',

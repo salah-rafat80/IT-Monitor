@@ -198,7 +198,6 @@ class _WallDisplayViewState extends State<_WallDisplayView> {
                       downCount: state.downCount,
                       unknownCount: state.unknownCount,
                       maintenanceCount: state.maintenanceCount,
-                      activeIncidentsCount: state.realActiveIncidents.length,
                     ),
 
                     // Critical UniFi Infrastructure Bar

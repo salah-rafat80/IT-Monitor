@@ -4,10 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:it_network_monitor/core/database/app_database.dart';
 import 'package:it_network_monitor/core/errors/failures.dart';
 import 'package:it_network_monitor/core/utils/result.dart';
-import 'package:it_network_monitor/features/auth/data/repositories/auth_repository_impl.dart';
 import 'package:it_network_monitor/features/devices/data/repositories/device_repository_impl.dart';
 import 'package:it_network_monitor/features/devices/domain/entities/device_entity.dart';
-import 'package:it_network_monitor/features/users/data/repositories/audit_log_repository_impl.dart';
 
 void main() {
   group('SQLite Unique-IP Enforcement & Safe Migration Integration Tests', () {
@@ -15,13 +13,7 @@ void main() {
       '1. Persistence boundary rejects duplicate IP and returns ValidationFailure',
       () async {
         final db = AppDatabase.forTesting(NativeDatabase.memory());
-        final auditRepo = AuditLogRepositoryImpl(db);
-        final authRepo = AuthRepositoryImpl(db, auditRepo);
-        await authRepo.createInitialAdmin(
-          username: 'admin_test',
-          password: 'Password123',
-        );
-        final repo = DeviceRepositoryImpl(db, auditRepo, authRepo);
+        final repo = DeviceRepositoryImpl(db);
 
         // First device insert succeeds
         final dev1 = DeviceEntity(
@@ -74,13 +66,7 @@ void main() {
       '2. Canonical IP equivalence cannot bypass unique validation (leading zeros, spaces)',
       () async {
         final db = AppDatabase.forTesting(NativeDatabase.memory());
-        final auditRepo = AuditLogRepositoryImpl(db);
-        final authRepo = AuthRepositoryImpl(db, auditRepo);
-        await authRepo.createInitialAdmin(
-          username: 'admin_test',
-          password: 'Password123',
-        );
-        final repo = DeviceRepositoryImpl(db, auditRepo, authRepo);
+        final repo = DeviceRepositoryImpl(db);
 
         final dev1 = DeviceEntity(
           id: 0,
@@ -124,13 +110,7 @@ void main() {
       '3. Blank, whitespace, and malformed IPs are rejected without bypassing uniqueness',
       () async {
         final db = AppDatabase.forTesting(NativeDatabase.memory());
-        final auditRepo = AuditLogRepositoryImpl(db);
-        final authRepo = AuthRepositoryImpl(db, auditRepo);
-        await authRepo.createInitialAdmin(
-          username: 'admin_test',
-          password: 'Password123',
-        );
-        final repo = DeviceRepositoryImpl(db, auditRepo, authRepo);
+        final repo = DeviceRepositoryImpl(db);
 
         final invalidIps = [
           '',
@@ -175,13 +155,7 @@ void main() {
       '4. Concurrent inserts for the same IP: exactly one succeeds, one rejected',
       () async {
         final db = AppDatabase.forTesting(NativeDatabase.memory());
-        final auditRepo = AuditLogRepositoryImpl(db);
-        final authRepo = AuthRepositoryImpl(db, auditRepo);
-        await authRepo.createInitialAdmin(
-          username: 'admin_test',
-          password: 'Password123',
-        );
-        final repo = DeviceRepositoryImpl(db, auditRepo, authRepo);
+        final repo = DeviceRepositoryImpl(db);
 
         final devA = DeviceEntity(
           id: 0,

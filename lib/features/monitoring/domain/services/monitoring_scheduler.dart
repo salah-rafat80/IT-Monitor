@@ -8,7 +8,6 @@ import '../entities/check_result.dart';
 import '../entities/device_status_entity.dart';
 import '../entities/monitoring_config.dart';
 import '../repositories/monitoring_repository.dart';
-import 'package:it_network_monitor/features/incidents/domain/services/incident_engine.dart';
 import 'ping_checker.dart';
 import 'status_engine.dart';
 
@@ -23,7 +22,6 @@ class MonitoringScheduler {
   final DeviceRepository _deviceRepo;
   final MonitoringRepository _monitoringRepo;
   final PingChecker _pingChecker;
-  final IncidentEngine? _incidentEngine;
   final InfrastructureRepository? _infrastructureRepo;
   final FactoryRepository? _factoryRepo;
 
@@ -58,7 +56,6 @@ class MonitoringScheduler {
     this._deviceRepo,
     this._monitoringRepo,
     this._pingChecker, [
-    this._incidentEngine,
     this._infrastructureRepo,
     this._factoryRepo,
   ]) {
@@ -613,21 +610,6 @@ class MonitoringScheduler {
       if (!_statusUpdateController.isClosed) {
         _statusUpdateController.add(newStatus);
       }
-      if (_incidentEngine != null) {
-        try {
-          await _incidentEngine.processInfrastructureStatusChange(
-            infra,
-            newStatus,
-          );
-        } catch (e, st) {
-          _unexpectedExceptionCount++;
-          _logDiagnostic(
-            'Failed to process incident update for infrastructure asset #${infra.id}',
-            error: e,
-            stackTrace: st,
-          );
-        }
-      }
     } catch (e, st) {
       _unexpectedExceptionCount++;
       _logDiagnostic(
@@ -699,18 +681,6 @@ class MonitoringScheduler {
 
       if (!_statusUpdateController.isClosed) {
         _statusUpdateController.add(newStatus);
-      }
-      if (_incidentEngine != null) {
-        try {
-          await _incidentEngine.processDeviceStatusChange(newStatus);
-        } catch (e, st) {
-          _unexpectedExceptionCount++;
-          _logDiagnostic(
-            'Failed to process incident update for device #${device.id}',
-            error: e,
-            stackTrace: st,
-          );
-        }
       }
     } catch (e, st) {
       _unexpectedExceptionCount++;

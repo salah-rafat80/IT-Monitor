@@ -1,7 +1,6 @@
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:it_network_monitor/core/database/app_database.dart';
-import 'package:it_network_monitor/features/auth/data/repositories/auth_repository_impl.dart';
 import 'package:it_network_monitor/features/devices/data/repositories/device_repository_impl.dart';
 import 'package:it_network_monitor/features/devices/domain/entities/device_entity.dart';
 import 'package:it_network_monitor/features/monitoring/data/repositories/monitoring_repository_impl.dart';
@@ -11,7 +10,6 @@ import 'package:it_network_monitor/features/monitoring/domain/entities/monitorin
 import 'package:it_network_monitor/features/monitoring/domain/services/monitoring_scheduler.dart';
 import 'package:it_network_monitor/features/monitoring/domain/services/ping_checker.dart';
 import 'package:it_network_monitor/features/monitoring/domain/services/status_engine.dart';
-import 'package:it_network_monitor/features/users/data/repositories/audit_log_repository_impl.dart';
 
 class MockPingChecker implements PingChecker {
   final Map<int, bool> nextResultSuccess = {};
@@ -63,8 +61,6 @@ class ExceptionPingChecker implements PingChecker {
 
 void main() {
   late AppDatabase db;
-  late AuditLogRepositoryImpl auditLogRepo;
-  late AuthRepositoryImpl authRepo;
   late DeviceRepositoryImpl deviceRepo;
   late MonitoringRepositoryImpl monitoringRepo;
   late MockPingChecker mockPingChecker;
@@ -72,20 +68,13 @@ void main() {
 
   setUp(() async {
     db = AppDatabase.forTesting(NativeDatabase.memory());
-    auditLogRepo = AuditLogRepositoryImpl(db);
-    authRepo = AuthRepositoryImpl(db, auditLogRepo);
-    deviceRepo = DeviceRepositoryImpl(db, auditLogRepo, authRepo);
+    deviceRepo = DeviceRepositoryImpl(db);
     monitoringRepo = MonitoringRepositoryImpl(db);
     mockPingChecker = MockPingChecker();
     scheduler = MonitoringScheduler(
       deviceRepo,
       monitoringRepo,
       mockPingChecker,
-    );
-
-    await authRepo.createInitialAdmin(
-      username: 'admin_mon',
-      password: 'Password123',
     );
   });
 

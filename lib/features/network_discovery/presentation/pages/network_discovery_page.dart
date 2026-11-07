@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../auth/domain/entities/user_entity.dart';
-import '../../../auth/presentation/bloc/auth_cubit.dart';
 import '../../../factories/presentation/bloc/factory_cubit.dart';
 import '../../domain/entities/device_category.dart';
 import '../../domain/entities/discovered_device_entity.dart';
@@ -22,10 +21,8 @@ class NetworkDiscoveryPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final authState = context.watch<AuthCubit>().state;
-    final currentUser = authState is AuthAuthenticated ? authState.user : null;
-    final userRole = currentUser?.role ?? UserRole.viewer;
-    final isAdmin = userRole == UserRole.admin;
+    const userRole = UserRole.admin;
+    final isAdmin = true;
     final theme = Theme.of(context);
 
     return Scaffold(
@@ -44,22 +41,18 @@ class NetworkDiscoveryPage extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
-                color: isAdmin
-                    ? theme.primaryColor.withValues(alpha: 0.12)
-                    : Colors.grey.withValues(alpha: 0.12),
+                color: theme.primaryColor.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(6),
                 border: Border.all(
-                  color: isAdmin
-                      ? theme.primaryColor.withValues(alpha: 0.3)
-                      : Colors.grey.withValues(alpha: 0.3),
+                  color: theme.primaryColor.withValues(alpha: 0.3),
                 ),
               ),
               child: Text(
-                isAdmin ? 'ADMIN ROLE' : 'VIEWER (READ ONLY)',
+                'ADMIN ROLE',
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.bold,
-                  color: isAdmin ? theme.primaryColor : Colors.grey,
+                  color: theme.primaryColor,
                 ),
               ),
             ),
@@ -102,10 +95,8 @@ class NetworkDiscoveryPage extends StatelessWidget {
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.red,
                     ),
-                    onPressed: isAdmin
-                        ? () =>
-                              context.read<NetworkDiscoveryCubit>().cancelScan()
-                        : () => _showAdminRequiredDialog(context),
+                    onPressed: () =>
+                        context.read<NetworkDiscoveryCubit>().cancelScan(),
                     icon: const Icon(Icons.stop_rounded),
                     label: const Text('Cancel Scan'),
                   ),
@@ -124,11 +115,7 @@ class NetworkDiscoveryPage extends StatelessWidget {
                   child: ElevatedButton.icon(
                     onPressed: state is NetworkDiscoveryLoaded
                         ? () {
-                            if (isAdmin) {
-                              _showStartScanDialog(context, state);
-                            } else {
-                              _showAdminRequiredDialog(context);
-                            }
+                            _showStartScanDialog(context, state);
                           }
                         : null,
                     icon: const Icon(Icons.play_arrow_rounded),
@@ -215,15 +202,13 @@ class NetworkDiscoveryPage extends StatelessWidget {
                       ranges: state.rangesWithStatus,
                       activeSubnetFilter: state.subnetFilter,
                       onSelectSubnet: (cidr) => cubit.setSubnetFilter(cidr),
-                      onScanRange: isAdmin
-                          ? (range) {
-                              _showStartScanDialog(
-                                context,
-                                state,
-                                initialSelectedRanges: {range.cidr},
-                              );
-                            }
-                          : null,
+                      onScanRange: (range) {
+                        _showStartScanDialog(
+                          context,
+                          state,
+                          initialSelectedRanges: {range.cidr},
+                        );
+                      },
                       isAdmin: isAdmin,
                       onManageScopes: () =>
                           _showManageRangesDialog(context, isAdmin),
@@ -275,11 +260,7 @@ class NetworkDiscoveryPage extends StatelessWidget {
                       onOverrideCategory: (d, cat) =>
                           cubit.overrideCategory(deviceId: d.id, category: cat),
                       onLaunchScan: () {
-                        if (isAdmin) {
-                          _showStartScanDialog(context, state);
-                        } else {
-                          _showAdminRequiredDialog(context);
-                        }
+                        _showStartScanDialog(context, state);
                       },
                     ),
                   ],
@@ -290,50 +271,6 @@ class NetworkDiscoveryPage extends StatelessWidget {
             return const SizedBox.shrink();
           },
         ),
-      ),
-    );
-  }
-
-  void _showAdminRequiredDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.shield_outlined, color: Colors.orange),
-            SizedBox(width: 8),
-            Text('Admin Privileges Required'),
-          ],
-        ),
-        content: const Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Network discovery scanning and device approval require Administrator privileges.',
-              style: TextStyle(fontSize: 14),
-            ),
-            SizedBox(height: 12),
-            Text(
-              'Your current session is in Viewer mode. Please log in with an Administrator account or create the initial Admin profile.',
-              style: TextStyle(fontSize: 13, color: Colors.grey),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Dismiss'),
-          ),
-          ElevatedButton.icon(
-            icon: const Icon(Icons.login),
-            label: const Text('Log In as Admin'),
-            onPressed: () {
-              Navigator.of(ctx).pop();
-              context.read<AuthCubit>().logout();
-            },
-          ),
-        ],
       ),
     );
   }

@@ -1,6 +1,5 @@
 import 'package:equatable/equatable.dart';
 
-import '../../../incidents/domain/entities/incident_entity.dart';
 import '../../domain/entities/monitoring_config.dart';
 import '../../domain/entities/monitored_device.dart';
 
@@ -53,8 +52,6 @@ final class MonitoringDashboardLoaded extends MonitoringDashboardState {
   final int unknownCount;
   final int staleCount;
   final int maintenanceCount;
-  final List<MonitoredDevice> activeIncidents;
-  final List<IncidentEntity> realActiveIncidents;
 
   const MonitoringDashboardLoaded({
     required this.allDevices,
@@ -77,8 +74,6 @@ final class MonitoringDashboardLoaded extends MonitoringDashboardState {
     required this.unknownCount,
     this.staleCount = 0,
     required this.maintenanceCount,
-    required this.activeIncidents,
-    this.realActiveIncidents = const [],
   });
 
   MonitoringDashboardLoaded copyWith({
@@ -107,8 +102,6 @@ final class MonitoringDashboardLoaded extends MonitoringDashboardState {
     int? unknownCount,
     int? staleCount,
     int? maintenanceCount,
-    List<MonitoredDevice>? activeIncidents,
-    List<IncidentEntity>? realActiveIncidents,
   }) {
     return MonitoringDashboardLoaded(
       allDevices: allDevices ?? this.allDevices,
@@ -139,8 +132,6 @@ final class MonitoringDashboardLoaded extends MonitoringDashboardState {
       unknownCount: unknownCount ?? this.unknownCount,
       staleCount: staleCount ?? this.staleCount,
       maintenanceCount: maintenanceCount ?? this.maintenanceCount,
-      activeIncidents: activeIncidents ?? this.activeIncidents,
-      realActiveIncidents: realActiveIncidents ?? this.realActiveIncidents,
     );
   }
 
@@ -166,7 +157,5 @@ final class MonitoringDashboardLoaded extends MonitoringDashboardState {
     unknownCount,
     staleCount,
     maintenanceCount,
-    activeIncidents,
-    realActiveIncidents,
   ];
 }

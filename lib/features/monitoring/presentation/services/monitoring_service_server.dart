@@ -10,13 +10,9 @@ import '../../../../core/database/app_database.dart';
 import 'package:drift/drift.dart' show InsertMode, Value;
 import '../../../../core/di/injection.dart';
 import '../../../../core/errors/failures.dart';
-import '../../../../core/utils/password_hash.dart';
 import '../../../../core/utils/result.dart';
+import '../../../../core/utils/password_hash.dart';
 import '../../../devices/domain/repositories/device_repository.dart';
-import '../../../incidents/domain/entities/incident_entity.dart';
-import '../../../incidents/domain/repositories/incident_repository.dart';
-import '../../../reports/domain/entities/report_entity.dart';
-import '../../../reports/domain/repositories/report_repository.dart';
 import '../../../topology/domain/services/topology_grouper.dart';
 import '../../../devices/domain/entities/device_entity.dart';
 import '../../../devices/domain/entities/device_import_commit_payload.dart';
@@ -38,8 +34,6 @@ import '../../../infrastructure/domain/repositories/infrastructure_repository.da
 import '../../../../core/config/app_run_mode.dart';
 import '../../../factories/domain/entities/factory_entity.dart';
 import '../../../factories/domain/repositories/factory_repository.dart';
-import '../../../users/domain/repositories/audit_log_repository.dart';
-import '../../../users/domain/repositories/user_repository.dart';
 
 /// Cryptographically secure user session for the monitoring service.
 class ServiceSession {
@@ -258,7 +252,6 @@ class MonitoringServiceServer {
   int? get boundPort => _server?.port;
 
   StreamSubscription<List<DeviceStatusEntity>>? _statusSub;
-  StreamSubscription<List<IncidentEntity>>? _incidentSub;
   StreamSubscription<DiscoveryProgress>? _discoveryProgressSub;
 
   String? _resolvedLogFilePath;
@@ -483,16 +476,6 @@ class MonitoringServiceServer {
         _broadcastEvent(
           'device_statuses_updated',
           statuses.map((s) => s.toJson()).toList(),
-        );
-      });
-    }
-
-    if (getIt.isRegistered<IncidentRepository>()) {
-      final incidentRepo = getIt<IncidentRepository>();
-      _incidentSub = incidentRepo.watchActiveIncidents().listen((incidents) {
-        _broadcastEvent(
-          'active_incidents_updated',
-          incidents.map((i) => i.toJson()).toList(),
         );
       });
     }
@@ -1125,25 +1108,14 @@ Write-Output 'OK'
 
           // Send initial state snapshot
           final monitoringRepo = getIt<MonitoringRepository>();
-          final incidentRepo = getIt<IncidentRepository>();
 
           final statusRes = await monitoringRepo.getDeviceStatuses();
-          final incidentRes = await incidentRepo.getActiveIncidents();
 
           if (statusRes.isSuccess) {
             socket.add(
               jsonEncode({
                 'event': 'device_statuses_updated',
                 'data': statusRes.dataOrNull!.map((s) => s.toJson()).toList(),
-              }),
-            );
-          }
-
-          if (incidentRes.isSuccess) {
-            socket.add(
-              jsonEncode({
-                'event': 'active_incidents_updated',
-                'data': incidentRes.dataOrNull!.map((i) => i.toJson()).toList(),
               }),
             );
           }
@@ -2042,65 +2014,6 @@ Write-Output 'OK'
                 'Failed to delete infrastructure device',
           }, status: 400);
         }
-      } else if (path == '/api/incidents/resolve' && request.method == 'POST') {
-        final session = _authenticateRequest(request);
-        if (session == null) {
-          await _jsonResponse(request, {
-            'success': false,
-            'error': 'Unauthorized: Valid session token required',
-          }, status: HttpStatus.unauthorized);
-          return;
-        }
-
-        final body = await _readJsonBody(request);
-        final incidentId = body['incidentId'] as int?;
-
-        if (incidentId != null) {
-          final incidentRepo = getIt<IncidentRepository>();
-          final res = await incidentRepo.resolveIncident(
-            incidentId,
-            DateTime.now(),
-          );
-          await _jsonResponse(request, {
-            'success': res.isSuccess,
-            'message': res.isSuccess
-                ? 'Incident resolved'
-                : res.failureOrNull?.message,
-          });
-        } else {
-          await _jsonResponse(request, {
-            'success': false,
-            'error': 'Missing incidentId',
-          }, status: 400);
-        }
-      } else if (path == '/api/incidents' && request.method == 'GET') {
-        final session = _authenticateRequest(request);
-        if (session == null) {
-          await _jsonResponse(request, {
-            'success': false,
-            'error': 'Unauthorized: Valid session token required',
-          }, status: HttpStatus.unauthorized);
-          return;
-        }
-
-        final factoryId = request.uri.queryParameters['factoryId'];
-        final incidentRepo = getIt<IncidentRepository>();
-        final activeRes = await incidentRepo.getActiveIncidents(
-          factoryId: factoryId,
-        );
-        final historyRes = await incidentRepo.getIncidentHistory(
-          factoryId: factoryId,
-        );
-
-        await _jsonResponse(request, {
-          'success': true,
-          'active': activeRes.isSuccess
-              ? activeRes.dataOrNull!.map((i) => i.toJson()).toList()
-              : [],
-          'history': historyRes.isSuccess
-              ? historyRes.dataOrNull!.map((i) => i.toJson()).toList()
-              : [],
-        });
       } else if (path == '/api/topology' && request.method == 'GET') {
         final session = _authenticateRequest(request);
         if (session == null) {
@@ -2146,68 +2059,6 @@ Write-Output 'OK'
             'success': false,
             'error': 'Failed to load topology',
           }, status: 500);
-        }
-      } else if (path == '/api/incidents/acknowledge' &&
-          request.method == 'POST') {
-        final session = _authenticateRequest(request);
-        if (session == null) {
-          await _jsonResponse(request, {
-            'success': false,
-            'error': 'Unauthorized: Valid session token required',
-          }, status: HttpStatus.unauthorized);
-          return;
-        }
-
-        final body = await _readJsonBody(request);
-        final incidentId = body['incidentId'] as int?;
-        final ackBy = session.username;
-
-        if (incidentId != null) {
-          final incidentRepo = getIt<IncidentRepository>();
-          final res = await incidentRepo.acknowledgeIncident(
-            id: incidentId,
-            username: ackBy,
-          );
-          await _jsonResponse(request, {
-            'success': res.isSuccess,
-            'message': res.isSuccess
-                ? 'Incident acknowledged'
-                : res.failureOrNull?.message,
-          });
-        } else {
-          await _jsonResponse(request, {
-            'success': false,
-            'error': 'Missing incidentId',
-          }, status: 400);
-        }
-      } else if (path == '/api/incidents/notes' && request.method == 'POST') {
-        final session = _authenticateRequest(request);
-        if (session == null) {
-          await _jsonResponse(request, {
-            'success': false,
-            'error': 'Unauthorized: Valid session token required',
-          }, status: HttpStatus.unauthorized);
-          return;
-        }
-
-        final body = await _readJsonBody(request);
-        final incidentId = body['incidentId'] as int?;
-        final notes = body['notes']?.toString() ?? '';
-
-        if (incidentId != null) {
-          final incidentRepo = getIt<IncidentRepository>();
-          final res = await incidentRepo.addNote(id: incidentId, note: notes);
-          await _jsonResponse(request, {
-            'success': res.isSuccess,
-            'message': res.isSuccess
-                ? 'Notes added'
-                : res.failureOrNull?.message,
-          });
-        } else {
-          await _jsonResponse(request, {
-            'success': false,
-            'error': 'Missing incidentId',
-          }, status: 400);
         }
       } else if (path == '/api/settings' && request.method == 'GET') {
         final session = _authenticateRequest(request);
@@ -2272,157 +2123,6 @@ Write-Output 'OK'
           'success': true,
           'message': 'Monitoring configuration updated',
         });
-      } else if (path == '/api/reports/summary' && request.method == 'GET') {
-        final session = _authenticateRequest(request);
-        if (session == null) {
-          await _jsonResponse(request, {
-            'success': false,
-            'error': 'Unauthorized: Valid session token required',
-          }, status: HttpStatus.unauthorized);
-          return;
-        }
-
-        final factoryId = request.uri.queryParameters['factoryId'];
-        final periodStr =
-            request.uri.queryParameters['period'] ?? 'last24Hours';
-        final period = periodStr == 'last7Days'
-            ? ReportPeriod.last7Days
-            : (periodStr == 'last30Days'
-                  ? ReportPeriod.last30Days
-                  : ReportPeriod.last24Hours);
-
-        final reportRepo = getIt<ReportRepository>();
-        final res = await reportRepo.generateReport(
-          period,
-          factoryId: factoryId,
-        );
-        if (res.isSuccess) {
-          final r = res.dataOrNull!;
-          await _jsonResponse(request, {
-            'success': true,
-            'period': r.period.name,
-            'overallAvailabilityPercent': r.overallAvailabilityPercent,
-            'totalCheckCount': r.totalCheckCount,
-            'successfulCheckCount': r.successfulCheckCount,
-            'failedCheckCount': r.failedCheckCount,
-            'avgLatencyMs': r.avgLatencyMs,
-            'totalIncidents': r.totalIncidents,
-          });
-        } else {
-          await _jsonResponse(request, {
-            'success': false,
-            'error': res.failureOrNull?.message,
-          }, status: 500);
-        }
-      } else if (path == '/api/reports/export-csv' && request.method == 'GET') {
-        final session = _authenticateRequest(request);
-        if (session == null) {
-          await _jsonResponse(request, {
-            'success': false,
-            'error': 'Unauthorized: Valid session token required',
-          }, status: HttpStatus.unauthorized);
-          return;
-        }
-
-        final factoryId = request.uri.queryParameters['factoryId'];
-        final periodStr =
-            request.uri.queryParameters['period'] ?? 'last24Hours';
-        final period = periodStr == 'last7Days'
-            ? ReportPeriod.last7Days
-            : (periodStr == 'last30Days'
-                  ? ReportPeriod.last30Days
-                  : ReportPeriod.last24Hours);
-
-        final reportRepo = getIt<ReportRepository>();
-        final reportRes = await reportRepo.generateReport(
-          period,
-          factoryId: factoryId,
-        );
-        if (!reportRes.isSuccess || reportRes.dataOrNull == null) {
-          await _jsonResponse(request, {
-            'success': false,
-            'error':
-                reportRes.failureOrNull?.message ?? 'Failed to generate report',
-          }, status: 500);
-          return;
-        }
-
-        final res = await reportRepo.exportReportToCsv(
-          reportRes.dataOrNull!,
-          null,
-          factoryId,
-        );
-        if (res.isSuccess && res.dataOrNull != null) {
-          final csvContent = await File(res.dataOrNull!).readAsString();
-          await _jsonResponse(request, {'success': true, 'csv': csvContent});
-        } else {
-          await _jsonResponse(request, {
-            'success': false,
-            'error': res.failureOrNull?.message ?? 'Failed to export CSV',
-          }, status: 500);
-        }
-      } else if (path == '/api/users' && request.method == 'GET') {
-        final session = _authenticateRequest(request);
-        if (session == null) {
-          await _jsonResponse(request, {
-            'success': false,
-            'error': 'Unauthorized: Valid session token required',
-          }, status: HttpStatus.unauthorized);
-          return;
-        }
-        if (!_isAdmin(session)) {
-          await _jsonResponse(request, {
-            'success': false,
-            'error': 'Forbidden: Admin role required to view users',
-          }, status: HttpStatus.forbidden);
-          return;
-        }
-
-        final userRepo = getIt<UserRepository>();
-        final res = await userRepo.getUsers();
-        if (res.isSuccess) {
-          await _jsonResponse(request, {
-            'success': true,
-            'users': res.dataOrNull!.map((u) => u.toJson()).toList(),
-          });
-        } else {
-          await _jsonResponse(request, {
-            'success': false,
-            'error': res.failureOrNull?.message ?? 'Failed to load users',
-          }, status: 500);
-        }
-      } else if (path == '/api/audit-logs' && request.method == 'GET') {
-        final session = _authenticateRequest(request);
-        if (session == null) {
-          await _jsonResponse(request, {
-            'success': false,
-            'error': 'Unauthorized: Valid session token required',
-          }, status: HttpStatus.unauthorized);
-          return;
-        }
-        if (!_isAdmin(session)) {
-          await _jsonResponse(request, {
-            'success': false,
-            'error': 'Forbidden: Admin role required to view audit logs',
-          }, status: HttpStatus.forbidden);
-          return;
-        }
-
-        final limitStr = request.uri.queryParameters['limit'];
-        final limit = limitStr != null ? int.tryParse(limitStr) ?? 100 : 100;
-        final auditRepo = getIt<AuditLogRepository>();
-        final res = await auditRepo.getAuditLogs(limit: limit);
-        if (res.isSuccess) {
-          await _jsonResponse(request, {
-            'success': true,
-            'logs': res.dataOrNull!.map((l) => l.toJson()).toList(),
-          });
-        } else {
-          await _jsonResponse(request, {
-            'success': false,
-            'error': res.failureOrNull?.message ?? 'Failed to load audit logs',
-          }, status: 500);
-        }
       } else if (path == '/api/monitoring/manual-check' &&
           request.method == 'POST') {
         final session = _authenticateRequest(request);
@@ -3559,7 +3259,6 @@ Write-Output 'OK'
     _log('Stopping Monitoring Service...');
     _cleanupLocalTrustedToken();
     await _statusSub?.cancel();
-    await _incidentSub?.cancel();
     await _discoveryProgressSub?.cancel();
     for (final client in List.of(_wsClients)) {
       try {

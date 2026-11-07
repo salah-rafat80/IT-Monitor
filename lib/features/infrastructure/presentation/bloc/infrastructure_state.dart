@@ -1,6 +1,5 @@
 import 'package:equatable/equatable.dart';
 
-import '../../../incidents/domain/entities/incident_entity.dart';
 import '../../../monitoring/domain/entities/device_status_entity.dart';
 import '../../domain/entities/unifi_device_entity.dart';
 
@@ -12,8 +11,6 @@ class InfrastructureState extends Equatable {
   final List<UniFiDeviceEntity> devices;
   final Map<int, DeviceStatusEntity>
   statuses; // keyed by virtualId (10000 + id)
-  final Map<int, IncidentEntity>
-  activeIncidents; // keyed by virtualId (10000 + id)
   final String? errorMessage;
   final String? successMessage;
 
@@ -23,7 +20,6 @@ class InfrastructureState extends Equatable {
     this.checkingDeviceIds = const {},
     this.devices = const [],
     this.statuses = const {},
-    this.activeIncidents = const {},
     this.errorMessage,
     this.successMessage,
   });
@@ -43,10 +39,6 @@ class InfrastructureState extends Equatable {
 
   DeviceStatusEntity? getStatusFor(UniFiDeviceEntity device) {
     return statuses[10000 + device.id];
-  }
-
-  IncidentEntity? getIncidentFor(UniFiDeviceEntity device) {
-    return activeIncidents[10000 + device.id];
   }
 
   int get totalCount => devices.length;
@@ -87,7 +79,6 @@ class InfrastructureState extends Equatable {
     Set<int>? checkingDeviceIds,
     List<UniFiDeviceEntity>? devices,
     Map<int, DeviceStatusEntity>? statuses,
-    Map<int, IncidentEntity>? activeIncidents,
     String? errorMessage,
     String? successMessage,
     bool clearError = false,
@@ -99,7 +90,6 @@ class InfrastructureState extends Equatable {
       checkingDeviceIds: checkingDeviceIds ?? this.checkingDeviceIds,
       devices: devices ?? this.devices,
       statuses: statuses ?? this.statuses,
-      activeIncidents: activeIncidents ?? this.activeIncidents,
       errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
       successMessage: clearSuccess
           ? null
@@ -114,7 +104,6 @@ class InfrastructureState extends Equatable {
     checkingDeviceIds,
     devices,
     statuses,
-    activeIncidents,
     errorMessage,
     successMessage,
   ];

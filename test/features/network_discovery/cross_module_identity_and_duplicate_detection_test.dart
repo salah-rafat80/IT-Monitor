@@ -2,7 +2,6 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:it_network_monitor/core/database/app_database.dart';
 import 'package:it_network_monitor/core/errors/failures.dart';
-import 'package:it_network_monitor/features/auth/data/repositories/auth_repository_impl.dart';
 import 'package:it_network_monitor/features/devices/data/repositories/device_repository_impl.dart';
 import 'package:it_network_monitor/features/devices/domain/entities/device_entity.dart';
 import 'package:it_network_monitor/features/infrastructure/data/repositories/infrastructure_repository_impl.dart';
@@ -24,7 +23,6 @@ import 'package:it_network_monitor/features/network_discovery/domain/services/di
 import 'package:it_network_monitor/features/network_discovery/domain/services/mac_vendor_lookup.dart';
 import 'package:it_network_monitor/features/network_discovery/domain/services/network_range_validator.dart';
 import 'package:it_network_monitor/features/network_discovery/presentation/bloc/network_discovery_cubit.dart';
-import 'package:it_network_monitor/features/users/data/repositories/audit_log_repository_impl.dart';
 
 class MockIcmpStrategy extends IcmpDiscoveryStrategy {
   final Set<String> responsiveIps;
@@ -50,8 +48,6 @@ class MockIcmpStrategy extends IcmpDiscoveryStrategy {
 void main() {
   group('Cross-Module Identity & Duplicate Detection Suite', () {
     late AppDatabase db;
-    late AuditLogRepositoryImpl auditRepo;
-    late AuthRepositoryImpl authRepo;
     late DeviceRepositoryImpl deviceRepo;
     late InfrastructureRepositoryImpl infraRepo;
     late DiscoveryRepositoryImpl discoveryRepo;
@@ -61,14 +57,8 @@ void main() {
 
     setUp(() async {
       db = AppDatabase.forTesting(NativeDatabase.memory());
-      auditRepo = AuditLogRepositoryImpl(db);
-      authRepo = AuthRepositoryImpl(db, auditRepo);
-      await authRepo.createInitialAdmin(
-        username: 'admin',
-        password: 'Password123',
-      );
-      deviceRepo = DeviceRepositoryImpl(db, auditRepo, authRepo);
-      infraRepo = InfrastructureRepositoryImpl(db, auditRepo, authRepo);
+      deviceRepo = DeviceRepositoryImpl(db);
+      infraRepo = InfrastructureRepositoryImpl(db);
       discoveryRepo = DiscoveryRepositoryImpl(db);
       rangeValidator = NetworkRangeValidator();
 

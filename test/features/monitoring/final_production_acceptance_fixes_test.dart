@@ -10,9 +10,6 @@ import 'package:it_network_monitor/core/config/client_config.dart';
 import 'package:it_network_monitor/core/di/injection.dart';
 import 'package:it_network_monitor/core/errors/failures.dart';
 import 'package:it_network_monitor/core/utils/result.dart';
-import 'package:it_network_monitor/features/auth/domain/entities/user_entity.dart';
-import 'package:it_network_monitor/features/auth/domain/repositories/auth_repository.dart';
-import 'package:it_network_monitor/features/auth/presentation/bloc/auth_cubit.dart';
 import 'package:it_network_monitor/features/devices/domain/entities/device_entity.dart';
 import 'package:it_network_monitor/features/devices/domain/entities/device_import_commit_payload.dart';
 import 'package:it_network_monitor/features/devices/domain/entities/inventory_import_preview.dart';
@@ -30,29 +27,6 @@ import 'package:it_network_monitor/features/monitoring/domain/services/ping_chec
 // ---------------------------------------------------------------------------
 // Test Doubles & Helpers
 // ---------------------------------------------------------------------------
-
-class StubAuthRepository implements AuthRepository {
-  @override
-  Future<Result<bool>> hasAdminAccount() async => Result.success(true);
-
-  @override
-  Future<Result<UserEntity>> login({
-    required String username,
-    required String password,
-  }) async => Result.failure(const AuthFailure('Not supported in test stub'));
-
-  @override
-  Future<Result<UserEntity>> createInitialAdmin({
-    required String username,
-    required String password,
-  }) async => Result.failure(const AuthFailure('Not supported in test stub'));
-
-  @override
-  Future<Result<void>> logout() async => Result.success(null);
-
-  @override
-  Future<Result<UserEntity?>> getCurrentUser() async => Result.success(null);
-}
 
 class FakeDeviceRepository implements DeviceRepository {
   List<DeviceEntity> devices = [];
@@ -682,25 +656,11 @@ void main() {
           configurationError:
               'Actionable LAN config error: server.crt not found',
         );
-        getIt.registerSingleton<MonitoringServiceClient>(errorClient);
-
-        final authRepo = StubAuthRepository();
-        final cubit = AuthCubit(authRepo);
-
-        final states = <AuthState>[];
-        final sub = cubit.stream.listen(states.add);
-
-        await cubit.checkAuthStatus();
-        await Future.delayed(const Duration(milliseconds: 50));
-
-        expect(states, contains(isA<AuthError>()));
-        final errorState =
-            states.firstWhere((s) => s is AuthError) as AuthError;
-        expect(errorState.message, contains('Actionable LAN config error'));
-
-        await sub.cancel();
-        await cubit.close();
-        getIt.unregister<MonitoringServiceClient>();
+        expect(errorClient.hasConfigurationError, isTrue);
+        expect(
+          errorClient.configurationError,
+          contains('Actionable LAN config error'),
+        );
       },
     );
   });
@@ -724,7 +684,6 @@ void main() {
         deviceRepo,
         monitoringRepo,
         pingChecker,
-        null,
         infraRepo,
       );
 
@@ -1260,32 +1219,6 @@ void main() {
           contains('Configured trusted TLS certificate file not found'),
         );
 
-        getIt.registerSingleton<MonitoringServiceClient>(missingCertClient);
-
-        final authRepo = StubAuthRepository();
-        final cubit = AuthCubit(authRepo);
-        final states = <AuthState>[];
-        final sub = cubit.stream.listen(states.add);
-
-        await cubit.checkAuthStatus();
-        await Future.delayed(const Duration(milliseconds: 50));
-
-        expect(states, contains(isA<AuthError>()));
-        final errorState =
-            states.firstWhere((s) => s is AuthError) as AuthError;
-        expect(
-          errorState.message,
-          contains('Configured trusted TLS certificate file not found'),
-        );
-        expect(
-          states.last,
-          isA<AuthUnauthenticated>(),
-        ); // GUI displays LoginPage with Retry button
-
-        await sub.cancel();
-        await cubit.close();
-        getIt.unregister<MonitoringServiceClient>();
-
         // 2. Unreadable / Corrupted certificate file
         final malformedFile = File(p.join(tempDir.path, 'corrupted.crt'));
         malformedFile.writeAsStringSync('CORRUPTED_CERTIFICATE_CONTENT');
@@ -1307,27 +1240,6 @@ void main() {
           malformedCertClient.configurationError,
           contains('Failed to load configured trusted TLS certificate'),
         );
-
-        getIt.registerSingleton<MonitoringServiceClient>(malformedCertClient);
-        final cubit2 = AuthCubit(authRepo);
-        final states2 = <AuthState>[];
-        final sub2 = cubit2.stream.listen(states2.add);
-
-        await cubit2.checkAuthStatus();
-        await Future.delayed(const Duration(milliseconds: 50));
-
-        expect(states2, contains(isA<AuthError>()));
-        final errorState2 =
-            states2.firstWhere((s) => s is AuthError) as AuthError;
-        expect(
-          errorState2.message,
-          contains('Failed to load configured trusted TLS certificate'),
-        );
-        expect(states2.last, isA<AuthUnauthenticated>());
-
-        await sub2.cancel();
-        await cubit2.close();
-        getIt.unregister<MonitoringServiceClient>();
       },
     );
   });

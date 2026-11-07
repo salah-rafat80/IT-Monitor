@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/theme/app_colors.dart';
-import '../../../auth/presentation/bloc/auth_cubit.dart';
 import '../../../monitoring/domain/entities/device_status_entity.dart';
 import '../../../monitoring/presentation/widgets/device_status_chip.dart';
 import '../../domain/entities/unifi_device_entity.dart';
@@ -21,10 +20,7 @@ class InfrastructureStatusCards extends StatelessWidget {
 
     return BlocBuilder<InfrastructureCubit, InfrastructureState>(
       builder: (context, state) {
-        final authState = context.watch<AuthCubit>().state;
-        final isAdmin = authState is AuthAuthenticated
-            ? authState.user.isAdmin
-            : false;
+        final isAdmin = true;
 
         if (state.devices.isEmpty) {
           return _buildEmptyStateCard(context, theme, isDark, isAdmin);
@@ -146,7 +142,6 @@ class InfrastructureStatusCards extends StatelessWidget {
                     isDark,
                     device,
                     state.getStatusFor(device),
-                    state.getIncidentFor(device),
                     isAdmin,
                   );
                 }).toList();
@@ -246,7 +241,6 @@ class InfrastructureStatusCards extends StatelessWidget {
     bool isDark,
     UniFiDeviceEntity device,
     DeviceStatusEntity? status,
-    dynamic incident,
     bool isAdmin,
   ) {
     final statusEnum = status?.status ?? DeviceStatusEnum.down;
@@ -420,55 +414,7 @@ class InfrastructureStatusCards extends StatelessWidget {
             ],
           ),
 
-          if (incident != null) ...[
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: AppColors.statusDown.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(6),
-                border: Border.all(
-                  color: AppColors.statusDown.withValues(alpha: 0.3),
-                ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      const Icon(
-                        Icons.warning_amber_rounded,
-                        color: AppColors.statusDown,
-                        size: 14,
-                      ),
-                      const SizedBox(width: 4),
-                      Expanded(
-                        child: Text(
-                          'Active Incident #${incident.id}',
-                          style: const TextStyle(
-                            color: AppColors.statusDown,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 11,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (incident.correlationMessage != null) ...[
-                    const SizedBox(height: 2),
-                    Text(
-                      incident.correlationMessage!,
-                      style: const TextStyle(
-                        color: AppColors.statusDown,
-                        fontSize: 10.5,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ] else if (device.isGateway && isDown) ...[
+          if (device.isGateway && isDown) ...[
             const SizedBox(height: 8),
             Container(
               padding: const EdgeInsets.all(8),

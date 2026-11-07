@@ -8,10 +8,7 @@ import '../../../../core/di/injection.dart';
 import '../../../../core/errors/failures.dart';
 import '../../../../core/utils/ipv4_utils.dart';
 import '../../../../core/utils/result.dart';
-import '../../../auth/domain/entities/user_entity.dart';
-import '../../../auth/domain/repositories/auth_repository.dart';
 import '../../../monitoring/data/datasources/monitoring_service_client.dart';
-import '../../../users/domain/repositories/audit_log_repository.dart';
 import '../../data/datasources/approved_inventory_seed.dart';
 import '../../data/datasources/excel_inventory_parser.dart';
 import '../../domain/entities/device_entity.dart';
@@ -23,16 +20,9 @@ import '../../domain/services/inventory_validator.dart';
 @LazySingleton(as: DeviceRepository)
 class DeviceRepositoryImpl implements DeviceRepository {
   final AppDatabase _db;
-  final AuditLogRepository _auditLogRepo;
-  final AuthRepository _authRepo;
   final MonitoringServiceClient? _serviceClient;
 
-  DeviceRepositoryImpl(
-    this._db,
-    this._auditLogRepo,
-    this._authRepo, [
-    this._serviceClient,
-  ]);
+  DeviceRepositoryImpl(this._db, [this._serviceClient]);
 
   bool get _useAuthoritativeService {
     if (AppConfig.isProductionClient) return true;
@@ -47,9 +37,28 @@ class DeviceRepositoryImpl implements DeviceRepository {
           : null);
 
   Future<String> _getActiveUsername() async {
-    final res = await _authRepo.getCurrentUser();
-    return res.dataOrNull?.username ??
-        'Local Administrator (No Interactive Login)';
+    return 'Local Administrator (No Interactive Login)';
+  }
+
+  Future<void> _recordAuditLog({
+    int? userId,
+    String? username,
+    required String action,
+    String? details,
+  }) async {
+    try {
+      await _db
+          .into(_db.auditLogs)
+          .insert(
+            AuditLogsCompanion.insert(
+              userId: userId != null ? Value(userId) : const Value.absent(),
+              username: username ?? 'Local Administrator',
+              action: action,
+              details: details != null ? Value(details) : const Value.absent(),
+              timestamp: Value(DateTime.now()),
+            ),
+          );
+    } catch (_) {}
   }
 
   @override
@@ -285,7 +294,7 @@ class DeviceRepositoryImpl implements DeviceRepository {
 
       final added = device.copyWith(id: id, ip: canonicalIp, createdAt: now);
       final username = await _getActiveUsername();
-      await _auditLogRepo.recordLog(
+      await _recordAuditLog(
         username: username,
         action: 'DEVICE_ADDED',
         details:
@@ -397,7 +406,7 @@ class DeviceRepositoryImpl implements DeviceRepository {
 
       final updated = device.copyWith(ip: canonicalIp, updatedAt: now);
       final username = await _getActiveUsername();
-      await _auditLogRepo.recordLog(
+      await _recordAuditLog(
         username: username,
         action: 'DEVICE_MODIFIED',
         details:
@@ -447,18 +456,7 @@ class DeviceRepositoryImpl implements DeviceRepository {
     }
 
     try {
-      // 1. Permission check: Admin only
-      final currentUserRes = await _authRepo.getCurrentUser();
-      final currentUser = currentUserRes.dataOrNull;
-      if (currentUser != null && currentUser.role != UserRole.admin) {
-        return Result.failure(
-          const UnauthorizedFailure(
-            'Admin privileges required to assign device owners.',
-          ),
-        );
-      }
-
-      // 2. Fetch existing device
+      // Fetch existing device
       final deviceRes = await getDeviceById(deviceId);
       if (deviceRes.isFailure) {
         return deviceRes;
@@ -504,10 +502,10 @@ class DeviceRepositoryImpl implements DeviceRepository {
         auditAction = 'DEVICE_OWNER_MODIFIED';
       }
 
-      final actingUsername = adminUsername ?? currentUser?.username ?? 'admin';
-      final actingUserId = currentUser?.id;
+      final actingUsername = adminUsername ?? 'admin';
+      const int? actingUserId = null;
 
-      await _auditLogRepo.recordLog(
+      await _recordAuditLog(
         userId: actingUserId,
         username: actingUsername,
         action: auditAction,
@@ -556,7 +554,7 @@ class DeviceRepositoryImpl implements DeviceRepository {
 
       if (device != null) {
         final username = await _getActiveUsername();
-        await _auditLogRepo.recordLog(
+        await _recordAuditLog(
           username: username,
           action: 'DEVICE_DELETED',
           details: 'Deleted device ${device.name} (${device.ip}).',
@@ -604,7 +602,7 @@ class DeviceRepositoryImpl implements DeviceRepository {
       );
 
       final username = await _getActiveUsername();
-      await _auditLogRepo.recordLog(
+      await _recordAuditLog(
         username: username,
         action: 'DEVICE_TOGGLED',
         details:
@@ -851,7 +849,7 @@ class DeviceRepositoryImpl implements DeviceRepository {
 
         // 6. Audit log
         final username = await _getActiveUsername();
-        await _auditLogRepo.recordLog(
+        await _recordAuditLog(
           username: username,
           action: 'INVENTORY_IMPORTED',
           details:
@@ -911,7 +909,7 @@ class DeviceRepositoryImpl implements DeviceRepository {
       if (countRes.isFailure) return countRes;
 
       final username = await _getActiveUsername();
-      await _auditLogRepo.recordLog(
+      await _recordAuditLog(
         username: username,
         action: 'APPROVED_INVENTORY_BOOTSTRAPPED',
         details:
@@ -1004,7 +1002,7 @@ class DeviceRepositoryImpl implements DeviceRepository {
       });
 
       final username = adminUsername ?? await _getActiveUsername();
-      await _auditLogRepo.recordLog(
+      await _recordAuditLog(
         username: username,
         action: 'DEVICES_REASSIGNED_FACTORY',
         details:
@@ -1131,7 +1129,7 @@ class DeviceRepositoryImpl implements DeviceRepository {
       });
 
       final username = await _getActiveUsername();
-      await _auditLogRepo.recordLog(
+      await _recordAuditLog(
         username: username,
         action: 'DEVICES_BULK_UPDATED',
         details:

@@ -9,30 +9,41 @@ import '../../../../core/database/app_database.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/errors/failures.dart';
 import '../../../../core/utils/result.dart';
-import '../../../auth/domain/repositories/auth_repository.dart';
 import '../../../monitoring/data/datasources/monitoring_service_client.dart';
-import '../../../users/domain/repositories/audit_log_repository.dart';
 import '../../domain/entities/unifi_device_entity.dart';
 import '../../domain/repositories/infrastructure_repository.dart';
 
 @LazySingleton(as: InfrastructureRepository)
 class InfrastructureRepositoryImpl implements InfrastructureRepository {
   final AppDatabase _db;
-  final AuditLogRepository _auditLogRepo;
-  final AuthRepository _authRepo;
   final MonitoringServiceClient? _serviceClient;
   StreamSubscription? _serviceEventSub;
 
   final StreamController<List<UniFiDeviceEntity>> _devicesController =
       StreamController<List<UniFiDeviceEntity>>.broadcast();
 
-  InfrastructureRepositoryImpl(
-    this._db,
-    this._auditLogRepo,
-    this._authRepo, [
-    this._serviceClient,
-  ]) {
+  InfrastructureRepositoryImpl(this._db, [this._serviceClient]) {
     _initServiceEventSubscription();
+  }
+
+  Future<void> _recordAuditLog({
+    String? username,
+    required String action,
+    String? details,
+  }) async {
+    try {
+      await _db
+          .into(_db.auditLogs)
+          .insert(
+            AuditLogsCompanion.insert(
+              userId: const Value.absent(),
+              username: username ?? 'Local Administrator',
+              action: action,
+              details: details != null ? Value(details) : const Value.absent(),
+              timestamp: Value(DateTime.now()),
+            ),
+          );
+    } catch (_) {}
   }
 
   MonitoringServiceClient? get _effectiveClient =>
@@ -184,16 +195,6 @@ class InfrastructureRepositoryImpl implements InfrastructureRepository {
     }
 
     try {
-      final currentUserRes = await _authRepo.getCurrentUser();
-      final currentUser = currentUserRes.dataOrNull;
-      if (currentUser != null && !currentUser.isAdmin) {
-        return Result.failure(
-          UnauthorizedFailure(
-            'Viewer role is not authorized to modify infrastructure',
-          ),
-        );
-      }
-
       final existingByIp = await getDeviceByIp(
         device.ip,
         factoryId: device.factoryId,
@@ -238,9 +239,9 @@ class InfrastructureRepositoryImpl implements InfrastructureRepository {
               ),
             );
 
-        await _auditLogRepo.recordLog(
+        await _recordAuditLog(
           action: 'INFRASTRUCTURE_DEVICE_CREATED',
-          username: currentUser?.username ?? 'Admin',
+          username: 'Admin',
           details:
               'Registered UniFi device ${device.name} (${device.ip}) as ${device.role.displayName}. Critical: ${device.isCriticalInfrastructure}',
         );
@@ -265,9 +266,9 @@ class InfrastructureRepositoryImpl implements InfrastructureRepository {
           ),
         );
 
-        await _auditLogRepo.recordLog(
+        await _recordAuditLog(
           action: 'INFRASTRUCTURE_DEVICE_UPDATED',
-          username: currentUser?.username ?? 'Admin',
+          username: 'Admin',
           details:
               'Updated UniFi device #${device.id} (${device.name}) role to ${device.role.displayName}',
         );
@@ -308,16 +309,6 @@ class InfrastructureRepositoryImpl implements InfrastructureRepository {
     }
 
     try {
-      final currentUserRes = await _authRepo.getCurrentUser();
-      final currentUser = currentUserRes.dataOrNull;
-      if (currentUser != null && !currentUser.isAdmin) {
-        return Result.failure(
-          UnauthorizedFailure(
-            'Viewer role is not authorized to delete infrastructure',
-          ),
-        );
-      }
-
       final existingRes = await getDeviceById(id);
       final existing = existingRes.dataOrNull;
 
@@ -326,9 +317,9 @@ class InfrastructureRepositoryImpl implements InfrastructureRepository {
       )..where((t) => t.id.equals(id))).go();
 
       if (existing != null) {
-        await _auditLogRepo.recordLog(
+        await _recordAuditLog(
           action: 'INFRASTRUCTURE_DEVICE_DELETED',
-          username: currentUser?.username ?? 'Admin',
+          username: 'Administrator',
           details:
               'Removed UniFi device #${existing.id} (${existing.name} - ${existing.ip})',
         );

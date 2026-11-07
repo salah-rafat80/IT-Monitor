@@ -5,8 +5,6 @@ import '../../../../core/config/factory_network_config.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/theme_cubit.dart';
-import '../../../auth/domain/entities/user_entity.dart';
-import '../../../auth/presentation/bloc/auth_cubit.dart';
 import '../../../factories/presentation/bloc/factory_cubit.dart';
 import '../../../monitoring/domain/entities/monitoring_config.dart';
 import '../../../monitoring/domain/services/monitoring_scheduler.dart';
@@ -155,9 +153,7 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final tokens = context.appTokens;
-    final authState = context.watch<AuthCubit>().state;
-    final isAdmin =
-        authState is AuthAuthenticated && authState.user.role == UserRole.admin;
+    final isAdmin = true;
     final factoryState = context.watch<FactoryCubit>().state;
 
     return Scaffold(
@@ -452,38 +448,28 @@ class _SettingsPageState extends State<SettingsPage> {
                           ),
                         ),
                         const SizedBox(height: 20),
-                        if (isAdmin)
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.end,
-                            children: [
-                              OutlinedButton.icon(
-                                onPressed: _resetDefaults,
-                                icon: const Icon(Icons.restore, size: 16),
-                                label: const Text('Reset Defaults'),
-                              ),
-                              const SizedBox(width: 12),
-                              ElevatedButton.icon(
-                                onPressed: _isSaving ? null : _saveSettings,
-                                icon: const Icon(Icons.save, size: 16),
-                                label: const Text('Save Configuration'),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: tokens.primary,
-                                  foregroundColor: tokens.isDark
-                                      ? const Color(0xFF090D19)
-                                      : Colors.white,
-                                ),
-                              ),
-                            ],
-                          )
-                        else
-                          Text(
-                            'Administrator privileges required to change monitoring settings.',
-                            style: TextStyle(
-                              color: tokens.statusDegraded,
-                              fontStyle: FontStyle.italic,
-                              fontSize: 12,
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            OutlinedButton.icon(
+                              onPressed: _resetDefaults,
+                              icon: const Icon(Icons.restore, size: 16),
+                              label: const Text('Reset Defaults'),
                             ),
-                          ),
+                            const SizedBox(width: 12),
+                            ElevatedButton.icon(
+                              onPressed: _isSaving ? null : _saveSettings,
+                              icon: const Icon(Icons.save, size: 16),
+                              label: const Text('Save Configuration'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: tokens.primary,
+                                foregroundColor: tokens.isDark
+                                    ? const Color(0xFF090D19)
+                                    : Colors.white,
+                              ),
+                            ),
+                          ],
+                        ),
                       ],
                     ),
                   ),

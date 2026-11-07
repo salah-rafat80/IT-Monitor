@@ -13,10 +13,6 @@
 import 'package:get_it/get_it.dart' as _i174;
 import 'package:injectable/injectable.dart' as _i526;
 
-import '../../features/auth/data/repositories/auth_repository_impl.dart'
-    as _i153;
-import '../../features/auth/domain/repositories/auth_repository.dart' as _i787;
-import '../../features/auth/presentation/bloc/auth_cubit.dart' as _i52;
 import '../../features/devices/data/repositories/device_repository_impl.dart'
     as _i313;
 import '../../features/devices/domain/repositories/device_repository.dart'
@@ -29,17 +25,6 @@ import '../../features/factories/domain/repositories/factory_repository.dart'
 import '../../features/factories/domain/services/network_detection_service.dart'
     as _i404;
 import '../../features/factories/presentation/bloc/factory_cubit.dart' as _i418;
-import '../../features/incidents/data/repositories/incident_repository_impl.dart'
-    as _i723;
-import '../../features/incidents/data/services/desktop_notification_service.dart'
-    as _i578;
-import '../../features/incidents/domain/repositories/incident_repository.dart'
-    as _i492;
-import '../../features/incidents/domain/services/incident_engine.dart' as _i405;
-import '../../features/incidents/domain/services/notification_service.dart'
-    as _i6;
-import '../../features/incidents/presentation/bloc/incidents_cubit.dart'
-    as _i342;
 import '../../features/infrastructure/data/datasources/unifi_api_client.dart'
     as _i1032;
 import '../../features/infrastructure/data/repositories/infrastructure_repository_impl.dart'
@@ -91,24 +76,10 @@ import '../../features/network_discovery/domain/services/network_range_validator
     as _i185;
 import '../../features/network_discovery/presentation/bloc/network_discovery_cubit.dart'
     as _i319;
-import '../../features/reports/data/repositories/report_repository_impl.dart'
-    as _i246;
-import '../../features/reports/domain/repositories/report_repository.dart'
-    as _i939;
-import '../../features/reports/presentation/bloc/reports_cubit.dart' as _i833;
 import '../../features/topology/domain/services/enterprise_topology_builder.dart'
     as _i524;
 import '../../features/topology/domain/services/topology_grouper.dart' as _i289;
 import '../../features/topology/presentation/bloc/topology_cubit.dart' as _i907;
-import '../../features/users/data/repositories/audit_log_repository_impl.dart'
-    as _i1011;
-import '../../features/users/data/repositories/user_repository_impl.dart'
-    as _i465;
-import '../../features/users/domain/repositories/audit_log_repository.dart'
-    as _i64;
-import '../../features/users/domain/repositories/user_repository.dart' as _i658;
-import '../../features/users/presentation/bloc/user_management_cubit.dart'
-    as _i184;
 import '../database/app_database.dart' as _i982;
 import '../theme/theme_cubit.dart' as _i611;
 
@@ -120,7 +91,6 @@ extension GetItInjectableX on _i174.GetIt {
   }) {
     final gh = _i526.GetItHelper(this, environment, environmentFilter);
     gh.lazySingleton<_i982.AppDatabase>(() => _i982.AppDatabase());
-    gh.lazySingleton<_i611.ThemeCubit>(() => _i611.ThemeCubit());
     gh.lazySingleton<_i1032.UniFiApiClient>(() => _i1032.UniFiApiClient());
     gh.lazySingleton<_i819.DnsHostnameStrategy>(
       () => _i819.DnsHostnameStrategy(),
@@ -147,15 +117,16 @@ extension GetItInjectableX on _i174.GetIt {
     gh.lazySingleton<_i289.TopologyGrouper>(
       () => const _i289.TopologyGrouper(),
     );
-    gh.lazySingleton<_i6.NotificationService>(
-      () => _i578.DesktopNotificationService(),
+    gh.lazySingleton<_i1071.DeviceRepository>(
+      () => _i313.DeviceRepositoryImpl(
+        gh<_i982.AppDatabase>(),
+        gh<_i63.MonitoringServiceClient>(),
+      ),
     );
     gh.lazySingleton<_i217.PingChecker>(() => _i820.PlatformPingChecker());
+    gh.lazySingleton<_i611.ThemeCubit>(() => _i611.ThemeCubit());
     gh.lazySingleton<_i404.NetworkDetectionService>(
       () => _i404.NetworkDetectionServiceImpl(),
-    );
-    gh.lazySingleton<_i64.AuditLogRepository>(
-      () => _i1011.AuditLogRepositoryImpl(gh<_i982.AppDatabase>()),
     );
     gh.lazySingleton<_i379.DiscoveryRepository>(
       () => _i670.DiscoveryRepositoryImpl(
@@ -172,8 +143,8 @@ extension GetItInjectableX on _i174.GetIt {
     gh.lazySingleton<_i93.ExcelInventoryService>(
       () => _i93.ExcelInventoryServiceImpl(),
     );
-    gh.lazySingleton<_i939.ReportRepository>(
-      () => _i246.ReportRepositoryImpl(
+    gh.lazySingleton<_i114.InfrastructureRepository>(
+      () => _i921.InfrastructureRepositoryImpl(
         gh<_i982.AppDatabase>(),
         gh<_i63.MonitoringServiceClient>(),
       ),
@@ -188,99 +159,6 @@ extension GetItInjectableX on _i174.GetIt {
       () => _i592.MonitoringRepositoryImpl(
         gh<_i982.AppDatabase>(),
         gh<_i63.MonitoringServiceClient>(),
-      ),
-    );
-    gh.factory<_i833.ReportsCubit>(
-      () => _i833.ReportsCubit(gh<_i939.ReportRepository>()),
-    );
-    gh.lazySingleton<_i492.IncidentRepository>(
-      () => _i723.IncidentRepositoryImpl(
-        gh<_i982.AppDatabase>(),
-        gh<_i64.AuditLogRepository>(),
-        gh<_i63.MonitoringServiceClient>(),
-      ),
-    );
-    gh.lazySingleton<_i418.FactoryCubit>(
-      () => _i418.FactoryCubit(
-        gh<_i911.FactoryRepository>(),
-        gh<_i404.NetworkDetectionService>(),
-      ),
-    );
-    gh.lazySingleton<_i787.AuthRepository>(
-      () => _i153.AuthRepositoryImpl(
-        gh<_i982.AppDatabase>(),
-        gh<_i64.AuditLogRepository>(),
-      ),
-    );
-    gh.factory<_i342.IncidentsCubit>(
-      () => _i342.IncidentsCubit(gh<_i492.IncidentRepository>()),
-    );
-    gh.lazySingleton<_i114.InfrastructureRepository>(
-      () => _i921.InfrastructureRepositoryImpl(
-        gh<_i982.AppDatabase>(),
-        gh<_i64.AuditLogRepository>(),
-        gh<_i787.AuthRepository>(),
-        gh<_i63.MonitoringServiceClient>(),
-      ),
-    );
-    gh.lazySingleton<_i658.UserRepository>(
-      () => _i465.UserRepositoryImpl(
-        gh<_i982.AppDatabase>(),
-        gh<_i64.AuditLogRepository>(),
-        gh<_i787.AuthRepository>(),
-      ),
-    );
-    gh.lazySingleton<_i52.AuthCubit>(
-      () => _i52.AuthCubit(gh<_i787.AuthRepository>()),
-    );
-    gh.lazySingleton<_i1071.DeviceRepository>(
-      () => _i313.DeviceRepositoryImpl(
-        gh<_i982.AppDatabase>(),
-        gh<_i64.AuditLogRepository>(),
-        gh<_i787.AuthRepository>(),
-        gh<_i63.MonitoringServiceClient>(),
-      ),
-    );
-    gh.factory<_i184.UserManagementCubit>(
-      () => _i184.UserManagementCubit(
-        gh<_i658.UserRepository>(),
-        gh<_i64.AuditLogRepository>(),
-      ),
-    );
-    gh.lazySingleton<_i405.IncidentEngine>(
-      () => _i405.IncidentEngine(
-        gh<_i492.IncidentRepository>(),
-        gh<_i1071.DeviceRepository>(),
-        gh<_i6.NotificationService>(),
-      ),
-    );
-    gh.lazySingleton<_i236.InfrastructureCubit>(
-      () => _i236.InfrastructureCubit(
-        gh<_i114.InfrastructureRepository>(),
-        gh<_i365.MonitoringRepository>(),
-        gh<_i492.IncidentRepository>(),
-        gh<_i217.PingChecker>(),
-        gh<_i405.IncidentEngine>(),
-      ),
-    );
-    gh.factory<_i907.TopologyCubit>(
-      () => _i907.TopologyCubit(
-        gh<_i1071.DeviceRepository>(),
-        gh<_i114.InfrastructureRepository>(),
-        gh<_i365.MonitoringRepository>(),
-        gh<_i289.TopologyGrouper>(),
-        gh<_i524.EnterpriseTopologyBuilder>(),
-        gh<_i714.MonitoringScheduler>(),
-      ),
-    );
-    gh.lazySingleton<_i714.MonitoringScheduler>(
-      () => _i714.MonitoringScheduler(
-        gh<_i1071.DeviceRepository>(),
-        gh<_i365.MonitoringRepository>(),
-        gh<_i217.PingChecker>(),
-        gh<_i405.IncidentEngine>(),
-        gh<_i114.InfrastructureRepository>(),
-        gh<_i911.FactoryRepository>(),
       ),
     );
     gh.factory<_i264.DevicesCubit>(
@@ -303,18 +181,17 @@ extension GetItInjectableX on _i174.GetIt {
         gh<_i911.FactoryRepository>(),
       ),
     );
-    gh.factory<_i651.MonitoringCubit>(
-      () => _i651.MonitoringCubit(
-        gh<_i714.MonitoringScheduler>(),
-        gh<_i365.MonitoringRepository>(),
+    gh.lazySingleton<_i418.FactoryCubit>(
+      () => _i418.FactoryCubit(
+        gh<_i911.FactoryRepository>(),
+        gh<_i404.NetworkDetectionService>(),
       ),
     );
-    gh.factory<_i1070.MonitoringDashboardCubit>(
-      () => _i1070.MonitoringDashboardCubit(
-        gh<_i1071.DeviceRepository>(),
+    gh.lazySingleton<_i236.InfrastructureCubit>(
+      () => _i236.InfrastructureCubit(
+        gh<_i114.InfrastructureRepository>(),
         gh<_i365.MonitoringRepository>(),
-        gh<_i714.MonitoringScheduler>(),
-        gh<_i492.IncidentRepository>(),
+        gh<_i217.PingChecker>(),
       ),
     );
     gh.factory<_i319.NetworkDiscoveryCubit>(
@@ -324,6 +201,38 @@ extension GetItInjectableX on _i174.GetIt {
         gh<_i993.DiscoveryCoordinator>(),
         gh<_i185.NetworkRangeValidator>(),
         gh<_i114.InfrastructureRepository>(),
+      ),
+    );
+    gh.factory<_i907.TopologyCubit>(
+      () => _i907.TopologyCubit(
+        gh<_i1071.DeviceRepository>(),
+        gh<_i114.InfrastructureRepository>(),
+        gh<_i365.MonitoringRepository>(),
+        gh<_i289.TopologyGrouper>(),
+        gh<_i524.EnterpriseTopologyBuilder>(),
+        gh<_i714.MonitoringScheduler>(),
+      ),
+    );
+    gh.lazySingleton<_i714.MonitoringScheduler>(
+      () => _i714.MonitoringScheduler(
+        gh<_i1071.DeviceRepository>(),
+        gh<_i365.MonitoringRepository>(),
+        gh<_i217.PingChecker>(),
+        gh<_i114.InfrastructureRepository>(),
+        gh<_i911.FactoryRepository>(),
+      ),
+    );
+    gh.factory<_i1070.MonitoringDashboardCubit>(
+      () => _i1070.MonitoringDashboardCubit(
+        gh<_i1071.DeviceRepository>(),
+        gh<_i365.MonitoringRepository>(),
+        gh<_i714.MonitoringScheduler>(),
+      ),
+    );
+    gh.factory<_i651.MonitoringCubit>(
+      () => _i651.MonitoringCubit(
+        gh<_i714.MonitoringScheduler>(),
+        gh<_i365.MonitoringRepository>(),
       ),
     );
     return this;

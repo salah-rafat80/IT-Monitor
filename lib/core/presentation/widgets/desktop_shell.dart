@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../features/auth/presentation/bloc/auth_cubit.dart';
 import '../../../features/factories/presentation/widgets/factory_header_bar.dart';
 import '../../theme/app_colors.dart';
 
@@ -15,8 +13,6 @@ class DesktopShell extends StatelessWidget {
   Widget build(BuildContext context) {
     final tokens = context.appTokens;
     final location = GoRouterState.of(context).uri.path;
-    final authState = context.watch<AuthCubit>().state;
-    final currentUser = authState is AuthAuthenticated ? authState.user : null;
 
     final screenWidth = MediaQuery.sizeOf(context).width;
     final isCompact = screenWidth < 1000;
@@ -185,36 +181,12 @@ class DesktopShell extends StatelessWidget {
                               onTap: () => context.go('/infrastructure'),
                             ),
                             _NavTile(
-                              icon: Icons.warning_amber_outlined,
-                              selectedIcon: Icons.warning,
-                              label: 'Incidents',
-                              isSelected: location.startsWith('/incidents'),
-                              isCompact: isSidebarCompact,
-                              onTap: () => context.go('/incidents'),
-                            ),
-                            _NavTile(
-                              icon: Icons.hub_outlined,
-                              selectedIcon: Icons.hub,
+                              icon: Icons.account_tree_outlined,
+                              selectedIcon: Icons.account_tree,
                               label: 'Topology',
                               isSelected: location.startsWith('/topology'),
                               isCompact: isSidebarCompact,
                               onTap: () => context.go('/topology'),
-                            ),
-                            _NavTile(
-                              icon: Icons.bar_chart_outlined,
-                              selectedIcon: Icons.bar_chart,
-                              label: 'Reports',
-                              isSelected: location.startsWith('/reports'),
-                              isCompact: isSidebarCompact,
-                              onTap: () => context.go('/reports'),
-                            ),
-                            _NavTile(
-                              icon: Icons.people_outline,
-                              selectedIcon: Icons.people,
-                              label: 'Users & Audit',
-                              isSelected: location.startsWith('/users'),
-                              isCompact: isSidebarCompact,
-                              onTap: () => context.go('/users'),
                             ),
                             _NavTile(
                               icon: Icons.radar_outlined,
@@ -239,10 +211,9 @@ class DesktopShell extends StatelessWidget {
                       Padding(
                         padding: EdgeInsets.all(isSidebarCompact ? 12 : 16),
                         child: isSidebarCompact
-                            ? Tooltip(
-                                message:
-                                    '${currentUser?.username ?? 'Administrator'} (ADMINISTRATOR)',
-                                child: const CircleAvatar(
+                            ? const Tooltip(
+                                message: 'Local Administrator (ADMINISTRATOR)',
+                                child: CircleAvatar(
                                   radius: 16,
                                   backgroundColor: Color(0xFF0F62FE),
                                   child: Icon(
@@ -271,8 +242,7 @@ class DesktopShell extends StatelessWidget {
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
                                         Text(
-                                          currentUser?.username ??
-                                              'Administrator',
+                                          'Local Administrator',
                                           style: Theme.of(
                                             context,
                                           ).textTheme.titleSmall,

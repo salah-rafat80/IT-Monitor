@@ -1,12 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
-import 'package:mocktail/mocktail.dart';
 
 import 'package:it_network_monitor/core/presentation/widgets/desktop_shell.dart';
 import 'package:it_network_monitor/features/auth/domain/entities/user_entity.dart';
-import 'package:it_network_monitor/features/auth/presentation/bloc/auth_cubit.dart';
 import 'package:it_network_monitor/features/devices/domain/entities/device_entity.dart';
 import 'package:it_network_monitor/features/monitoring/domain/entities/device_status_entity.dart';
 import 'package:it_network_monitor/features/monitoring/domain/entities/monitored_device.dart';
@@ -16,27 +13,7 @@ import 'package:it_network_monitor/features/monitoring/presentation/widgets/moni
 import 'package:it_network_monitor/features/monitoring/presentation/widgets/monitoring_summary_cards.dart';
 import 'package:it_network_monitor/features/wall_display/presentation/widgets/wall_display_summary_bar.dart';
 
-class MockAuthCubit extends Mock implements AuthCubit {}
-
 void main() {
-  late MockAuthCubit mockAuthCubit;
-
-  final adminUser = UserEntity(
-    id: 1,
-    username: 'admin',
-    role: UserRole.admin,
-    isEnabled: true,
-    createdAt: DateTime(2026),
-  );
-
-  setUp(() {
-    mockAuthCubit = MockAuthCubit();
-    when(() => mockAuthCubit.state).thenReturn(AuthAuthenticated(adminUser));
-    when(
-      () => mockAuthCubit.stream,
-    ).thenAnswer((_) => Stream.value(AuthAuthenticated(adminUser)));
-  });
-
   group('Windows Responsive & DPI Scaling Audit (100%, 125%, 150%, 200%)', () {
     final sampleDevices = [
       MonitoredDevice(
@@ -47,15 +24,14 @@ void main() {
           ip: '192.168.100.254',
           ownerName:
               'عبدالرحمن محمد الشناوي المهندس الأول / Senior Staff Enterprise Systems Engineer',
-          department:
-              'إدارة تكنولوجيا المعلومات والاتصالات المتطورة / Advanced Information Systems',
+          department: 'Information Technology & Cloud Infrastructure',
           officeLocation:
-              'مبنى الإدارة الرئيسي - الطابق الرابع - غرفة المراقبة والتحكم 402B',
+              'Building B, Floor 4, Suite 402 - Server Management Room',
           createdAt: DateTime(2026),
         ),
         status: DeviceStatusEntity.initial(1).copyWith(
           status: DeviceStatusEnum.up,
-          lastLatencyMs: 25,
+          lastLatencyMs: 9999, // Long latency display
           lastCheckAt: DateTime.now(),
         ),
       ),
@@ -92,7 +68,6 @@ void main() {
       downCount: 789,
       unknownCount: 12,
       maintenanceCount: 1,
-      activeIncidents: const [],
     );
 
     final viewports = [
@@ -117,23 +92,17 @@ void main() {
         ],
       );
 
-      return BlocProvider<AuthCubit>.value(
-        value: mockAuthCubit,
-        child: MaterialApp.router(
-          theme: ThemeData.dark(),
-          routerConfig: router,
-        ),
-      );
+      return MaterialApp.router(routerConfig: router, theme: ThemeData.light());
     }
 
-    for (final size in viewports) {
+    for (final viewport in viewports) {
       for (final dpi in dpiScales) {
         testWidgets(
-          'DesktopShell & Dashboard renders without overflow at ${size.width.toInt()}x${size.height.toInt()} @ ${(dpi * 100).toInt()}% DPI',
+          'DesktopShell renders without overflow at ${viewport.width.toInt()}x${viewport.height.toInt()} at ${(dpi * 100).toInt()}% scaling',
           (tester) async {
             tester.view.physicalSize = Size(
-              size.width * dpi,
-              size.height * dpi,
+              viewport.width * dpi,
+              viewport.height * dpi,
             );
             tester.view.devicePixelRatio = dpi;
             addTearDown(() {
@@ -164,7 +133,7 @@ void main() {
 
             await tester.pumpAndSettle();
 
-            // Strict zero-overflow assertion
+            // Assert: Zero overflow exceptions thrown during layout or paint
             expect(tester.takeException(), isNull);
 
             // Large counters must render without crashing or wrapping out of bounds
@@ -189,7 +158,7 @@ void main() {
           await tester.pumpWidget(
             MaterialApp(
               theme: ThemeData.dark(),
-              home: Scaffold(
+              home: const Scaffold(
                 body: WallDisplaySummaryBar(
                   totalCount: 37,
                   upCount: 35,
@@ -197,7 +166,6 @@ void main() {
                   downCount: 1,
                   unknownCount: 0,
                   maintenanceCount: 0,
-                  activeIncidentsCount: 0,
                 ),
               ),
             ),
@@ -248,6 +216,7 @@ void main() {
         // Dynamically shrink window live down to narrow 800x600 constraint
         await tester.binding.setSurfaceSize(const Size(800, 600));
         await tester.pumpAndSettle();
+
         expect(tester.takeException(), isNull);
       },
     );

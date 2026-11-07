@@ -4,13 +4,8 @@ import 'package:drift/native.dart';
 import 'package:it_network_monitor/core/database/app_database.dart';
 import 'package:it_network_monitor/core/errors/failures.dart';
 import 'package:it_network_monitor/core/utils/result.dart';
-import 'package:it_network_monitor/features/auth/data/repositories/auth_repository_impl.dart';
 import 'package:it_network_monitor/features/devices/data/repositories/device_repository_impl.dart';
 import 'package:it_network_monitor/features/devices/domain/entities/device_entity.dart';
-import 'package:it_network_monitor/features/incidents/data/repositories/incident_repository_impl.dart';
-import 'package:it_network_monitor/features/incidents/data/services/desktop_notification_service.dart';
-import 'package:it_network_monitor/features/incidents/domain/entities/incident_entity.dart';
-import 'package:it_network_monitor/features/incidents/domain/services/incident_engine.dart';
 import 'package:it_network_monitor/features/monitoring/data/repositories/monitoring_repository_impl.dart';
 import 'package:it_network_monitor/features/monitoring/domain/entities/check_result.dart';
 import 'package:it_network_monitor/features/monitoring/domain/entities/device_status_entity.dart';
@@ -18,7 +13,6 @@ import 'package:it_network_monitor/features/monitoring/domain/entities/monitorin
 import 'package:it_network_monitor/features/monitoring/domain/repositories/monitoring_repository.dart';
 import 'package:it_network_monitor/features/monitoring/domain/services/monitoring_scheduler.dart';
 import 'package:it_network_monitor/features/monitoring/domain/services/ping_checker.dart';
-import 'package:it_network_monitor/features/users/data/repositories/audit_log_repository_impl.dart';
 
 class TestFailurePingChecker implements PingChecker {
   final Map<int, bool> failMap = {};
@@ -48,20 +42,6 @@ class TestFailurePingChecker implements PingChecker {
       timestamp: DateTime.now(),
       latencyMs: 15,
     );
-  }
-}
-
-class FaultyThrowingNotificationService extends DesktopNotificationService {
-  bool shouldThrow = false;
-  int notificationCount = 0;
-
-  @override
-  Future<void> notifyIncidentCreated(IncidentEntity incident) async {
-    notificationCount++;
-    if (shouldThrow) {
-      throw Exception('Simulated desktop notification tray error');
-    }
-    await super.notifyIncidentCreated(incident);
   }
 }
 
@@ -101,41 +81,22 @@ class FailingPersistenceMonitoringRepo implements MonitoringRepository {
 
 void main() {
   late AppDatabase db;
-  late AuditLogRepositoryImpl auditLogRepo;
-  late AuthRepositoryImpl authRepo;
   late DeviceRepositoryImpl deviceRepo;
   late MonitoringRepositoryImpl monitoringRepo;
-  late IncidentRepositoryImpl incidentRepo;
-  late FaultyThrowingNotificationService notificationService;
-  late IncidentEngine incidentEngine;
   late TestFailurePingChecker testPingChecker;
   late MonitoringScheduler scheduler;
 
   setUp(() async {
     db = AppDatabase.forTesting(NativeDatabase.memory());
-    auditLogRepo = AuditLogRepositoryImpl(db);
-    authRepo = AuthRepositoryImpl(db, auditLogRepo);
-    deviceRepo = DeviceRepositoryImpl(db, auditLogRepo, authRepo);
+    deviceRepo = DeviceRepositoryImpl(db);
     monitoringRepo = MonitoringRepositoryImpl(db);
-    notificationService = FaultyThrowingNotificationService();
-    incidentRepo = IncidentRepositoryImpl(db, auditLogRepo);
-    incidentEngine = IncidentEngine(
-      incidentRepo,
-      deviceRepo,
-      notificationService,
-    );
     testPingChecker = TestFailurePingChecker();
     scheduler = MonitoringScheduler(
       deviceRepo,
       monitoringRepo,
       testPingChecker,
-      incidentEngine,
     );
 
-    await authRepo.createInitialAdmin(
-      username: 'admin_phase6',
-      password: 'Password123',
-    );
     await deviceRepo.bootstrapApprovedInventory();
   });
 
@@ -214,55 +175,6 @@ void main() {
     );
 
     test(
-      '4. Full incident lifecycle: 3 consecutive failures produce Down incident and notification',
-      () async {
-        final devicesRes = await deviceRepo.getDevices();
-        final targetDevice = devicesRes.dataOrNull!.first;
-
-        testPingChecker.failMap[targetDevice.id] = true;
-        scheduler.startMonitoring();
-
-        // Perform 3 check cycles
-        for (int i = 0; i < 3; i++) {
-          await scheduler.triggerSingleCheck(targetDevice.id);
-        }
-
-        final activeIncidents =
-            (await incidentRepo.getActiveIncidents()).dataOrNull!;
-        expect(activeIncidents.length, equals(1));
-        expect(activeIncidents.first.deviceId, equals(targetDevice.id));
-        expect(activeIncidents.first.ownerName, equals(targetDevice.ownerName));
-        expect(notificationService.notificationCount, greaterThanOrEqualTo(1));
-      },
-    );
-
-    test(
-      '5. Notification failure safety: error in notification service does not throw or break processDeviceStatusChange',
-      () async {
-        notificationService.shouldThrow = true;
-
-        final devicesRes = await deviceRepo.getDevices();
-        final targetDevice = devicesRes.dataOrNull!.first;
-
-        final downStatus = DeviceStatusEntity.initial(targetDevice.id).copyWith(
-          status: DeviceStatusEnum.down,
-          consecutiveFailures: 3,
-          statusChangedAt: DateTime.now(),
-        );
-
-        // Should handle notification exception internally without throwing
-        await expectLater(
-          incidentEngine.processDeviceStatusChange(downStatus),
-          completes,
-        );
-
-        final activeIncidents =
-            (await incidentRepo.getActiveIncidents()).dataOrNull!;
-        expect(activeIncidents.length, equals(1));
-      },
-    );
-
-    test(
       '6. App restart simulation: DB state, device inventory, and statuses persist across connections',
       () async {
         // 1. Initial run & status write
@@ -282,9 +194,7 @@ void main() {
         // 2. Simulate shutdown & reopen database
         await db.close();
         db = AppDatabase.forTesting(NativeDatabase.memory());
-        auditLogRepo = AuditLogRepositoryImpl(db);
-        authRepo = AuthRepositoryImpl(db, auditLogRepo);
-        deviceRepo = DeviceRepositoryImpl(db, auditLogRepo, authRepo);
+        deviceRepo = DeviceRepositoryImpl(db);
 
         // Bootstrap check again (should be idempotent)
         final count =
@@ -304,7 +214,6 @@ void main() {
           deviceRepo,
           failingRepo,
           testPingChecker,
-          incidentEngine,
         );
 
         expect(testScheduler.persistenceFailureCount, equals(0));

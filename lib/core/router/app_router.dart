@@ -1,22 +1,15 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../features/auth/presentation/bloc/auth_cubit.dart';
-import '../../features/auth/presentation/pages/login_page.dart';
 import '../../features/dashboard/presentation/pages/dashboard_page.dart';
 import '../../features/devices/presentation/pages/devices_page.dart';
-import '../../features/incidents/presentation/pages/incidents_page.dart';
-import '../../features/reports/presentation/pages/reports_page.dart';
+import '../../features/infrastructure/presentation/pages/infrastructure_page.dart';
+import '../../features/inventory/presentation/pages/inventory_page.dart';
 import '../../features/network_discovery/presentation/pages/network_discovery_page.dart';
 import '../../features/settings/presentation/pages/settings_page.dart';
 import '../../features/topology/presentation/pages/topology_page.dart';
-import '../../features/users/presentation/pages/users_page.dart';
-import '../di/injection.dart';
-import '../presentation/widgets/desktop_shell.dart';
 import '../../features/wall_display/presentation/pages/wall_display_page.dart';
-import '../../features/infrastructure/presentation/pages/infrastructure_page.dart';
-import '../../features/inventory/presentation/pages/inventory_page.dart';
+import '../presentation/widgets/desktop_shell.dart';
 
 final GlobalKey<NavigatorState> _rootNavigatorKey = GlobalKey<NavigatorState>();
 final GlobalKey<NavigatorState> _shellNavigatorKey =
@@ -30,23 +23,7 @@ class AppRouter {
   static GoRouter get router => _routerInstance ??= GoRouter(
     navigatorKey: _rootNavigatorKey,
     initialLocation: initialLocation,
-    refreshListenable: GoRouterRefreshStream(getIt<AuthCubit>().stream),
-    redirect: (context, state) {
-      final authState = getIt<AuthCubit>().state;
-      final isAuth = authState is AuthAuthenticated;
-      final isLoginPage = state.uri.path == '/login';
-
-      if (!isAuth) {
-        return isLoginPage ? null : '/login';
-      }
-
-      if (isLoginPage) {
-        return '/dashboard';
-      }
-      return null;
-    },
     routes: [
-      GoRoute(path: '/login', builder: (context, state) => const LoginPage()),
       GoRoute(
         parentNavigatorKey: _rootNavigatorKey,
         path: '/wall-display',
@@ -77,20 +54,8 @@ class AppRouter {
             builder: (context, state) => const InfrastructurePage(),
           ),
           GoRoute(
-            path: '/incidents',
-            builder: (context, state) => const IncidentsPage(),
-          ),
-          GoRoute(
             path: '/topology',
             builder: (context, state) => const TopologyPage(),
-          ),
-          GoRoute(
-            path: '/reports',
-            builder: (context, state) => const ReportsPage(),
-          ),
-          GoRoute(
-            path: '/users',
-            builder: (context, state) => const UsersPage(),
           ),
           GoRoute(
             path: '/discovery',
@@ -104,18 +69,4 @@ class AppRouter {
       ),
     ],
   );
-}
-
-class GoRouterRefreshStream extends ChangeNotifier {
-  late final StreamSubscription<dynamic> _subscription;
-
-  GoRouterRefreshStream(Stream<dynamic> stream) {
-    _subscription = stream.asBroadcastStream().listen((_) => notifyListeners());
-  }
-
-  @override
-  void dispose() {
-    _subscription.cancel();
-    super.dispose();
-  }
 }

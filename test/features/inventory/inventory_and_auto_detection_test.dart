@@ -1,20 +1,17 @@
+import 'package:drift/drift.dart' hide isNull;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:it_network_monitor/core/config/app_run_mode.dart';
 import 'package:it_network_monitor/core/database/app_database.dart';
 import 'package:it_network_monitor/core/utils/result.dart';
-import 'package:it_network_monitor/features/auth/data/repositories/auth_repository_impl.dart';
 import 'package:it_network_monitor/features/devices/data/repositories/device_repository_impl.dart';
 import 'package:it_network_monitor/features/devices/domain/entities/device_entity.dart';
 import 'package:it_network_monitor/features/factories/data/repositories/factory_repository_impl.dart';
 import 'package:it_network_monitor/features/factories/domain/services/network_detection_service.dart';
-import 'package:it_network_monitor/features/incidents/data/repositories/incident_repository_impl.dart';
-import 'package:it_network_monitor/features/incidents/domain/entities/incident_entity.dart';
 import 'package:it_network_monitor/features/inventory/domain/services/excel_inventory_service.dart';
 import 'package:it_network_monitor/features/monitoring/data/repositories/monitoring_repository_impl.dart';
 import 'package:it_network_monitor/features/monitoring/domain/entities/check_result.dart';
-import 'package:it_network_monitor/features/users/data/repositories/audit_log_repository_impl.dart';
 
 extension ResultTestX<T> on Result<T> {
   T get value => (this as Success<T>).data;
@@ -23,11 +20,8 @@ extension ResultTestX<T> on Result<T> {
 void main() {
   group('16 Regression Tests: Inventory Management & Automatic Factory Detection', () {
     late AppDatabase db;
-    late AuditLogRepositoryImpl auditRepo;
-    late AuthRepositoryImpl authRepo;
     late FactoryRepositoryImpl factoryRepo;
     late DeviceRepositoryImpl deviceRepo;
-    late IncidentRepositoryImpl incidentRepo;
     late MonitoringRepositoryImpl monitoringRepo;
     late ExcelInventoryService excelService;
 
@@ -40,16 +34,8 @@ void main() {
       await migrator.createAll();
       await db.ensureDefaultFactoriesSeeded();
 
-      auditRepo = AuditLogRepositoryImpl(db);
-      authRepo = AuthRepositoryImpl(db, auditRepo);
-      await authRepo.createInitialAdmin(
-        username: 'admin',
-        password: 'Password123',
-      );
-
       factoryRepo = FactoryRepositoryImpl(db);
-      deviceRepo = DeviceRepositoryImpl(db, auditRepo, authRepo);
-      incidentRepo = IncidentRepositoryImpl(db, auditRepo);
+      deviceRepo = DeviceRepositoryImpl(db);
       monitoringRepo = MonitoringRepositoryImpl(db);
       excelService = ExcelInventoryServiceImpl();
     });
@@ -644,23 +630,23 @@ void main() {
           ),
         );
 
-        // Add an incident for this device
-        final incRes = await incidentRepo.createIncident(
-          IncidentEntity(
-            id: 0,
-            deviceId: dev.id,
-            deviceName: dev.name,
-            deviceIp: dev.ip,
-            ownerName: dev.ownerName,
-            department: dev.department,
-            incidentType: IncidentTypeEnum.deviceDown,
-            severity: IncidentSeverityEnum.critical,
-            status: IncidentStatusEnum.active,
-            startedAt: DateTime.now(),
-            factoryId: 'unassigned',
-          ),
-        );
-        expect(incRes.isSuccess, isTrue);
+        // Add an incident for this device directly in database
+        await db
+            .into(db.incidents)
+            .insert(
+              IncidentsCompanion.insert(
+                deviceId: dev.id,
+                deviceName: dev.name,
+                deviceIp: dev.ip,
+                ownerName: dev.ownerName,
+                department: dev.department,
+                incidentType: 'deviceDown',
+                severity: const Value('critical'),
+                status: const Value('active'),
+                startedAt: Value(DateTime.now()),
+                factoryId: const Value('unassigned'),
+              ),
+            );
 
         // Reassign to BNF
         final reassignRes = await deviceRepo.reassignDevicesFactory(
@@ -677,9 +663,9 @@ void main() {
         expect(devAfter.department, equals('Infrastructure'));
 
         // Verify incidents still linked and updated to bnf
-        final incs = (await incidentRepo.getActiveIncidents(
-          factoryId: 'bnf',
-        )).value;
+        final incs = await (db.select(
+          db.incidents,
+        )..where((i) => i.deviceId.equals(dev.id))).get();
         expect(
           incs.any((i) => i.deviceId == dev.id && i.factoryId == 'bnf'),
           isTrue,

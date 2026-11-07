@@ -10,7 +10,6 @@ import 'core/di/injection.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/theme_cubit.dart';
-import 'features/auth/presentation/bloc/auth_cubit.dart';
 import 'features/devices/presentation/bloc/devices_cubit.dart';
 import 'features/factories/presentation/bloc/factory_cubit.dart';
 import 'features/infrastructure/presentation/bloc/infrastructure_cubit.dart';
@@ -18,7 +17,6 @@ import 'features/monitoring/data/datasources/monitoring_service_client.dart';
 import 'features/monitoring/presentation/bloc/monitoring_cubit.dart';
 import 'features/monitoring/presentation/services/monitoring_service_server.dart';
 import 'features/network_discovery/presentation/bloc/network_discovery_cubit.dart';
-import 'features/users/presentation/bloc/user_management_cubit.dart';
 
 void main(List<String> args) async {
   if (args.contains('--service')) {
@@ -168,12 +166,6 @@ class ITNetworkMonitorApp extends StatelessWidget {
       providers: [
         BlocProvider<FactoryCubit>(
           create: (_) => getIt<FactoryCubit>()..loadFactories(),
-        ),
-        BlocProvider<AuthCubit>.value(
-          value: getIt<AuthCubit>()..checkAuthStatus(),
-        ),
-        BlocProvider<UserManagementCubit>(
-          create: (_) => getIt<UserManagementCubit>(),
         ),
         BlocProvider<DevicesCubit>(
           create: (_) => getIt<DevicesCubit>()..loadDevices(),

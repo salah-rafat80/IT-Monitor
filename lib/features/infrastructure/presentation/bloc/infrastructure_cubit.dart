@@ -5,9 +5,6 @@ import 'package:injectable/injectable.dart';
 
 import '../../../../core/config/app_run_mode.dart';
 import '../../../../core/di/injection.dart';
-import '../../../incidents/domain/entities/incident_entity.dart';
-import '../../../incidents/domain/repositories/incident_repository.dart';
-import '../../../incidents/domain/services/incident_engine.dart';
 import '../../../monitoring/data/datasources/monitoring_service_client.dart';
 import '../../../monitoring/domain/entities/check_result.dart';
 import '../../../monitoring/domain/entities/device_status_entity.dart';
@@ -23,12 +20,9 @@ import 'infrastructure_state.dart';
 class InfrastructureCubit extends Cubit<InfrastructureState> {
   final InfrastructureRepository _infrastructureRepo;
   final MonitoringRepository _monitoringRepo;
-  final IncidentRepository _incidentRepo;
   final PingChecker _pingChecker;
-  final IncidentEngine _incidentEngine;
 
   StreamSubscription<List<UniFiDeviceEntity>>? _devicesSub;
-  StreamSubscription<List<IncidentEntity>>? _incidentsSub;
   StreamSubscription<List<DeviceStatusEntity>>? _statusesSub;
   String? _activeFactoryId;
   String? get activeFactoryId => _activeFactoryId;
@@ -36,17 +30,12 @@ class InfrastructureCubit extends Cubit<InfrastructureState> {
   InfrastructureCubit(
     this._infrastructureRepo,
     this._monitoringRepo,
-    this._incidentRepo,
     this._pingChecker,
-    this._incidentEngine,
   ) : super(const InfrastructureState()) {
     _devicesSub = _infrastructureRepo.watchInfrastructureDevices().listen((
       devices,
     ) {
       _onDevicesUpdated(devices);
-    });
-    _incidentsSub = _incidentRepo.watchActiveIncidents().listen((incidents) {
-      _onIncidentsUpdated(incidents);
     });
     _statusesSub = _monitoringRepo.watchAllDeviceStatuses().listen((statuses) {
       _onStatusesUpdated(statuses);
@@ -73,13 +62,6 @@ class InfrastructureCubit extends Cubit<InfrastructureState> {
           _onDevicesUpdated(devices);
         });
 
-    _incidentsSub?.cancel();
-    _incidentsSub = _incidentRepo
-        .watchActiveIncidents(factoryId: _activeFactoryId)
-        .listen((incidents) {
-          _onIncidentsUpdated(incidents);
-        });
-
     await _infrastructureRepo.bootstrapVerifiedAccessPoints();
     final res = await _infrastructureRepo.getInfrastructureDevices(
       factoryId: _activeFactoryId,
@@ -90,13 +72,6 @@ class InfrastructureCubit extends Cubit<InfrastructureState> {
       final devices = res.dataOrNull ?? [];
       await _onDevicesUpdated(devices);
       if (isClosed) return;
-      final activeIncRes = await _incidentRepo.getActiveIncidents(
-        factoryId: _activeFactoryId,
-      );
-      if (isClosed) return;
-      if (activeIncRes.isSuccess) {
-        _onIncidentsUpdated(activeIncRes.dataOrNull ?? []);
-      }
 
       // In development / standalone mode, probe initial reachability.
       // In production client mode, the authoritative service daemon manages probe schedules.
@@ -114,15 +89,6 @@ class InfrastructureCubit extends Cubit<InfrastructureState> {
         ),
       );
     }
-  }
-
-  void _onIncidentsUpdated(List<IncidentEntity> incidents) {
-    if (isClosed) return;
-    final incidentMap = <int, IncidentEntity>{};
-    for (final inc in incidents) {
-      incidentMap[inc.deviceId] = inc;
-    }
-    emit(state.copyWith(activeIncidents: incidentMap));
   }
 
   void _onStatusesUpdated(List<DeviceStatusEntity> allStatuses) {
@@ -236,21 +202,9 @@ class InfrastructureCubit extends Cubit<InfrastructureState> {
       );
 
       await _monitoringRepo.saveDeviceStatus(newStatus);
-      await _incidentEngine.processInfrastructureStatusChange(
-        device,
-        newStatus,
-      );
 
       final statusMap = Map<int, DeviceStatusEntity>.from(state.statuses);
       statusMap[virtualId] = newStatus;
-
-      final activeIncRes = await _incidentRepo.getActiveIncidents();
-      final incidentMap = <int, IncidentEntity>{};
-      if (activeIncRes.isSuccess) {
-        for (final inc in (activeIncRes.dataOrNull ?? [])) {
-          incidentMap[inc.deviceId] = inc;
-        }
-      }
 
       if (!isClosed) {
         final remainingChecking = Set<int>.from(state.checkingDeviceIds)
@@ -258,7 +212,6 @@ class InfrastructureCubit extends Cubit<InfrastructureState> {
         emit(
           state.copyWith(
             statuses: statusMap,
-            activeIncidents: incidentMap,
             checkingDeviceIds: remainingChecking,
             successMessage: checkResult.isSuccess
                 ? '${device.name} (${device.ip}) is UP (${checkResult.latencyMs} ms)'
@@ -399,7 +352,6 @@ class InfrastructureCubit extends Cubit<InfrastructureState> {
   @override
   Future<void> close() {
     _devicesSub?.cancel();
-    _incidentsSub?.cancel();
     _statusesSub?.cancel();
     return super.close();
   }

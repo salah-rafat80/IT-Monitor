@@ -5,7 +5,6 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:path_provider/path_provider.dart';
 
-import '../../../auth/presentation/bloc/auth_cubit.dart';
 import '../../../monitoring/domain/entities/device_status_entity.dart';
 import '../../../monitoring/presentation/bloc/monitoring_cubit.dart';
 import '../../../monitoring/presentation/widgets/device_status_chip.dart';
@@ -956,8 +955,7 @@ class _DevicesPageState extends State<DevicesPage> {
 
   @override
   Widget build(BuildContext context) {
-    final authState = context.watch<AuthCubit>().state;
-    final isAdmin = authState is AuthAuthenticated && authState.user.isAdmin;
+    final isAdmin = true;
 
     final infraState = context.watch<InfrastructureCubit>().state;
     final devicesState = context.watch<DevicesCubit>().state;
@@ -1280,13 +1278,11 @@ class _DevicesPageState extends State<DevicesPage> {
                                               cells: [
                                                 DataCell(
                                                   InkWell(
-                                                    onTap: isAdmin
-                                                        ? () =>
-                                                              _showAssignOwnerDialog(
-                                                                context,
-                                                                device,
-                                                              )
-                                                        : null,
+                                                    onTap: () =>
+                                                        _showAssignOwnerDialog(
+                                                          context,
+                                                          device,
+                                                        ),
                                                     borderRadius:
                                                         BorderRadius.circular(
                                                           4,
@@ -1471,18 +1467,14 @@ class _DevicesPageState extends State<DevicesPage> {
                                                 DataCell(
                                                   Switch(
                                                     value: device.isEnabled,
-                                                    onChanged: isAdmin
-                                                        ? (val) {
-                                                            context
-                                                                .read<
-                                                                  DevicesCubit
-                                                                >()
-                                                                .toggleMonitoring(
-                                                                  device.id,
-                                                                  val,
-                                                                );
-                                                          }
-                                                        : null,
+                                                    onChanged: (val) {
+                                                      context
+                                                          .read<DevicesCubit>()
+                                                          .toggleMonitoring(
+                                                            device.id,
+                                                            val,
+                                                          );
+                                                    },
                                                   ),
                                                 ),
                                                 DataCell(

@@ -12,9 +12,6 @@ import 'package:it_network_monitor/core/database/app_database.dart';
 import 'package:it_network_monitor/core/di/injection.dart';
 import 'package:it_network_monitor/core/errors/failures.dart';
 import 'package:it_network_monitor/core/utils/result.dart';
-import 'package:it_network_monitor/features/auth/domain/entities/audit_log_entity.dart';
-import 'package:it_network_monitor/features/auth/domain/entities/user_entity.dart';
-import 'package:it_network_monitor/features/auth/domain/repositories/auth_repository.dart';
 import 'package:it_network_monitor/features/devices/domain/entities/device_entity.dart';
 import 'package:it_network_monitor/features/devices/domain/entities/device_import_commit_payload.dart';
 import 'package:it_network_monitor/features/devices/domain/entities/inventory_import_preview.dart';
@@ -37,21 +34,6 @@ import 'package:it_network_monitor/features/topology/domain/services/enterprise_
 import 'package:it_network_monitor/features/topology/domain/services/topology_grouper.dart';
 import 'package:it_network_monitor/features/topology/presentation/bloc/topology_cubit.dart';
 import 'package:it_network_monitor/features/topology/presentation/bloc/topology_state.dart';
-import 'package:it_network_monitor/features/users/domain/repositories/audit_log_repository.dart';
-
-class StubAuditLogRepository implements AuditLogRepository {
-  @override
-  Future<Result<List<AuditLogEntity>>> getAuditLogs({int limit = 100}) async =>
-      Result.success(const []);
-
-  @override
-  Future<Result<void>> recordLog({
-    int? userId,
-    required String username,
-    required String action,
-    String? details,
-  }) async => Result.success(null);
-}
 
 class StubPingChecker implements PingChecker {
   bool respondSuccess = true;
@@ -317,30 +299,6 @@ class StubInfrastructureRepository implements InfrastructureRepository {
   @override
   Future<Result<void>> bootstrapVerifiedAccessPoints() async =>
       Result.success(null);
-}
-
-class StubAuthRepository implements AuthRepository {
-  @override
-  Future<Result<bool>> hasAdminAccount() async => Result.success(true);
-
-  @override
-  Future<Result<UserEntity>> createInitialAdmin({
-    required String username,
-    required String password,
-  }) async => Result.failure(const AuthFailure('Not implemented'));
-
-  @override
-  Future<Result<UserEntity?>> getCurrentUser() async =>
-      Result.failure(const AuthFailure('No active user'));
-
-  @override
-  Future<Result<UserEntity>> login({
-    required String username,
-    required String password,
-  }) async => Result.failure(const AuthFailure('Not implemented'));
-
-  @override
-  Future<Result<void>> logout() async => Result.success(null);
 }
 
 void main() {

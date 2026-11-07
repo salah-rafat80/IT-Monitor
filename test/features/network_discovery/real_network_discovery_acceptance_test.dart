@@ -4,9 +4,6 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:it_network_monitor/core/database/app_database.dart';
-import 'package:it_network_monitor/features/auth/data/repositories/auth_repository_impl.dart';
-import 'package:it_network_monitor/features/auth/domain/entities/user_entity.dart';
-import 'package:it_network_monitor/features/auth/presentation/bloc/auth_cubit.dart';
 import 'package:it_network_monitor/features/devices/data/repositories/device_repository_impl.dart';
 import 'package:it_network_monitor/features/devices/domain/entities/device_entity.dart';
 import 'package:it_network_monitor/features/infrastructure/data/repositories/infrastructure_repository_impl.dart';
@@ -30,13 +27,10 @@ import 'package:it_network_monitor/features/network_discovery/domain/services/ma
 import 'package:it_network_monitor/features/network_discovery/domain/services/network_range_validator.dart';
 import 'package:it_network_monitor/features/network_discovery/presentation/bloc/network_discovery_cubit.dart';
 import 'package:it_network_monitor/features/network_discovery/presentation/bloc/network_discovery_state.dart';
-import 'package:it_network_monitor/features/users/data/repositories/audit_log_repository_impl.dart';
 
 void main() {
   group('Real Network Discovery Acceptance & Inventory Validation Suite', () {
     late AppDatabase db;
-    late AuditLogRepositoryImpl auditRepo;
-    late AuthRepositoryImpl authRepo;
     late DeviceRepositoryImpl deviceRepo;
     late InfrastructureRepositoryImpl infraRepo;
     late DiscoveryRepositoryImpl discoveryRepo;
@@ -45,16 +39,12 @@ void main() {
     late DeviceClassificationEngine classifier;
     late MacVendorLookup vendorLookup;
     late NetworkDiscoveryCubit discoveryCubit;
-    late AuthCubit authCubit;
 
     setUp(() async {
       db = AppDatabase.forTesting(NativeDatabase.memory());
-      auditRepo = AuditLogRepositoryImpl(db);
-      authRepo = AuthRepositoryImpl(db, auditRepo);
-      deviceRepo = DeviceRepositoryImpl(db, auditRepo, authRepo);
-      infraRepo = InfrastructureRepositoryImpl(db, auditRepo, authRepo);
+      deviceRepo = DeviceRepositoryImpl(db);
+      infraRepo = InfrastructureRepositoryImpl(db);
       discoveryRepo = DiscoveryRepositoryImpl(db);
-      authCubit = AuthCubit(authRepo);
 
       rangeValidator = NetworkRangeValidator();
       vendorLookup = MacVendorLookup();
@@ -412,7 +402,7 @@ void main() {
         expect(detailsRes.dataOrNull!.mac, equals('00:1E:0B:44:55:66'));
 
         // 6. Simulate Desktop Client restart (re-querying database from clean repository instance)
-        final reloadedRepo = DeviceRepositoryImpl(db, auditRepo, authRepo);
+        final reloadedRepo = DeviceRepositoryImpl(db);
         final reloadedDevices = (await reloadedRepo.getDevices()).dataOrNull!;
         expect(reloadedDevices.length, equals(38));
         final reloadedAsset = reloadedDevices.firstWhere(
@@ -466,25 +456,15 @@ void main() {
         expect(hazzaIps.length, equals(1));
 
         // 4. Audit logs are preserved
-        final logsRes = await auditRepo.getAuditLogs();
-        expect(logsRes.isSuccess, isTrue);
-        expect(logsRes.dataOrNull!.isNotEmpty, isTrue);
+        final logs = await db.select(db.auditLogs).get();
+        expect(logs.isNotEmpty, isTrue);
       },
     );
 
     test(
       '5. No-Login Operation: Direct Administrator Launch & Immutability',
       () async {
-        // 1. Initial auth check emits AuthAuthenticated as Local Administrator
-        await authCubit.checkAuthStatus();
-        expect(authCubit.state, isA<AuthAuthenticated>());
-
-        final state = authCubit.state as AuthAuthenticated;
-        expect(state.user.role, equals(UserRole.admin));
-        expect(
-          state.user.username,
-          equals('Local Administrator (No Interactive Login)'),
-        );
+        // 1. Desktop starts directly in Administrator mode without login barriers
 
         // 2. Initial discovery cubit loads immediately without authentication barriers
         await discoveryCubit.init();

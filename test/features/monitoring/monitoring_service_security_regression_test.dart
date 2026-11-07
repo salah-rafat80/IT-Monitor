@@ -8,9 +8,6 @@ import 'package:path/path.dart' as p;
 import 'package:it_network_monitor/core/database/app_database.dart';
 import 'package:it_network_monitor/core/di/injection.dart';
 import 'package:it_network_monitor/core/utils/result.dart';
-import 'package:it_network_monitor/features/auth/domain/entities/user_entity.dart';
-import 'package:it_network_monitor/features/auth/domain/repositories/auth_repository.dart';
-import 'package:it_network_monitor/features/auth/presentation/bloc/auth_cubit.dart';
 import 'package:it_network_monitor/features/devices/domain/entities/device_entity.dart';
 import 'package:it_network_monitor/features/devices/domain/entities/device_import_commit_payload.dart';
 import 'package:it_network_monitor/features/devices/domain/entities/inventory_import_preview.dart';
@@ -20,32 +17,12 @@ import 'package:it_network_monitor/features/monitoring/domain/entities/device_st
 import 'package:it_network_monitor/features/monitoring/domain/repositories/monitoring_repository.dart';
 import 'package:it_network_monitor/core/config/app_run_mode.dart';
 import 'package:it_network_monitor/core/errors/failures.dart';
-import 'package:it_network_monitor/features/auth/domain/entities/audit_log_entity.dart';
 import 'package:it_network_monitor/features/devices/data/repositories/device_repository_impl.dart';
-import 'package:it_network_monitor/features/incidents/data/repositories/incident_repository_impl.dart';
-import 'package:it_network_monitor/features/incidents/domain/entities/incident_entity.dart';
 import 'package:it_network_monitor/features/infrastructure/data/repositories/infrastructure_repository_impl.dart';
 import 'package:it_network_monitor/features/monitoring/data/datasources/monitoring_service_client.dart';
 import 'package:it_network_monitor/features/monitoring/data/repositories/monitoring_repository_impl.dart';
 import 'package:it_network_monitor/features/monitoring/presentation/services/monitoring_service_server.dart';
 import 'package:it_network_monitor/features/network_discovery/data/repositories/discovery_repository_impl.dart';
-import 'package:it_network_monitor/features/reports/data/repositories/report_repository_impl.dart';
-import 'package:it_network_monitor/features/reports/domain/entities/report_entity.dart';
-import 'package:it_network_monitor/features/users/domain/repositories/audit_log_repository.dart';
-
-class FakeAuditLogRepository implements AuditLogRepository {
-  @override
-  Future<Result<List<AuditLogEntity>>> getAuditLogs({int limit = 100}) async =>
-      Result.success(const []);
-
-  @override
-  Future<Result<void>> recordLog({
-    int? userId,
-    required String username,
-    required String action,
-    String? details,
-  }) async => Result.success(null);
-}
 
 class FakeDeviceRepository implements DeviceRepository {
   @override
@@ -154,29 +131,6 @@ class FakeMonitoringRepository implements MonitoringRepository {
       const Stream.empty();
 }
 
-class FakeAuthRepository implements AuthRepository {
-  @override
-  Future<Result<bool>> hasAdminAccount() async => Result.success(true);
-
-  @override
-  Future<Result<UserEntity>> createInitialAdmin({
-    required String username,
-    required String password,
-  }) async => throw UnimplementedError();
-
-  @override
-  Future<Result<UserEntity?>> getCurrentUser() async => Result.success(null);
-
-  @override
-  Future<Result<UserEntity>> login({
-    required String username,
-    required String password,
-  }) async => throw UnimplementedError();
-
-  @override
-  Future<Result<void>> logout() async => Result.success(null);
-}
-
 void main() {
   late Directory tempDir;
   late MonitoringServiceServer server;
@@ -247,41 +201,30 @@ void main() {
         final tokenFile = File(server.trustedTokenFilePath!);
         expect(tokenFile.existsSync(), isTrue);
 
-        final authRepo = FakeAuthRepository();
-        final authCubit = AuthCubit(authRepo);
-
-        // When token is accessible and valid, AuthCubit emits AuthAuthenticated as localAdminUser
-        await authCubit.checkAuthStatus(tokenFile.path);
-
-        expect(authCubit.state, isA<AuthAuthenticated>());
-        final authState = authCubit.state as AuthAuthenticated;
-        expect(authState.user.isAdmin, isTrue);
+        final client = MonitoringServiceClient(
+          baseUrl: 'http://127.0.0.1:$serverPort',
+        );
+        final success = await client.authenticateWithTrustedLocalToken(
+          tokenFile.path,
+        );
+        expect(success.isSuccess, isTrue);
+        expect(client.isAuthenticated, isTrue);
         expect(
-          authState.user.username,
+          client.currentSession?.username,
           equals('Local Administrator (No Interactive Login)'),
         );
-        expect(authState.user.role, equals(UserRole.admin));
+        client.dispose();
       },
     );
 
     test(
       'Case 2: Unapproved standard user cannot read the trusted token (fails closed)',
       () async {
-        final authRepo = FakeAuthRepository();
-        final authCubit = AuthCubit(authRepo);
-
-        // Emulate an OS PathAccessException by pointing to an inaccessible path
-        // or a simulated permission denial
-        final states = <AuthState>[];
-        final sub = authCubit.stream.listen(states.add);
-
-        // Pointing to a path where read throws or access is denied
         final deniedPath = p.join(tempDir.path, 'inaccessible_token.token');
         final file = File(deniedPath);
         file.writeAsStringSync('forbidden_token_value_0123456789abcdef');
 
         if (Platform.isWindows) {
-          // Explicitly deny read permissions to current user to verify OS PathAccessException
           Process.runSync('icacls', [
             deniedPath,
             '/deny',
@@ -290,20 +233,17 @@ void main() {
         }
 
         try {
-          await authCubit.checkAuthStatus(deniedPath);
-          await Future.delayed(Duration.zero);
+          final client = MonitoringServiceClient(
+            baseUrl: 'http://127.0.0.1:$serverPort',
+          );
+          final res = await client.authenticateWithTrustedLocalToken(
+            deniedPath,
+          );
           if (Platform.isWindows) {
-            expect(
-              states.any((s) => s is AuthError),
-              isTrue,
-              reason: 'Unapproved user must receive AuthError on Access Denied',
-            );
-            expect(
-              authCubit.state,
-              isA<AuthUnauthenticated>(),
-              reason: 'Unapproved user must be unauthenticated',
-            );
+            expect(res.isFailure, isTrue);
+            expect(client.isAuthenticated, isFalse);
           }
+          client.dispose();
         } finally {
           if (Platform.isWindows) {
             Process.runSync('icacls', [
@@ -312,7 +252,6 @@ void main() {
               '${Platform.environment['USERNAME']}',
             ]);
           }
-          await sub.cancel();
         }
       },
     );
@@ -547,25 +486,33 @@ void main() {
     );
 
     test('Case 7: Missing or malformed token fails closed', () async {
-      final authRepo = FakeAuthRepository();
-      final authCubit = AuthCubit(authRepo);
+      final client = MonitoringServiceClient(
+        baseUrl: 'http://127.0.0.1:$serverPort',
+      );
 
       // 1. Missing token file
       final missingPath = p.join(tempDir.path, 'missing_non_existent.token');
-      await authCubit.checkAuthStatus(missingPath);
-      expect(authCubit.state, isA<AuthUnauthenticated>());
+      final res1 = await client.authenticateWithTrustedLocalToken(missingPath);
+      expect(res1.isFailure, isTrue);
+      expect(client.isAuthenticated, isFalse);
 
       // 2. Empty token file
       final emptyPath = p.join(tempDir.path, 'empty.token');
       File(emptyPath).writeAsStringSync('');
-      await authCubit.checkAuthStatus(emptyPath);
-      expect(authCubit.state, isA<AuthUnauthenticated>());
+      final res2 = await client.authenticateWithTrustedLocalToken(emptyPath);
+      expect(res2.isFailure, isTrue);
+      expect(client.isAuthenticated, isFalse);
 
       // 3. Malformed/short token file (< 32 chars)
       final malformedPath = p.join(tempDir.path, 'short.token');
       File(malformedPath).writeAsStringSync('short_token_123');
-      await authCubit.checkAuthStatus(malformedPath);
-      expect(authCubit.state, isA<AuthUnauthenticated>());
+      final res3 = await client.authenticateWithTrustedLocalToken(
+        malformedPath,
+      );
+      expect(res3.isFailure, isTrue);
+      expect(client.isAuthenticated, isFalse);
+
+      client.dispose();
     });
 
     test(
@@ -739,10 +686,8 @@ void main() {
         final sensitiveEndpoints = [
           '/api/devices',
           '/api/infrastructure/unifi/devices',
-          '/api/incidents',
           '/api/topology',
           '/api/settings',
-          '/api/reports/summary',
           '/api/discovery/config',
         ];
 
@@ -771,10 +716,13 @@ void main() {
         expect(tokenFile.existsSync(), isFalse);
 
         // Client trying to read token at this moment fails closed
-        final authRepo = FakeAuthRepository();
-        final authCubit = AuthCubit(authRepo);
-        await authCubit.checkAuthStatus(tokenPath);
-        expect(authCubit.state, isA<AuthUnauthenticated>());
+        final client = MonitoringServiceClient(
+          baseUrl: 'http://127.0.0.1:$serverPort',
+        );
+        final res = await client.authenticateWithTrustedLocalToken(tokenPath);
+        expect(res.isFailure, isTrue);
+        expect(client.isAuthenticated, isFalse);
+        client.dispose();
 
         // Server restarts and securely provisions a fresh token with correct ACLs
         final serverRestarted = MonitoringServiceServer(
@@ -960,16 +908,8 @@ void main() {
           expect(authRes.isSuccess, isTrue);
           expect(client.isAuthenticated, isTrue);
 
-          final fakeAuditRepo = FakeAuditLogRepository();
-          final fakeAuthRepo = FakeAuthRepository();
-
           // 1. DeviceRepositoryImpl delegates to authenticated MonitoringServiceClient
-          final devRepo = DeviceRepositoryImpl(
-            db,
-            fakeAuditRepo,
-            fakeAuthRepo,
-            client,
-          );
+          final devRepo = DeviceRepositoryImpl(db, client);
           final devicesRes = await devRepo.getDevices();
           expect(devicesRes.isSuccess, isTrue);
           expect(devicesRes.dataOrNull, isNotNull);
@@ -989,12 +929,7 @@ void main() {
           );
           expect(unauthRes.isFailure, isTrue);
           expect(unauthClient.isAuthenticated, isFalse);
-          final failingDevRepo = DeviceRepositoryImpl(
-            db,
-            fakeAuditRepo,
-            fakeAuthRepo,
-            unauthClient,
-          );
+          final failingDevRepo = DeviceRepositoryImpl(db, unauthClient);
           final failRes = await failingDevRepo.getDevices();
           expect(failRes.isFailure, isTrue);
           expect(failRes.failureOrNull, isA<NetworkFailure>());
@@ -1096,37 +1031,21 @@ void main() {
     );
 
     test(
-      'Case 18: In productionClient mode, unreachable service causes AuthCubit to emit AuthError and AuthUnauthenticated',
+      'Case 18: In productionClient mode, unreachable service causes authentication to fail closed',
       () async {
         final prevMode = AppConfig.runMode;
         try {
           AppConfig.runMode = AppRunMode.productionClient;
 
-          // 1. When no client is registered in getIt
-          if (getIt.isRegistered<MonitoringServiceClient>()) {
-            await getIt.unregister<MonitoringServiceClient>();
-          }
-          final authRepo = FakeAuthRepository();
-          final authCubit = AuthCubit(authRepo);
-
-          await authCubit.checkAuthStatus();
-          expect(authCubit.state, isA<AuthUnauthenticated>());
-          expect(
-            (authCubit.state as AuthUnauthenticated).hasAdminAccount,
-            isTrue,
-          );
-
-          // 2. When client points to unreachable port
           final deadClient = MonitoringServiceClient(
             baseUrl: 'http://127.0.0.1:65531',
           );
-          getIt.registerSingleton<MonitoringServiceClient>(deadClient);
-
-          await authCubit.checkAuthStatus(server.trustedTokenFilePath!);
-          expect(authCubit.state, isA<AuthUnauthenticated>());
+          final res = await deadClient.authenticateWithTrustedLocalToken(
+            server.trustedTokenFilePath!,
+          );
+          expect(res.isFailure, isTrue);
           expect(deadClient.isAuthenticated, isFalse);
-
-          await getIt.unregister<MonitoringServiceClient>();
+          expect(deadClient.currentSession, isNull);
           deadClient.dispose();
         } finally {
           AppConfig.runMode = prevMode;
@@ -1146,11 +1065,8 @@ void main() {
             await getIt.unregister<MonitoringServiceClient>();
           }
 
-          final fakeAuditRepo = FakeAuditLogRepository();
-          final fakeAuthRepo = FakeAuthRepository();
-
           // 1. DeviceRepositoryImpl
-          final devRepo = DeviceRepositoryImpl(db, fakeAuditRepo, fakeAuthRepo);
+          final devRepo = DeviceRepositoryImpl(db);
           final devRes = await devRepo.getDevices();
           expect(devRes.isFailure, isTrue);
           expect(devRes.failureOrNull, isA<NetworkFailure>());
@@ -1190,35 +1106,8 @@ void main() {
           expect(saveCheckRes.isFailure, isTrue);
           expect(saveCheckRes.failureOrNull, isA<NetworkFailure>());
 
-          // 3. IncidentRepositoryImpl
-          final incRepo = IncidentRepositoryImpl(db, fakeAuditRepo);
-          final incRes = await incRepo.getActiveIncidents();
-          expect(incRes.isFailure, isTrue);
-          expect(incRes.failureOrNull, isA<NetworkFailure>());
-
-          final createIncRes = await incRepo.createIncident(
-            IncidentEntity(
-              id: 999,
-              deviceId: 1,
-              deviceName: 'Node',
-              ownerName: 'Owner',
-              department: 'IT',
-              deviceIp: '192.168.27.99',
-              incidentType: IncidentTypeEnum.deviceDown,
-              severity: IncidentSeverityEnum.critical,
-              status: IncidentStatusEnum.active,
-              startedAt: DateTime.now(),
-            ),
-          );
-          expect(createIncRes.isFailure, isTrue);
-          expect(createIncRes.failureOrNull, isA<NetworkFailure>());
-
-          // 4. InfrastructureRepositoryImpl
-          final infraRepo = InfrastructureRepositoryImpl(
-            db,
-            fakeAuditRepo,
-            fakeAuthRepo,
-          );
+          // 3. InfrastructureRepositoryImpl
+          final infraRepo = InfrastructureRepositoryImpl(db);
           final infraRes = await infraRepo.getInfrastructureDevices();
           expect(infraRes.isFailure, isTrue);
           expect(infraRes.failureOrNull, isA<NetworkFailure>());
@@ -1227,7 +1116,7 @@ void main() {
           expect(bootInfraRes.isFailure, isTrue);
           expect(bootInfraRes.failureOrNull, isA<NetworkFailure>());
 
-          // 5. DiscoveryRepositoryImpl
+          // 4. DiscoveryRepositoryImpl
           final discRepo = DiscoveryRepositoryImpl(db);
           final discConfigRes = await discRepo.getConfig();
           expect(discConfigRes.isFailure, isTrue);
@@ -1245,23 +1134,9 @@ void main() {
           expect(getJobRes.isFailure, isTrue);
           expect(getJobRes.failureOrNull, isA<NetworkFailure>());
 
-          // 6. ReportRepositoryImpl
-          final reportRepo = ReportRepositoryImpl(db);
-          final repRes = await reportRepo.generateReport(
-            ReportPeriod.last24Hours,
-          );
-          expect(repRes.isFailure, isTrue);
-          expect(repRes.failureOrNull, isA<NetworkFailure>());
-
-          final purgeRes = await reportRepo.purgeCheckResultsOlderThanDays(30);
-          expect(purgeRes.isFailure, isTrue);
-          expect(purgeRes.failureOrNull, isA<NetworkFailure>());
-
           // Confirm local SQLite tables remain untouched (0 rows)
           final dbDevices = await db.select(db.devices).get();
           expect(dbDevices, isEmpty);
-          final dbIncidents = await db.select(db.incidents).get();
-          expect(dbIncidents, isEmpty);
           final dbChecks = await db.select(db.checkResults).get();
           expect(dbChecks, isEmpty);
         } finally {
@@ -1607,43 +1482,33 @@ void main() {
             provisionedToken: validRemoteToken,
           );
 
-          if (getIt.isRegistered<MonitoringServiceClient>()) {
-            getIt.unregister<MonitoringServiceClient>();
-          }
-          getIt.registerSingleton<MonitoringServiceClient>(remoteClient);
-
-          final authRepo = FakeAuthRepository();
-          final authCubit = AuthCubit(authRepo);
-
-          // 1. Initial checkAuthStatus with valid remote token and NO local token file
+          // 1. Initial authentication with valid remote token
           expect(remoteClient.isRemoteTokenMode, isTrue);
-          await authCubit.checkAuthStatus();
-
+          final authRes = await remoteClient.authenticateWithProvisionedToken(
+            validRemoteToken,
+          );
+          expect(authRes.isSuccess, isTrue);
           expect(remoteClient.isAuthenticated, isTrue);
-          expect(authCubit.state, isA<AuthAuthenticated>());
-          final authUser = (authCubit.state as AuthAuthenticated).user;
-          expect(authUser.username, contains('Local Administrator'));
-          expect(authUser.role, equals(UserRole.admin));
+          expect(
+            remoteClient.currentSession?.username,
+            contains('Local Administrator'),
+          );
 
-          // 2. Re-verifying session preserves remote authenticated session
-          await authCubit.checkAuthStatus();
-          expect(remoteClient.isAuthenticated, isTrue);
-          expect(authCubit.state, isA<AuthAuthenticated>());
-
-          // 3. Invalid remote token fails closed, clears session, and emits AuthUnauthenticated
+          // 2. Invalid remote token fails closed and clears session
           final invalidRemoteClient = MonitoringServiceClient(
             baseUrl: 'http://127.0.0.1:$serverPort',
             provisionedToken: 'invalid_remote_token_12345678901234567890',
           );
-          getIt.unregister<MonitoringServiceClient>();
-          getIt.registerSingleton<MonitoringServiceClient>(invalidRemoteClient);
-
-          final invalidAuthCubit = AuthCubit(authRepo);
-          await invalidAuthCubit.checkAuthStatus();
-
+          final invalidRes = await invalidRemoteClient
+              .authenticateWithProvisionedToken(
+                'invalid_remote_token_12345678901234567890',
+              );
+          expect(invalidRes.isFailure, isTrue);
           expect(invalidRemoteClient.isAuthenticated, isFalse);
           expect(invalidRemoteClient.currentSession, isNull);
-          expect(invalidAuthCubit.state, isA<AuthUnauthenticated>());
+
+          remoteClient.dispose();
+          invalidRemoteClient.dispose();
         } finally {
           AppConfig.runMode = prevMode;
         }
@@ -1668,28 +1533,25 @@ void main() {
             baseUrl: 'http://127.0.0.1:$serverPort',
           );
 
-          if (getIt.isRegistered<MonitoringServiceClient>()) {
-            getIt.unregister<MonitoringServiceClient>();
-          }
-          getIt.registerSingleton<MonitoringServiceClient>(localClient);
-
-          final authRepo = FakeAuthRepository();
-          final authCubit = AuthCubit(authRepo);
-
           // 1. Valid local token file
-          await authCubit.checkAuthStatus(tokenFile.path);
+          final ok = await localClient.authenticateWithTrustedLocalToken(
+            tokenFile.path,
+          );
+          expect(ok.isSuccess, isTrue);
           expect(localClient.isAuthenticated, isTrue);
-          expect(authCubit.state, isA<AuthAuthenticated>());
 
-          // 2. Corrupt/missing local token file clears session and emits unauthenticated
+          // 2. Corrupt/missing local token file clears session
           final corruptTokenFile = File(p.join(tempDir.path, 'corrupt.token'));
           corruptTokenFile.writeAsStringSync('short');
 
-          final failCubit = AuthCubit(authRepo);
-          await failCubit.checkAuthStatus(corruptTokenFile.path);
+          final failOk = await localClient.authenticateWithTrustedLocalToken(
+            corruptTokenFile.path,
+          );
+          expect(failOk.isFailure, isTrue);
           expect(localClient.isAuthenticated, isFalse);
           expect(localClient.currentSession, isNull);
-          expect(failCubit.state, isA<AuthUnauthenticated>());
+
+          localClient.dispose();
         } finally {
           AppConfig.runMode = prevMode;
           try {

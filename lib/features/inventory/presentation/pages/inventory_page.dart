@@ -8,8 +8,6 @@ import 'package:path_provider/path_provider.dart';
 
 import '../../../../core/di/injection.dart';
 import '../../../../core/utils/ipv4_utils.dart';
-import '../../../auth/domain/entities/user_entity.dart';
-import '../../../auth/presentation/bloc/auth_cubit.dart';
 import '../../../devices/domain/entities/device_entity.dart';
 import '../../../devices/presentation/bloc/devices_cubit.dart';
 import '../../../factories/presentation/bloc/factory_cubit.dart';
@@ -936,9 +934,7 @@ class _InventoryPageState extends State<InventoryPage>
     final activeFactoryCode = activeFactory?.code ?? 'ALL';
     final isConsolidated = activeFactory == null;
 
-    final authState = context.watch<AuthCubit>().state;
-    final currentUser = authState is AuthAuthenticated ? authState.user : null;
-    final isAdmin = currentUser?.role == UserRole.admin;
+    final isAdmin = true;
 
     final factories = factoryState.factories
         .where((f) => f.id != 'unassigned' && f.isActive)
@@ -1027,26 +1023,16 @@ class _InventoryPageState extends State<InventoryPage>
                         ],
                       );
 
-                      final recoveryButton = isAdmin
-                          ? OutlinedButton.icon(
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: Colors.amber,
-                                side: const BorderSide(color: Colors.amber),
-                              ),
-                              onPressed: () => setState(
-                                () => _isShowingUnassignedRecovery = true,
-                              ),
-                              icon: const Icon(
-                                Icons.inventory_2_outlined,
-                                size: 16,
-                              ),
-                              label: const Text('Legacy Unassigned Recovery'),
-                            )
-                          : null;
-
-                      if (recoveryButton == null) {
-                        return tabs;
-                      }
+                      final recoveryButton = OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.amber,
+                          side: const BorderSide(color: Colors.amber),
+                        ),
+                        onPressed: () =>
+                            setState(() => _isShowingUnassignedRecovery = true),
+                        icon: const Icon(Icons.inventory_2_outlined, size: 16),
+                        label: const Text('Legacy Unassigned Recovery'),
+                      );
 
                       final isCompact = constraints.maxWidth < 840;
                       if (isCompact) {

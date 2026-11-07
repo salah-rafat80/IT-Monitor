@@ -250,7 +250,7 @@ class _EnterpriseTopologyCanvasState extends State<EnterpriseTopologyCanvas>
                           Positioned.fill(
                             child: CustomPaint(
                               size: effectiveCanvasSize,
-                              painter: _EnterpriseLinksPainter(
+                              painter: EnterpriseLinksPainter(
                                 nodes: allNodes,
                                 links: links,
                                 selectedLinkId: _selectedLinkId,
@@ -477,18 +477,98 @@ class _EnterpriseGridPainter extends CustomPainter {
 }
 
 /// Custom painter for smooth bezier connection paths and port interface badges.
-class _EnterpriseLinksPainter extends CustomPainter {
+@visibleForTesting
+class EnterpriseLinksPainter extends CustomPainter {
   final Map<String, EnterpriseTopologyNode> nodes;
   final List<EnterpriseTopologyLink> links;
   final String? selectedLinkId;
   final double canvasPadding;
 
-  _EnterpriseLinksPainter({
+  EnterpriseLinksPainter({
     required this.nodes,
     required this.links,
     this.selectedLinkId,
     this.canvasPadding = 0.0,
   });
+
+  /// Deterministically resolves link color based on strict precedence rules:
+  /// 1. Inferred links, WAN links, or links connecting to inferred/WAN nodes MUST strictly render Unknown.
+  /// 2. Down / Unreachable: Verified physical link with DOWN or UNREACHABLE endpoint must render Red.
+  /// 3. Stale links must retain their Stale visual state.
+  /// 4. Unknown endpoint on verified physical link (when not Down or Stale) must render Unknown.
+  /// 5. Amber: Verified physical links become Amber when consecutive probe failures > 0 or degraded.
+  /// 6. Green: Verified physical links become Green ONLY when both endpoints are UP and have zero consecutive failures.
+  static Color resolveLinkColor({
+    required EnterpriseTopologyNode fromNode,
+    required EnterpriseTopologyNode toNode,
+    required EnterpriseTopologyLink link,
+  }) {
+    final isInferredOrWan =
+        link.isInferred ||
+        fromNode.isInferred ||
+        toNode.isInferred ||
+        fromNode.category == TopologyDeviceCategory.wan ||
+        toNode.category == TopologyDeviceCategory.wan;
+
+    final isDown =
+        !isInferredOrWan &&
+        (link.status == DeviceStatusEnum.down ||
+            link.status == DeviceStatusEnum.unreachable ||
+            fromNode.status == DeviceStatusEnum.down ||
+            fromNode.status == DeviceStatusEnum.unreachable ||
+            toNode.status == DeviceStatusEnum.down ||
+            toNode.status == DeviceStatusEnum.unreachable);
+
+    final isStale =
+        !isInferredOrWan &&
+        !isDown &&
+        (link.status == DeviceStatusEnum.stale ||
+            fromNode.status == DeviceStatusEnum.stale ||
+            toNode.status == DeviceStatusEnum.stale);
+
+    final isUnknown =
+        isInferredOrWan ||
+        link.status == DeviceStatusEnum.unknown ||
+        fromNode.status == DeviceStatusEnum.unknown ||
+        toNode.status == DeviceStatusEnum.unknown;
+
+    final isAmber =
+        !isInferredOrWan &&
+        !isDown &&
+        !isStale &&
+        !isUnknown &&
+        (link.status == DeviceStatusEnum.degraded ||
+            fromNode.consecutiveFailures > 0 ||
+            toNode.consecutiveFailures > 0 ||
+            fromNode.status == DeviceStatusEnum.degraded ||
+            toNode.status == DeviceStatusEnum.degraded);
+
+    final isGreen =
+        !isInferredOrWan &&
+        !isDown &&
+        !isStale &&
+        !isUnknown &&
+        !isAmber &&
+        link.status == DeviceStatusEnum.up &&
+        fromNode.status == DeviceStatusEnum.up &&
+        toNode.status == DeviceStatusEnum.up &&
+        fromNode.consecutiveFailures == 0 &&
+        toNode.consecutiveFailures == 0;
+
+    if (isInferredOrWan) {
+      return const Color(0xFF64748B); // Slate 500 / Unknown
+    } else if (isDown) {
+      return const Color(0xFFEF4444); // Alert red
+    } else if (isStale) {
+      return const Color(0xFFEAB308); // Stale Amber/Yellow
+    } else if (isAmber) {
+      return const Color(0xFFF59E0B); // Amber warning
+    } else if (isGreen) {
+      return const Color(0xFF10B981); // Enterprise Emerald green
+    } else {
+      return const Color(0xFF64748B); // Slate 500 / Unknown
+    }
+  }
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -504,75 +584,11 @@ class _EnterpriseLinksPainter extends CustomPainter {
       final start = fromNode.rightAnchor + Offset(canvasPadding, canvasPadding);
       final end = toNode.leftAnchor + Offset(canvasPadding, canvasPadding);
 
-      // Determine path color based on strict precedence rules:
-      // 1. Inferred links, WAN links, or links connecting to inferred/WAN nodes MUST strictly render Unknown.
-      // Do not infer WAN connectivity from LAN gateway Ping results.
-      // Inferred links must never turn Amber or Green.
-      final isUnverifiedOrWan =
-          link.isInferred ||
-          fromNode.isInferred ||
-          toNode.isInferred ||
-          fromNode.category == TopologyDeviceCategory.wan ||
-          toNode.category == TopologyDeviceCategory.wan ||
-          link.status == DeviceStatusEnum.unknown ||
-          fromNode.status == DeviceStatusEnum.unknown ||
-          toNode.status == DeviceStatusEnum.unknown;
-
-      // 2. Down / Unreachable
-      final isDown =
-          !isUnverifiedOrWan &&
-          (link.status == DeviceStatusEnum.down ||
-              link.status == DeviceStatusEnum.unreachable ||
-              fromNode.status == DeviceStatusEnum.down ||
-              fromNode.status == DeviceStatusEnum.unreachable ||
-              toNode.status == DeviceStatusEnum.down ||
-              toNode.status == DeviceStatusEnum.unreachable);
-
-      // 3. Stale links must retain their Stale visual state.
-      final isStale =
-          !isUnverifiedOrWan &&
-          !isDown &&
-          (link.status == DeviceStatusEnum.stale ||
-              fromNode.status == DeviceStatusEnum.stale ||
-              toNode.status == DeviceStatusEnum.stale);
-
-      // 4. Amber: Only verified physical links may become Amber because an endpoint has consecutive probe failures.
-      final isAmber =
-          !isUnverifiedOrWan &&
-          !isDown &&
-          !isStale &&
-          (link.status == DeviceStatusEnum.degraded ||
-              fromNode.consecutiveFailures > 0 ||
-              toNode.consecutiveFailures > 0 ||
-              fromNode.status == DeviceStatusEnum.degraded ||
-              toNode.status == DeviceStatusEnum.degraded);
-
-      // 5. Green: Verified physical links become Green ONLY when both endpoints are UP and have zero consecutive failures.
-      final isGreen =
-          !isUnverifiedOrWan &&
-          !isDown &&
-          !isStale &&
-          !isAmber &&
-          link.status == DeviceStatusEnum.up &&
-          fromNode.status == DeviceStatusEnum.up &&
-          toNode.status == DeviceStatusEnum.up &&
-          fromNode.consecutiveFailures == 0 &&
-          toNode.consecutiveFailures == 0;
-
-      final Color linkColor;
-      if (isUnverifiedOrWan) {
-        linkColor = const Color(0xFF64748B); // Slate 500 / Unknown
-      } else if (isDown) {
-        linkColor = const Color(0xFFEF4444); // Alert red
-      } else if (isStale) {
-        linkColor = const Color(0xFFEAB308); // Stale Amber/Yellow
-      } else if (isAmber) {
-        linkColor = const Color(0xFFF59E0B); // Amber warning
-      } else if (isGreen) {
-        linkColor = const Color(0xFF10B981); // Enterprise Emerald green
-      } else {
-        linkColor = const Color(0xFF64748B); // Slate 500 / Unknown
-      }
+      final linkColor = resolveLinkColor(
+        fromNode: fromNode,
+        toNode: toNode,
+        link: link,
+      );
 
       linePaint
         ..color = linkColor.withValues(
@@ -683,7 +699,7 @@ class _EnterpriseLinksPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _EnterpriseLinksPainter oldDelegate) {
+  bool shouldRepaint(covariant EnterpriseLinksPainter oldDelegate) {
     return oldDelegate.links != links ||
         oldDelegate.nodes != nodes ||
         oldDelegate.selectedLinkId != selectedLinkId;

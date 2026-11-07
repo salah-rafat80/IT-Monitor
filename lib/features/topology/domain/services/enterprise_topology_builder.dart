@@ -74,6 +74,7 @@ class EnterpriseTopologyBuilder {
           consecutiveFailures: ent?.consecutiveFailures ?? 0,
           size: const Size(168, 60),
           failureThreshold: failureThreshold,
+          virtualStatusId: virtualId,
         );
         gatewayIds.add(id);
       }
@@ -107,6 +108,7 @@ class EnterpriseTopologyBuilder {
         consecutiveFailures: ent?.consecutiveFailures ?? 0,
         size: const Size(168, 60),
         failureThreshold: failureThreshold,
+        virtualStatusId: 50001,
       );
       gatewayIds.add(gwRnfId);
     }
@@ -134,6 +136,7 @@ class EnterpriseTopologyBuilder {
         consecutiveFailures: ent?.consecutiveFailures ?? 0,
         size: const Size(168, 60),
         failureThreshold: failureThreshold,
+        virtualStatusId: 50002,
       );
       gatewayIds.add(gwBnfId);
     }
@@ -268,6 +271,7 @@ class EnterpriseTopologyBuilder {
           consecutiveFailures: ent?.consecutiveFailures ?? 0,
           size: const Size(168, 60),
           failureThreshold: failureThreshold,
+          virtualStatusId: virtualId,
         );
 
         if (upstreamGwId != null) {
@@ -361,6 +365,7 @@ class EnterpriseTopologyBuilder {
           consecutiveFailures: ent?.consecutiveFailures ?? 0,
           size: const Size(168, 60),
           failureThreshold: failureThreshold,
+          virtualStatusId: virtualId,
         );
         final gwId = gatewayIds.firstOrNull;
         if (gwId != null) {
@@ -441,6 +446,7 @@ class EnterpriseTopologyBuilder {
         consecutiveFailures: ent?.consecutiveFailures ?? 0,
         size: const Size(168, 60),
         failureThreshold: failureThreshold,
+        virtualStatusId: 10000 + ap.id,
       );
 
       if (parentSwId != null) {
@@ -530,6 +536,7 @@ class EnterpriseTopologyBuilder {
           isInferred: false,
           deviceRef: md.device,
           size: const Size(168, 60),
+          virtualStatusId: md.device.id,
         );
 
         if (swId != null) {

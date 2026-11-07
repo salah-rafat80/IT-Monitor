@@ -23,6 +23,7 @@ class MonitoringDashboardCubit extends Cubit<MonitoringDashboardState> {
   StreamSubscription<List<DeviceStatusEntity>>? _statusSubscription;
   StreamSubscription<List<IncidentEntity>>? _incidentSubscription;
   StreamSubscription<MonitoringConfig>? _configSubscription;
+  MonitoringConfig? _pendingConfig;
   List<DeviceEntity> _cachedDevices = [];
   Map<int, DeviceStatusEntity> _cachedStatusMap = {};
   List<IncidentEntity> _cachedRealIncidents = [];
@@ -36,8 +37,13 @@ class MonitoringDashboardCubit extends Cubit<MonitoringDashboardState> {
     this._incidentRepo,
   ]) : super(const MonitoringDashboardLoading()) {
     try {
-      _configSubscription = _scheduler.configUpdatesStream.listen((_) {
-        _rebuildAndEmitLoaded();
+      _configSubscription = _scheduler.configUpdatesStream.listen((cfg) {
+        _pendingConfig = cfg;
+        // Configuration stream updates must not emit an empty Loaded state while
+        // dashboard initialization is still running.
+        if (state is MonitoringDashboardLoaded) {
+          _rebuildAndEmitLoaded();
+        }
       });
     } catch (_) {
       // Gracefully handle mocked schedulers in tests that don't stub configUpdatesStream
@@ -264,8 +270,11 @@ class MonitoringDashboardCubit extends Cubit<MonitoringDashboardState> {
   }
 
   void updateConfig(MonitoringConfig newConfig) {
+    _pendingConfig = newConfig;
     _scheduler.updateConfig(newConfig);
-    _rebuildAndEmitLoaded();
+    if (state is MonitoringDashboardLoaded) {
+      _rebuildAndEmitLoaded();
+    }
   }
 
   void toggleEngine() {
@@ -294,7 +303,12 @@ class MonitoringDashboardCubit extends Cubit<MonitoringDashboardState> {
 
   void _rebuildAndEmitLoaded() {
     if (isClosed) return;
-    final activeConfig = _scheduler.config;
+    if (state is! MonitoringDashboardLoaded && _cachedDevices.isEmpty) {
+      // Configuration stream updates must not emit an empty Loaded state while
+      // dashboard initialization is still running.
+      return;
+    }
+    final activeConfig = _pendingConfig ?? _scheduler.config;
     final allMonitoredDevices = _cachedDevices.map((d) {
       final status = _cachedStatusMap[d.id] ?? DeviceStatusEntity.initial(d.id);
       final syncedStatus = status.copyWith(
@@ -334,7 +348,8 @@ class MonitoringDashboardCubit extends Cubit<MonitoringDashboardState> {
           maintenance++;
           break;
         case DeviceStatusEnum.unreachable:
-          unknown++;
+          down++;
+          incidents.add(md);
           break;
       }
     }
@@ -354,14 +369,14 @@ class MonitoringDashboardCubit extends Cubit<MonitoringDashboardState> {
             realActiveIncidents: _cachedRealIncidents,
             isEngineRunning: _scheduler.isRunning,
             isEnginePaused: _scheduler.isPaused,
-            config: _scheduler.config,
+            config: activeConfig,
           )
         : MonitoringDashboardLoaded(
             allDevices: allMonitoredDevices,
             filteredDevices: allMonitoredDevices,
             isEngineRunning: _scheduler.isRunning,
             isEnginePaused: _scheduler.isPaused,
-            config: _scheduler.config,
+            config: activeConfig,
             totalCount: allMonitoredDevices.length,
             upCount: up,
             degradedCount: degraded,

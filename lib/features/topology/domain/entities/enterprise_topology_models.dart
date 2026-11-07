@@ -102,6 +102,7 @@ class EnterpriseTopologyNode extends Equatable {
   final DeviceEntity? deviceRef;
   final UniFiDeviceEntity? infraRef;
   final int failureThreshold;
+  final int? virtualStatusId;
 
   const EnterpriseTopologyNode({
     required this.id,
@@ -132,6 +133,7 @@ class EnterpriseTopologyNode extends Equatable {
     this.deviceRef,
     this.infraRef,
     this.failureThreshold = 3,
+    this.virtualStatusId,
   });
 
   EnterpriseTopologyNode copyWith({
@@ -163,6 +165,7 @@ class EnterpriseTopologyNode extends Equatable {
     DeviceEntity? deviceRef,
     UniFiDeviceEntity? infraRef,
     int? failureThreshold,
+    int? virtualStatusId,
   }) {
     return EnterpriseTopologyNode(
       id: id ?? this.id,
@@ -195,6 +198,7 @@ class EnterpriseTopologyNode extends Equatable {
       deviceRef: deviceRef ?? this.deviceRef,
       infraRef: infraRef ?? this.infraRef,
       failureThreshold: failureThreshold ?? this.failureThreshold,
+      virtualStatusId: virtualStatusId ?? this.virtualStatusId,
     );
   }
 
@@ -247,6 +251,7 @@ class EnterpriseTopologyNode extends Equatable {
     position,
     size,
     failureThreshold,
+    virtualStatusId,
   ];
 }
 
@@ -437,11 +442,12 @@ class EnterpriseTopologyGraph extends Equatable {
     int? freshnessWindowSeconds,
     int? failureThreshold,
   }) {
-    final updatedNodes = <String, EnterpriseTopologyNode>{};
-    for (final entry in nodes.entries) {
-      final node = entry.value;
+    EnterpriseTopologyNode resolveNodeStatus(EnterpriseTopologyNode node) {
       DeviceStatusEntity? statusEnt;
-      if (node.deviceRef != null &&
+      if (node.virtualStatusId != null &&
+          latestStatusMap.containsKey(node.virtualStatusId!)) {
+        statusEnt = latestStatusMap[node.virtualStatusId!];
+      } else if (node.deviceRef != null &&
           latestStatusMap.containsKey(node.deviceRef!.id)) {
         statusEnt = latestStatusMap[node.deviceRef!.id];
       } else if (node.infraRef != null) {
@@ -462,7 +468,7 @@ class EnterpriseTopologyGraph extends Equatable {
           now: now,
           freshnessWindowSeconds: freshnessWindowSeconds,
         );
-        updatedNodes[entry.key] = node.copyWith(
+        return node.copyWith(
           status: effStatus,
           lastLatencyMs: statusEnt.lastLatencyMs,
           lastSuccessfulLatencyMs: statusEnt.lastSuccessfulLatencyMs,
@@ -473,10 +479,21 @@ class EnterpriseTopologyGraph extends Equatable {
           lastSuccessfulCheckAt: statusEnt.lastSeen,
         );
       } else {
-        updatedNodes[entry.key] = failureThreshold != null
+        return failureThreshold != null
             ? node.copyWith(failureThreshold: failureThreshold)
             : node;
       }
+    }
+
+    final updatedNodes = <String, EnterpriseTopologyNode>{};
+    for (final entry in nodes.entries) {
+      updatedNodes[entry.key] = resolveNodeStatus(entry.value);
+    }
+
+    // Synchronize live statuses for unlinked nodes as well as linked nodes.
+    final updatedUnlinked = <EnterpriseTopologyNode>[];
+    for (final unlinked in unlinkedNodes) {
+      updatedUnlinked.add(resolveNodeStatus(unlinked));
     }
 
     // Actual WAN / Internet status remains strictly Unknown until externally verified.
@@ -547,11 +564,12 @@ class EnterpriseTopologyGraph extends Equatable {
       }
     }
 
-    // Recompute category stats strictly from registered assets (exclude inferred & WAN)
+    // Recompute category stats strictly from registered assets (exclude inferred & WAN).
+    // Ensure topology metrics consistently account for registered devices without double counting.
     final Map<TopologyDeviceCategory, CategoryStatusCount> stats = {};
-    for (final n in updatedNodes.values) {
+    void recordStats(EnterpriseTopologyNode n) {
       if (n.isInferred || n.category == TopologyDeviceCategory.wan) {
-        continue;
+        return;
       }
       final current = stats[n.category] ?? const CategoryStatusCount();
       final isOnline = n.status == DeviceStatusEnum.up;
@@ -572,10 +590,22 @@ class EnterpriseTopologyGraph extends Equatable {
       );
     }
 
+    final accountedNodeIds = <String>{};
+    for (final n in updatedNodes.values) {
+      if (accountedNodeIds.add(n.id)) {
+        recordStats(n);
+      }
+    }
+    for (final n in updatedUnlinked) {
+      if (accountedNodeIds.add(n.id)) {
+        recordStats(n);
+      }
+    }
+
     return EnterpriseTopologyGraph(
       nodes: updatedNodes,
       links: updatedLinks,
-      unlinkedNodes: unlinkedNodes,
+      unlinkedNodes: updatedUnlinked,
       canvasSize: canvasSize,
       categoryStats: stats,
     );

@@ -84,8 +84,17 @@ class MonitoringScheduler {
   List<String> get diagnosticLogs => List.unmodifiable(_diagnosticLogs);
 
   void updateConfig(MonitoringConfig newConfig) {
+    final intervalChanged =
+        _config.checkIntervalSeconds != newConfig.checkIntervalSeconds;
     _config = newConfig;
     _concurrencyLimiter.updatePermits(newConfig.maxConcurrentChecks);
+    if (intervalChanged && _isRunning) {
+      _schedulerLoopTimer?.cancel();
+      _schedulerLoopTimer = Timer.periodic(
+        Duration(seconds: _config.checkIntervalSeconds),
+        (_) => _executeMonitoringCycle(),
+      );
+    }
     if (!_configUpdateController.isClosed) {
       _configUpdateController.add(newConfig);
     }

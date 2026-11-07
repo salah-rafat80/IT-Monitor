@@ -24,6 +24,7 @@ import 'package:it_network_monitor/features/topology/domain/services/topology_gr
 import 'package:it_network_monitor/features/topology/presentation/bloc/topology_cubit.dart';
 import 'package:it_network_monitor/features/topology/presentation/bloc/topology_state.dart';
 import 'package:it_network_monitor/features/topology/presentation/widgets/enterprise_device_card.dart';
+import 'package:it_network_monitor/features/topology/presentation/widgets/enterprise_topology_canvas.dart';
 
 class MockDeviceRepository extends Mock implements DeviceRepository {}
 
@@ -1420,5 +1421,544 @@ void main() {
         await statusController.close();
       },
     );
+
+    group('Stabilization Phase 0 Review Findings', () {
+      test(
+        '8a. Canvas link painter paints verified physical link Red when one endpoint is UNKNOWN and other is DOWN/UNREACHABLE',
+        () {
+          const fromNode = EnterpriseTopologyNode(
+            id: 'sw_1',
+            title: 'Switch 1',
+            category: TopologyDeviceCategory.switchDevice,
+            status: DeviceStatusEnum.unknown,
+            level: 2,
+          );
+          const toNodeDown = EnterpriseTopologyNode(
+            id: 'dev_1',
+            title: 'Dev 1',
+            category: TopologyDeviceCategory.pc,
+            status: DeviceStatusEnum.down,
+            level: 4,
+          );
+          const toNodeUnreachable = EnterpriseTopologyNode(
+            id: 'dev_2',
+            title: 'Dev 2',
+            category: TopologyDeviceCategory.pc,
+            status: DeviceStatusEnum.unreachable,
+            level: 4,
+          );
+          const link = EnterpriseTopologyLink(
+            id: 'l_1',
+            fromNodeId: 'sw_1',
+            toNodeId: 'dev_1',
+            isInferred: false,
+          );
+
+          final colorDown = EnterpriseLinksPainter.resolveLinkColor(
+            fromNode: fromNode,
+            toNode: toNodeDown,
+            link: link,
+          );
+          expect(
+            colorDown,
+            const Color(0xFFEF4444),
+            reason:
+                'DOWN endpoint must turn physical link Red despite UNKNOWN peer',
+          );
+
+          final colorUnreachable = EnterpriseLinksPainter.resolveLinkColor(
+            fromNode: fromNode,
+            toNode: toNodeUnreachable,
+            link: link,
+          );
+          expect(
+            colorUnreachable,
+            const Color(0xFFEF4444),
+            reason:
+                'UNREACHABLE endpoint must turn physical link Red despite UNKNOWN peer',
+          );
+        },
+      );
+
+      test(
+        '8b. Canvas link painter keeps Inferred and WAN links Unknown (Slate) even when endpoint is DOWN',
+        () {
+          const fromNode = EnterpriseTopologyNode(
+            id: 'sw_inferred',
+            title: 'Logical Switch',
+            category: TopologyDeviceCategory.switchDevice,
+            status: DeviceStatusEnum.unknown,
+            level: 2,
+            isInferred: true,
+          );
+          const toNodeDown = EnterpriseTopologyNode(
+            id: 'dev_1',
+            title: 'Dev 1',
+            category: TopologyDeviceCategory.pc,
+            status: DeviceStatusEnum.down,
+            level: 4,
+          );
+          const inferredLink = EnterpriseTopologyLink(
+            id: 'l_inferred',
+            fromNodeId: 'sw_inferred',
+            toNodeId: 'dev_1',
+            isInferred: true,
+          );
+          final colorInferred = EnterpriseLinksPainter.resolveLinkColor(
+            fromNode: fromNode,
+            toNode: toNodeDown,
+            link: inferredLink,
+          );
+          expect(
+            colorInferred,
+            const Color(0xFF64748B),
+            reason: 'Inferred link must always remain Slate Unknown',
+          );
+
+          const wanNode = EnterpriseTopologyNode(
+            id: 'wan_internet',
+            title: 'WAN',
+            category: TopologyDeviceCategory.wan,
+            status: DeviceStatusEnum.unknown,
+            level: 0,
+          );
+          const gwNode = EnterpriseTopologyNode(
+            id: 'gw_1',
+            title: 'Gateway',
+            category: TopologyDeviceCategory.gateway,
+            status: DeviceStatusEnum.down,
+            level: 1,
+          );
+          const wanLink = EnterpriseTopologyLink(
+            id: 'l_wan',
+            fromNodeId: 'wan_internet',
+            toNodeId: 'gw_1',
+            isInferred: false,
+          );
+          final colorWan = EnterpriseLinksPainter.resolveLinkColor(
+            fromNode: wanNode,
+            toNode: gwNode,
+            link: wanLink,
+          );
+          expect(
+            colorWan,
+            const Color(0xFF64748B),
+            reason: 'WAN link must strictly remain Slate Unknown',
+          );
+        },
+      );
+
+      test(
+        '8c. MonitoringDashboardCubit config update does not emit empty Loaded state during initialization',
+        () async {
+          final mockDevRepo = MockDeviceRepository();
+          final mockMonRepo = MockMonitoringRepository();
+          final configController =
+              StreamController<MonitoringConfig>.broadcast();
+          final statusController =
+              StreamController<List<DeviceStatusEntity>>.broadcast();
+
+          final scheduler = MonitoringScheduler(
+            mockDevRepo,
+            mockMonRepo,
+            MockPingChecker(),
+          );
+          scheduler.updateConfig(const MonitoringConfig(failureThreshold: 3));
+
+          when(
+            () => mockMonRepo.watchAllDeviceStatuses(),
+          ).thenAnswer((_) => statusController.stream);
+
+          final dashboardCubit = MonitoringDashboardCubit(
+            mockDevRepo,
+            mockMonRepo,
+            scheduler,
+          );
+
+          // Before calling initDashboard, state is Loading
+          expect(dashboardCubit.state, isA<MonitoringDashboardLoading>());
+
+          // Simulating config update stream emitting while cubit is still in Loading state
+          dashboardCubit.updateConfig(
+            const MonitoringConfig(failureThreshold: 7),
+          );
+          await pumpEventQueue();
+
+          // Cubit must NOT emit empty Loaded state
+          expect(dashboardCubit.state, isA<MonitoringDashboardLoading>());
+
+          await dashboardCubit.close();
+          await configController.close();
+          await statusController.close();
+        },
+      );
+
+      test(
+        '8d. MonitoringDashboardCubit counts UNREACHABLE devices as down and adds to activeIncidents',
+        () async {
+          final mockDevRepo = MockDeviceRepository();
+          final mockMonRepo = MockMonitoringRepository();
+          final statusController =
+              StreamController<List<DeviceStatusEntity>>.broadcast();
+
+          final scheduler = MonitoringScheduler(
+            mockDevRepo,
+            mockMonRepo,
+            MockPingChecker(),
+          );
+
+          final testDevice = DeviceEntity(
+            id: 401,
+            name: 'Device Unreachable',
+            ownerName: 'Test Owner',
+            department: 'IT',
+            ip: '192.168.22.40',
+            type: DeviceType.pc,
+            officeLocation: 'Main Office',
+            createdAt: DateTime(2026),
+            isMonitored: true,
+          );
+
+          when(
+            () => mockDevRepo.bootstrapApprovedInventory(
+              force: any(named: 'force'),
+            ),
+          ).thenAnswer((_) async => Result.success(0));
+          when(
+            () => mockDevRepo.getDevices(),
+          ).thenAnswer((_) async => Result.success([testDevice]));
+          when(() => mockMonRepo.getDeviceStatuses()).thenAnswer(
+            (_) async => Result.success([
+              DeviceStatusEntity(
+                deviceId: 401,
+                status: DeviceStatusEnum.unreachable,
+                statusChangedAt: DateTime.now(),
+                lastCheckAt: DateTime.now(),
+              ),
+            ]),
+          );
+          when(
+            () => mockMonRepo.watchAllDeviceStatuses(),
+          ).thenAnswer((_) => statusController.stream);
+
+          final dashboardCubit = MonitoringDashboardCubit(
+            mockDevRepo,
+            mockMonRepo,
+            scheduler,
+          );
+
+          await dashboardCubit.initDashboard();
+          expect(dashboardCubit.state, isA<MonitoringDashboardLoaded>());
+          final state = dashboardCubit.state as MonitoringDashboardLoaded;
+
+          expect(
+            state.downCount,
+            1,
+            reason: 'UNREACHABLE device must be counted as down',
+          );
+          expect(
+            state.unknownCount,
+            0,
+            reason: 'UNREACHABLE must not be counted as unknown',
+          );
+          expect(
+            state.activeIncidents.length,
+            1,
+            reason: 'UNREACHABLE device must produce an active incident',
+          );
+          expect(state.activeIncidents.first.device.id, 401);
+
+          await dashboardCubit.close();
+          await statusController.close();
+        },
+      );
+
+      test(
+        '8e. EnterpriseTopologyGraph.updateStatuses updates unlinkedNodes and metrics consistently without double counting',
+        () {
+          final linkedNode = EnterpriseTopologyNode(
+            id: 'dev_1',
+            title: 'Linked Dev',
+            category: TopologyDeviceCategory.pc,
+            status: DeviceStatusEnum.unknown,
+            level: 4,
+            deviceRef: DeviceEntity(
+              id: 101,
+              name: 'Linked Dev',
+              ownerName: 'Owner 1',
+              department: 'IT',
+              ip: '192.168.22.101',
+              type: DeviceType.pc,
+              officeLocation: 'Room 1',
+              createdAt: DateTime(2026),
+            ),
+            virtualStatusId: 101,
+          );
+
+          final unlinkedNode = EnterpriseTopologyNode(
+            id: 'dev_2',
+            title: 'Unlinked Dev',
+            category: TopologyDeviceCategory.pc,
+            status: DeviceStatusEnum.unknown,
+            level: 4,
+            isUnlinked: true,
+            deviceRef: DeviceEntity(
+              id: 102,
+              name: 'Unlinked Dev',
+              ownerName: 'Owner 2',
+              department: 'IT',
+              ip: '192.168.22.102',
+              type: DeviceType.pc,
+              officeLocation: 'Room 2',
+              createdAt: DateTime(2026),
+            ),
+            virtualStatusId: 102,
+          );
+
+          final graph = EnterpriseTopologyGraph(
+            nodes: {'dev_1': linkedNode},
+            links: const [],
+            unlinkedNodes: [unlinkedNode],
+            categoryStats: const {},
+            canvasSize: const Size(1320, 860),
+          );
+
+          final updatedGraph = graph.updateStatuses({
+            101: DeviceStatusEntity(
+              deviceId: 101,
+              status: DeviceStatusEnum.up,
+              statusChangedAt: DateTime.now(),
+              lastCheckAt: DateTime.now(),
+            ),
+            102: DeviceStatusEntity(
+              deviceId: 102,
+              status: DeviceStatusEnum.down,
+              statusChangedAt: DateTime.now(),
+              lastCheckAt: DateTime.now(),
+            ),
+          }, failureThreshold: 5);
+
+          // Verify unlinked node was updated
+          expect(
+            updatedGraph.unlinkedNodes.first.status,
+            DeviceStatusEnum.down,
+          );
+          expect(updatedGraph.unlinkedNodes.first.failureThreshold, 5);
+
+          // Verify category stats includes both nodes without double counting
+          final pcStats = updatedGraph.categoryStats[TopologyDeviceCategory.pc];
+          expect(pcStats, isNotNull);
+          expect(
+            pcStats!.total,
+            2,
+            reason:
+                'Must count both linked and unlinked devices without double counting',
+          );
+          expect(pcStats.online, 1);
+          expect(pcStats.offline, 1);
+        },
+      );
+
+      test(
+        '8f. TopologyCubit updates location-group devices with active failureThreshold',
+        () async {
+          final mockDevRepo = MockDeviceRepository();
+          final mockInfraRepo = MockInfrastructureRepository();
+          final mockMonRepo = MockMonitoringRepository();
+          final statusController =
+              StreamController<List<DeviceStatusEntity>>.broadcast();
+
+          final scheduler = MonitoringScheduler(
+            mockDevRepo,
+            mockMonRepo,
+            MockPingChecker(),
+          );
+          scheduler.updateConfig(const MonitoringConfig(failureThreshold: 4));
+
+          final testDevice = DeviceEntity(
+            id: 501,
+            name: 'Device 501',
+            ownerName: 'Owner 501',
+            department: 'IT',
+            ip: '192.168.22.50',
+            type: DeviceType.pc,
+            officeLocation: 'Office A',
+            createdAt: DateTime(2026),
+          );
+
+          when(
+            () => mockDevRepo.bootstrapApprovedInventory(
+              force: any(named: 'force'),
+            ),
+          ).thenAnswer((_) async => Result.success(0));
+          when(
+            () => mockDevRepo.getDevices(),
+          ).thenAnswer((_) async => Result.success([testDevice]));
+          when(
+            () => mockInfraRepo.getInfrastructureDevices(
+              factoryId: any(named: 'factoryId'),
+            ),
+          ).thenAnswer((_) async => Result.success([]));
+          when(() => mockMonRepo.getDeviceStatuses()).thenAnswer(
+            (_) async => Result.success([
+              DeviceStatusEntity(
+                deviceId: 501,
+                status: DeviceStatusEnum.up,
+                consecutiveFailures: 2,
+                failureThreshold: 3, // Initial payload has default 3
+                statusChangedAt: DateTime.now(),
+                lastCheckAt: DateTime.now(),
+              ),
+            ]),
+          );
+          when(
+            () => mockMonRepo.watchAllDeviceStatuses(),
+          ).thenAnswer((_) => statusController.stream);
+
+          final cubit = TopologyCubit(
+            mockDevRepo,
+            mockInfraRepo,
+            mockMonRepo,
+            const TopologyGrouper(),
+            const EnterpriseTopologyBuilder(),
+            scheduler,
+          );
+
+          await cubit.init();
+          expect(cubit.state, isA<TopologyLoaded>());
+          var topState = cubit.state as TopologyLoaded;
+
+          // Locations monitored device must have active failureThreshold 4
+          final locDevice = topState.locations.first.allDevices.first;
+          expect(locDevice.status.failureThreshold, 4);
+
+          // Update failure threshold to 7
+          cubit.updateFailureThreshold(7);
+          topState = cubit.state as TopologyLoaded;
+          expect(
+            topState.locations.first.allDevices.first.status.failureThreshold,
+            7,
+          );
+
+          await cubit.close();
+          await statusController.close();
+        },
+      );
+
+      test(
+        '8g. MonitoringScheduler updates timer interval on updateConfig without creating duplicate timers',
+        () async {
+          final mockDevRepo = MockDeviceRepository();
+          final mockMonRepo = MockMonitoringRepository();
+          final mockPing = MockPingChecker();
+
+          when(
+            () => mockDevRepo.getDevices(),
+          ).thenAnswer((_) async => Result.success([]));
+          when(
+            () => mockMonRepo.getDeviceStatuses(),
+          ).thenAnswer((_) async => Result.success([]));
+
+          final scheduler = MonitoringScheduler(
+            mockDevRepo,
+            mockMonRepo,
+            mockPing,
+          );
+          scheduler.updateConfig(
+            const MonitoringConfig(checkIntervalSeconds: 60),
+          );
+
+          scheduler.startMonitoring();
+          final initialCycleCount = scheduler.cycleCount;
+
+          // Update interval from 60s to 120s
+          scheduler.updateConfig(
+            const MonitoringConfig(checkIntervalSeconds: 120),
+          );
+          expect(scheduler.config.checkIntervalSeconds, 120);
+
+          // Calling updateConfig again with same interval does not trigger recreation
+          scheduler.updateConfig(
+            const MonitoringConfig(checkIntervalSeconds: 120),
+          );
+          expect(scheduler.cycleCount, initialCycleCount);
+
+          scheduler.stopMonitoring();
+        },
+      );
+
+      test(
+        '8h. EnterpriseTopologyBuilder assigns virtualStatusId to infrastructure, gateways, and endpoints',
+        () {
+          final infraSw = UniFiDeviceEntity(
+            id: 77,
+            name: 'Core Switch',
+            ip: '192.168.22.10',
+            role: UniFiDeviceRole.switchDevice,
+            location: 'Main Server Room',
+            isCriticalInfrastructure: true,
+            requiresAdminConfirmation: false,
+            linkedSubnets: const ['192.168.22.0/24'],
+            siteName: 'Server Room',
+            isEnabled: true,
+            isReadOnly: false,
+            createdAt: DateTime(2026),
+          );
+
+          final endpointDev = DeviceEntity(
+            id: 88,
+            name: 'PC-Finance',
+            ownerName: 'Finance User',
+            department: 'IT',
+            ip: '192.168.22.88',
+            type: DeviceType.pc,
+            officeLocation: 'Main Server Room',
+            createdAt: DateTime(2026),
+          );
+
+          final graph = const EnterpriseTopologyBuilder().build(
+            monitoredDevices: [
+              MonitoredDevice(
+                device: endpointDev,
+                status: DeviceStatusEntity(
+                  deviceId: 88,
+                  status: DeviceStatusEnum.up,
+                  statusChangedAt: DateTime.now(),
+                ),
+              ),
+            ],
+            infraDevices: [infraSw],
+            infraStatuses: {10077: DeviceStatusEnum.up},
+            statuses: {
+              88: DeviceStatusEntity(
+                deviceId: 88,
+                status: DeviceStatusEnum.up,
+                statusChangedAt: DateTime.now(),
+              ),
+              50001: DeviceStatusEntity(
+                deviceId: 50001,
+                status: DeviceStatusEnum.up,
+                statusChangedAt: DateTime.now(),
+              ),
+            },
+            factoryId: 'rnf',
+          );
+
+          // Check RNF gateway node has virtualStatusId 50001
+          final rnfGw = graph.nodes['gw_rnf_22'];
+          expect(rnfGw?.virtualStatusId, 50001);
+
+          // Check switch node has virtualStatusId 10077
+          final swNode = graph.nodes.values.firstWhere(
+            (n) => n.id.contains('77') || n.title == 'Core Switch',
+          );
+          expect(swNode.virtualStatusId, 10077);
+
+          // Check endpoint node has virtualStatusId 88
+          final devNode = graph.nodes['dev_88'];
+          expect(devNode?.virtualStatusId, 88);
+        },
+      );
+    });
   });
 }

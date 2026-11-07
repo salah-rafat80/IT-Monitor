@@ -12,6 +12,7 @@ import '../../../monitoring/domain/entities/monitoring_config.dart';
 import '../../../monitoring/domain/repositories/monitoring_repository.dart';
 import '../../../monitoring/domain/services/monitoring_scheduler.dart';
 import '../../domain/entities/enterprise_topology_models.dart';
+import '../../domain/entities/topology_node.dart';
 import '../../domain/services/enterprise_topology_builder.dart';
 import '../../domain/services/topology_grouper.dart';
 import 'topology_state.dart';
@@ -68,6 +69,25 @@ class TopologyCubit extends Cubit<TopologyState> {
       final updatedGraph = current.enterpriseGraph?.updateThreshold(
         newThreshold,
       );
+      final updatedLocations = current.locations.map((loc) {
+        final updatedGroups = loc.switchGroups.map((group) {
+          final updatedDevices = group.devices.map((md) {
+            return MonitoredDevice(
+              device: md.device,
+              status: md.status.copyWith(failureThreshold: newThreshold),
+            );
+          }).toList();
+          return SwitchGroup(
+            switchName: group.switchName,
+            devices: updatedDevices,
+          );
+        }).toList();
+        return LocationNode(
+          locationName: loc.locationName,
+          switchGroups: updatedGroups,
+        );
+      }).toList();
+
       final prevSelected = current.selectedNode;
       EnterpriseTopologyNode? updatedSelected;
       if (prevSelected != null && updatedGraph != null) {
@@ -80,6 +100,7 @@ class TopologyCubit extends Cubit<TopologyState> {
       }
       emit(
         current.copyWith(
+          locations: updatedLocations,
           enterpriseGraph: updatedGraph,
           selectedNode: updatedSelected,
           clearSelectedNode: prevSelected != null && updatedSelected == null,
@@ -154,14 +175,17 @@ class TopologyCubit extends Cubit<TopologyState> {
         infraStatuses[50002] = statusMap[50002]!.effectiveStatus();
       }
 
-      final monitoredList = _cachedDevices.map((d) {
-        final status = statusMap[d.id] ?? _unknownStatus(d.id);
-        return MonitoredDevice(device: d, status: status);
-      }).toList();
-
       if (_scheduler != null) {
         _activeFailureThreshold = _scheduler.config.failureThreshold;
       }
+
+      final monitoredList = _cachedDevices.map((d) {
+        final rawStatus = statusMap[d.id] ?? _unknownStatus(d.id);
+        final status = rawStatus.copyWith(
+          failureThreshold: _activeFailureThreshold,
+        );
+        return MonitoredDevice(device: d, status: status);
+      }).toList();
 
       // Build enterprise hierarchical layout graph with authoritative infrastructure statuses
       final graph = _builder.build(
@@ -201,7 +225,10 @@ class TopologyCubit extends Cubit<TopologyState> {
       );
 
       final monitoredList = _cachedDevices.map((d) {
-        final status = latestStatusMap[d.id] ?? _unknownStatus(d.id);
+        final rawStatus = latestStatusMap[d.id] ?? _unknownStatus(d.id);
+        final status = rawStatus.copyWith(
+          failureThreshold: _activeFailureThreshold,
+        );
         return MonitoredDevice(device: d, status: status);
       }).toList();
       final updatedLocations = _grouper.group(monitoredList);

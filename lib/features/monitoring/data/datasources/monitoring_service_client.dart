@@ -536,42 +536,6 @@ class MonitoringServiceClient {
     return await verifySession(cleanToken);
   }
 
-  /// Authenticate with the service and obtain a 24-hour cryptographically secure session token.
-  Future<ServiceApiResponse<ClientSessionInfo>> login({
-    required String username,
-    required String password,
-  }) async {
-    final response = await _sendRequest(
-      method: 'POST',
-      endpoint: '/api/auth/login',
-      body: {'username': username, 'password': password},
-      requireAuth: false,
-    );
-
-    if (response.isSuccess && response.data != null) {
-      final json = response.data as Map<String, dynamic>;
-      if (json['success'] == true) {
-        final token = json['token'] as String;
-        final expiresAt = DateTime.parse(json['expiresAt'] as String);
-        final userMap = json['user'] as Map<String, dynamic>;
-
-        _currentSession = ClientSessionInfo(
-          token: token,
-          username: userMap['username']?.toString() ?? username,
-          role: userMap['role']?.toString() ?? 'viewer',
-          expiresAt: expiresAt,
-        );
-
-        return ServiceApiResponse.success(_currentSession!);
-      }
-    }
-
-    return ServiceApiResponse.failure(
-      response.errorMessage ?? 'Authentication failed',
-      statusCode: response.statusCode,
-    );
-  }
-
   /// Invalidate the active session on the service.
   Future<ServiceApiResponse<void>> logout() async {
     if (_currentSession == null) {

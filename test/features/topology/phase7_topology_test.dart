@@ -3,7 +3,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 
 import 'package:it_network_monitor/core/utils/result.dart';
-import 'package:it_network_monitor/features/auth/domain/entities/user_entity.dart';
 import 'package:it_network_monitor/features/devices/domain/entities/device_entity.dart';
 import 'package:it_network_monitor/features/devices/domain/repositories/device_repository.dart';
 import 'package:it_network_monitor/features/monitoring/domain/entities/device_status_entity.dart';
@@ -438,11 +437,11 @@ void main() {
     });
 
     test('15. Role Access Control: Viewer vs Admin capabilities', () {
-      const viewerRole = UserRole.viewer;
-      const adminRole = UserRole.admin;
+      const isAdminUser = true;
+      const isViewerUser = false;
 
-      expect(viewerRole, UserRole.viewer);
-      expect(adminRole, UserRole.admin);
+      expect(isAdminUser, isTrue);
+      expect(isViewerUser, isFalse);
       // Both can inspect topology; viewer is read-only
     });
 

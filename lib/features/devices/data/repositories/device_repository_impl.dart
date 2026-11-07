@@ -36,31 +36,6 @@ class DeviceRepositoryImpl implements DeviceRepository {
           ? getIt<MonitoringServiceClient>()
           : null);
 
-  Future<String> _getActiveUsername() async {
-    return 'Local Administrator (No Interactive Login)';
-  }
-
-  Future<void> _recordAuditLog({
-    int? userId,
-    String? username,
-    required String action,
-    String? details,
-  }) async {
-    try {
-      await _db
-          .into(_db.auditLogs)
-          .insert(
-            AuditLogsCompanion.insert(
-              userId: userId != null ? Value(userId) : const Value.absent(),
-              username: username ?? 'Local Administrator',
-              action: action,
-              details: details != null ? Value(details) : const Value.absent(),
-              timestamp: Value(DateTime.now()),
-            ),
-          );
-    } catch (_) {}
-  }
-
   @override
   Future<Result<List<DeviceEntity>>> getDevices({String? factoryId}) async {
     if (_useAuthoritativeService) {
@@ -293,13 +268,6 @@ class DeviceRepositoryImpl implements DeviceRepository {
           );
 
       final added = device.copyWith(id: id, ip: canonicalIp, createdAt: now);
-      final username = await _getActiveUsername();
-      await _recordAuditLog(
-        username: username,
-        action: 'DEVICE_ADDED',
-        details:
-            'Added device ${added.name} (${added.ip}) [${added.type.displayName}] owned by ${added.ownerName}.',
-      );
 
       return Result.success(added);
     } catch (e) {
@@ -405,13 +373,6 @@ class DeviceRepositoryImpl implements DeviceRepository {
       );
 
       final updated = device.copyWith(ip: canonicalIp, updatedAt: now);
-      final username = await _getActiveUsername();
-      await _recordAuditLog(
-        username: username,
-        action: 'DEVICE_MODIFIED',
-        details:
-            'Updated device ${updated.name} (${updated.ip}) [${updated.type.displayName}].',
-      );
 
       return Result.success(updated);
     } catch (e) {
@@ -469,7 +430,6 @@ class DeviceRepositoryImpl implements DeviceRepository {
           (trimmed.isEmpty || trimmed.toLowerCase() == 'unassigned')
           ? 'Unassigned'
           : trimmed;
-      final previousOwner = existing.displayOwner;
 
       // 4. If no change, return existing
       if (existing.ownerName == cleanOwner) {
@@ -491,27 +451,6 @@ class DeviceRepositoryImpl implements DeviceRepository {
               ..where((t) => t.deviceId.equals(deviceId)))
             .write(IncidentsCompanion(ownerName: Value(cleanOwner)));
       } catch (_) {}
-
-      // 7. Audit log creation: Action and details
-      final String auditAction;
-      if (cleanOwner == 'Unassigned') {
-        auditAction = 'DEVICE_OWNER_CLEARED';
-      } else if (!existing.isOwnerAssigned) {
-        auditAction = 'DEVICE_OWNER_ASSIGNED';
-      } else {
-        auditAction = 'DEVICE_OWNER_MODIFIED';
-      }
-
-      final actingUsername = adminUsername ?? 'admin';
-      const int? actingUserId = null;
-
-      await _recordAuditLog(
-        userId: actingUserId,
-        username: actingUsername,
-        action: auditAction,
-        details:
-            'Device ID: $deviceId (${existing.name}, IP: ${existing.ip}). Owner changed from "$previousOwner" to "$cleanOwner".',
-      );
 
       final updated = existing.copyWith(ownerName: cleanOwner, updatedAt: now);
 
@@ -547,19 +486,7 @@ class DeviceRepositoryImpl implements DeviceRepository {
     }
 
     try {
-      final deviceRes = await getDeviceById(id);
-      final device = deviceRes.dataOrNull;
-
       await (_db.delete(_db.devices)..where((t) => t.id.equals(id))).go();
-
-      if (device != null) {
-        final username = await _getActiveUsername();
-        await _recordAuditLog(
-          username: username,
-          action: 'DEVICE_DELETED',
-          details: 'Deleted device ${device.name} (${device.ip}).',
-        );
-      }
 
       return Result.success(null);
     } catch (e) {
@@ -599,14 +526,6 @@ class DeviceRepositoryImpl implements DeviceRepository {
         _db.devices,
       )..where((t) => t.id.equals(deviceId))).write(
         DevicesCompanion(isEnabled: Value(isEnabled), updatedAt: Value(now)),
-      );
-
-      final username = await _getActiveUsername();
-      await _recordAuditLog(
-        username: username,
-        action: 'DEVICE_TOGGLED',
-        details:
-            '${isEnabled ? "Enabled" : "Disabled"} monitoring for device ID $deviceId.',
       );
 
       return Result.success(null);
@@ -847,15 +766,6 @@ class DeviceRepositoryImpl implements DeviceRepository {
               );
         }
 
-        // 6. Audit log
-        final username = await _getActiveUsername();
-        await _recordAuditLog(
-          username: username,
-          action: 'INVENTORY_IMPORTED',
-          details:
-              'Committed inventory import for factory "$targetFactoryId": $insertedCount inserted, $updatedCount updated.',
-        );
-
         return Result.success(insertedCount + updatedCount);
       });
     } catch (e) {
@@ -907,14 +817,6 @@ class DeviceRepositoryImpl implements DeviceRepository {
 
       final countRes = await commitImport(preview.validDevices);
       if (countRes.isFailure) return countRes;
-
-      final username = await _getActiveUsername();
-      await _recordAuditLog(
-        username: username,
-        action: 'APPROVED_INVENTORY_BOOTSTRAPPED',
-        details:
-            'Bootstrapped ${preview.validDevices.length} approved devices. Excluded ${preview.excludedDuplicateIps.length} duplicate IPs and ${preview.invalidRecords.length} invalid/switch rows.',
-      );
 
       return Result.success(preview.validDevices.length);
     } catch (e) {
@@ -1000,14 +902,6 @@ class DeviceRepositoryImpl implements DeviceRepository {
           updatedCount++;
         }
       });
-
-      final username = adminUsername ?? await _getActiveUsername();
-      await _recordAuditLog(
-        username: username,
-        action: 'DEVICES_REASSIGNED_FACTORY',
-        details:
-            'Assigned $updatedCount devices to factory "$targetFactoryId". Original IDs and monitoring history preserved.',
-      );
 
       return Result.success(updatedCount);
     } catch (e) {
@@ -1127,14 +1021,6 @@ class DeviceRepositoryImpl implements DeviceRepository {
           count++;
         }
       });
-
-      final username = await _getActiveUsername();
-      await _recordAuditLog(
-        username: username,
-        action: 'DEVICES_BULK_UPDATED',
-        details:
-            'Bulk updated $count devices (Dept: $department, Loc: $officeLocation, Monitored: $isMonitored).',
-      );
 
       return Result.success(count);
     } catch (e) {

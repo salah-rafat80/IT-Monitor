@@ -1,14 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
-import '../../../auth/domain/entities/user_entity.dart';
 import '../../domain/entities/device_status_entity.dart';
 import '../../domain/entities/monitored_device.dart';
 import 'device_status_chip.dart';
 
 class MonitoredDevicesTable extends StatelessWidget {
   final List<MonitoredDevice> devices;
-  final UserRole userRole;
+  final bool isAdmin;
   final Set<int> selectedDeviceIds;
   final ValueChanged<MonitoredDevice> onSelectDevice;
   final Function(int deviceId, bool selected)? onToggleSelect;
@@ -21,7 +20,7 @@ class MonitoredDevicesTable extends StatelessWidget {
   const MonitoredDevicesTable({
     super.key,
     required this.devices,
-    required this.userRole,
+    this.isAdmin = true,
     required this.onSelectDevice,
     this.selectedDeviceIds = const {},
     this.onToggleSelect,
@@ -34,7 +33,6 @@ class MonitoredDevicesTable extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isAdmin = userRole == UserRole.admin;
     final dateFormat = DateFormat('HH:mm:ss');
 
     if (devices.isEmpty) {

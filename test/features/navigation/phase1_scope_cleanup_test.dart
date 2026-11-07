@@ -1,3 +1,5 @@
+import 'package:drift/drift.dart' show Value;
+import 'package:it_network_monitor/features/infrastructure/domain/entities/unifi_device_entity.dart';
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -210,6 +212,90 @@ void main() {
 
         final auditLogs = await db.select(db.auditLogs).get();
         expect(auditLogs, isEmpty);
+      },
+    );
+
+    test(
+      '7. Historical audit records remain intact; repository operations create zero new logs',
+      () async {
+        // Insert historical record
+        await db
+            .into(db.auditLogs)
+            .insert(
+              AuditLogsCompanion.insert(
+                action: 'HISTORICAL_MIGRATION',
+                details: const Value('Legacy audit record from prior release'),
+                username: 'system_admin',
+                timestamp: Value(
+                  DateTime.now().subtract(const Duration(days: 30)),
+                ),
+              ),
+            );
+
+        // Verify initial state
+        final initialLogs = await db.select(db.auditLogs).get();
+        expect(initialLogs.length, equals(1));
+        expect(initialLogs.first.action, equals('HISTORICAL_MIGRATION'));
+
+        // Device operations: add, edit owner, bootstrap
+        final devRes = await deviceRepo.addDevice(
+          DeviceEntity(
+            id: 0,
+            name: 'PC-TEST-01',
+            type: DeviceType.pc,
+            ip: '192.168.22.50',
+            department: 'IT',
+            ownerName: 'Unassigned',
+            createdAt: DateTime.now(),
+          ),
+        );
+        expect(devRes.isSuccess, isTrue);
+
+        final ownerRes = await deviceRepo.assignDeviceOwner(
+          deviceId: devRes.dataOrNull!.id,
+          ownerName: 'Test Owner',
+        );
+        expect(ownerRes.isSuccess, isTrue);
+
+        await deviceRepo.bootstrapApprovedInventory();
+
+        // Infrastructure operations: save infra device
+        final infraRes = await infraRepo.saveInfrastructureDevice(
+          UniFiDeviceEntity(
+            id: 0,
+            name: 'Core Switch Test',
+            ip: '192.168.22.2',
+            mac: 'aa:bb:cc:dd:ee:ff',
+            role: UniFiDeviceRole.switchDevice,
+            isCriticalInfrastructure: true,
+            linkedSubnets: const ['192.168.22.0/24'],
+            createdAt: DateTime.now(),
+          ),
+        );
+        expect(infraRes.isSuccess, isTrue);
+
+        // Conclusively verify zero new audit logs were created
+        final finalLogs = await db.select(db.auditLogs).get();
+        expect(finalLogs.length, equals(1));
+        expect(finalLogs.first.action, equals('HISTORICAL_MIGRATION'));
+      },
+    );
+
+    test(
+      '8. No retained UI exposes interactive password login or login prompt',
+      () {
+        final routes = AppRouter.router.configuration.routes;
+        // Confirm no /login route exists
+        final hasLoginRoute = routes.any(
+          (r) =>
+              r is GoRoute && (r.path == '/login' || r.path.contains('login')),
+        );
+        expect(hasLoginRoute, isFalse);
+
+        // Confirm default launch route is /
+        final rootRoute =
+            routes.firstWhere((r) => r is ShellRoute) as ShellRoute;
+        expect(rootRoute.routes.any((r) => (r as GoRoute).path == '/'), isTrue);
       },
     );
   });

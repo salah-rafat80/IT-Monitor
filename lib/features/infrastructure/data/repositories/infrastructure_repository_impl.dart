@@ -26,26 +26,6 @@ class InfrastructureRepositoryImpl implements InfrastructureRepository {
     _initServiceEventSubscription();
   }
 
-  Future<void> _recordAuditLog({
-    String? username,
-    required String action,
-    String? details,
-  }) async {
-    try {
-      await _db
-          .into(_db.auditLogs)
-          .insert(
-            AuditLogsCompanion.insert(
-              userId: const Value.absent(),
-              username: username ?? 'Local Administrator',
-              action: action,
-              details: details != null ? Value(details) : const Value.absent(),
-              timestamp: Value(DateTime.now()),
-            ),
-          );
-    } catch (_) {}
-  }
-
   MonitoringServiceClient? get _effectiveClient =>
       _serviceClient ??
       (getIt.isRegistered<MonitoringServiceClient>()
@@ -238,13 +218,6 @@ class InfrastructureRepositoryImpl implements InfrastructureRepository {
                 updatedAt: Value(DateTime.now()),
               ),
             );
-
-        await _recordAuditLog(
-          action: 'INFRASTRUCTURE_DEVICE_CREATED',
-          username: 'Admin',
-          details:
-              'Registered UniFi device ${device.name} (${device.ip}) as ${device.role.displayName}. Critical: ${device.isCriticalInfrastructure}',
-        );
       } else {
         await (_db.update(
           _db.infrastructureDevices,
@@ -264,13 +237,6 @@ class InfrastructureRepositoryImpl implements InfrastructureRepository {
             isReadOnly: const Value(true),
             updatedAt: Value(DateTime.now()),
           ),
-        );
-
-        await _recordAuditLog(
-          action: 'INFRASTRUCTURE_DEVICE_UPDATED',
-          username: 'Admin',
-          details:
-              'Updated UniFi device #${device.id} (${device.name}) role to ${device.role.displayName}',
         );
       }
 
@@ -309,21 +275,9 @@ class InfrastructureRepositoryImpl implements InfrastructureRepository {
     }
 
     try {
-      final existingRes = await getDeviceById(id);
-      final existing = existingRes.dataOrNull;
-
       await (_db.delete(
         _db.infrastructureDevices,
       )..where((t) => t.id.equals(id))).go();
-
-      if (existing != null) {
-        await _recordAuditLog(
-          action: 'INFRASTRUCTURE_DEVICE_DELETED',
-          username: 'Administrator',
-          details:
-              'Removed UniFi device #${existing.id} (${existing.name} - ${existing.ip})',
-        );
-      }
 
       _notifyChanged();
       return Result.success(null);

@@ -3,7 +3,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:it_network_monitor/core/presentation/widgets/desktop_shell.dart';
-import 'package:it_network_monitor/features/auth/domain/entities/user_entity.dart';
 import 'package:it_network_monitor/features/devices/domain/entities/device_entity.dart';
 import 'package:it_network_monitor/features/monitoring/domain/entities/device_status_entity.dart';
 import 'package:it_network_monitor/features/monitoring/domain/entities/monitored_device.dart';
@@ -120,7 +119,7 @@ void main() {
                         Expanded(
                           child: MonitoredDevicesTable(
                             devices: sampleDevices,
-                            userRole: UserRole.admin,
+                            isAdmin: true,
                             onSelectDevice: (_) {},
                           ),
                         ),
@@ -199,7 +198,7 @@ void main() {
                     Expanded(
                       child: MonitoredDevicesTable(
                         devices: sampleDevices,
-                        userRole: UserRole.admin,
+                        isAdmin: true,
                         onSelectDevice: (_) {},
                       ),
                     ),

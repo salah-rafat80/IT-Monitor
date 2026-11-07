@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/di/injection.dart';
-import '../../../auth/domain/entities/user_entity.dart';
 import '../../../devices/domain/entities/device_entity.dart';
 import '../../../devices/domain/repositories/device_repository.dart';
 import '../../../devices/presentation/widgets/assign_owner_dialog.dart';
@@ -137,7 +136,6 @@ class _MonitoringDashboardViewState extends State<MonitoringDashboardView> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    const userRole = UserRole.admin;
     final isAdmin = true;
 
     return Scaffold(
@@ -415,7 +413,7 @@ class _MonitoringDashboardViewState extends State<MonitoringDashboardView> {
                   // Prioritized Devices DataTable
                   MonitoredDevicesTable(
                     devices: state.filteredDevices,
-                    userRole: userRole,
+                    isAdmin: isAdmin,
                     failureThreshold: state.config.failureThreshold,
                     selectedDeviceIds: _selectedDeviceIds,
                     onToggleSelect: (deviceId, selected) {
@@ -441,7 +439,7 @@ class _MonitoringDashboardViewState extends State<MonitoringDashboardView> {
                     onSelectDevice: (item) => _showDeviceDetails(
                       context,
                       item,
-                      userRole,
+                      isAdmin,
                       state.config,
                       cubit,
                     ),
@@ -467,7 +465,7 @@ class _MonitoringDashboardViewState extends State<MonitoringDashboardView> {
   void _showDeviceDetails(
     BuildContext context,
     item,
-    UserRole userRole,
+    bool isAdmin,
     config,
     MonitoringDashboardCubit cubit,
   ) {
@@ -475,7 +473,7 @@ class _MonitoringDashboardViewState extends State<MonitoringDashboardView> {
       context: context,
       builder: (ctx) => DeviceDetailsModal(
         item: item,
-        userRole: userRole,
+        isAdmin: isAdmin,
         config: config,
         onTriggerCheck: () {
           cubit.triggerManualCheck(item.device.id);
@@ -488,7 +486,7 @@ class _MonitoringDashboardViewState extends State<MonitoringDashboardView> {
           );
           Navigator.of(ctx).pop();
         },
-        onEditOwner: userRole == UserRole.admin
+        onEditOwner: isAdmin
             ? () {
                 Navigator.of(ctx).pop();
                 _showAssignOwnerDialog(context, item.device, cubit);

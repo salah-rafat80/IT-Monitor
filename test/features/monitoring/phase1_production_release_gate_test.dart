@@ -1,11 +1,9 @@
 import 'dart:io';
 
-import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:it_network_monitor/core/database/app_database.dart';
 import 'package:it_network_monitor/core/di/injection.dart';
-import 'package:it_network_monitor/core/utils/password_hash.dart';
 import 'package:it_network_monitor/features/monitoring/data/datasources/monitoring_service_client.dart';
 import 'package:it_network_monitor/features/monitoring/domain/entities/check_result.dart';
 import 'package:it_network_monitor/features/monitoring/domain/entities/device_status_entity.dart';
@@ -197,34 +195,29 @@ void main() {
           baseUrl: 'http://127.0.0.1:19444',
         );
 
-        // 1. Attempt login with non-existent user
-        final failLogin = await client.login(
-          username: 'unknown_user',
-          password: 'bad_password',
+        // 1. Attempt token verification with non-existent token
+        final failAuth = await client.authenticateWithProvisionedToken(
+          'invalid_non_existent_token_hex_value_0000000000000000000000000000',
         );
-        expect(failLogin.isSuccess, isFalse);
-        expect(failLogin.statusCode, equals(401));
+        expect(failAuth.isSuccess, isFalse);
+        expect(failAuth.statusCode, equals(401));
 
-        // 2. Insert test admin user into DB and login
-        final db = getIt<AppDatabase>();
-        await db
-            .into(db.users)
-            .insert(
-              UsersCompanion.insert(
-                username: 'test_admin_user',
-                passwordHash: PasswordHash.hashPassword('AdminPass123!'),
-                role: const Value('admin'),
-              ),
-            );
-
-        final successLogin = await client.login(
-          username: 'test_admin_user',
-          password: 'AdminPass123!',
+        // 2. Register authorized machine session token and verify
+        const validToken =
+            'test_admin_token_0123456789abcdef0123456789abcdef0123456789abcdef01';
+        server.registerAuthorizedSession(
+          token: validToken,
+          username: 'test_admin_machine',
+          role: 'admin',
         );
-        expect(successLogin.isSuccess, isTrue);
+
+        final successAuth = await client.authenticateWithProvisionedToken(
+          validToken,
+        );
+        expect(successAuth.isSuccess, isTrue);
         expect(client.isAuthenticated, isTrue);
         expect(client.isAdmin, isTrue);
-        expect(client.currentSession?.token.length, equals(64)); // 32 bytes hex
+        expect(client.currentSession?.token, equals(validToken));
 
         // 3. Logout invalidates session
         final logoutRes = await client.logout();
@@ -247,17 +240,6 @@ void main() {
 
         await server.start();
 
-        final db = getIt<AppDatabase>();
-        await db
-            .into(db.users)
-            .insert(
-              UsersCompanion.insert(
-                username: 'viewer_user',
-                passwordHash: PasswordHash.hashPassword('ViewerPass123!'),
-                role: const Value('viewer'),
-              ),
-            );
-
         // 1. Unauthenticated request to mutating route returns 401
         final unauthClient = MonitoringServiceClient(
           baseUrl: 'http://127.0.0.1:19445',
@@ -271,14 +253,21 @@ void main() {
         unauthClient.dispose();
 
         // 2. Authenticated Viewer request to mutating route returns 403 Forbidden
+        const viewerToken =
+            'test_viewer_token_0123456789abcdef0123456789abcdef0123456789abcdef';
+        server.registerAuthorizedSession(
+          token: viewerToken,
+          username: 'viewer_machine',
+          role: 'viewer',
+        );
+
         final viewerClient = MonitoringServiceClient(
           baseUrl: 'http://127.0.0.1:19445',
         );
-        final viewerLogin = await viewerClient.login(
-          username: 'viewer_user',
-          password: 'ViewerPass123!',
+        final viewerAuth = await viewerClient.authenticateWithProvisionedToken(
+          viewerToken,
         );
-        expect(viewerLogin.isSuccess, isTrue);
+        expect(viewerAuth.isSuccess, isTrue);
         expect(viewerClient.isAdmin, isFalse);
 
         final viewerMutateRes = await viewerClient.assignDeviceOwner(

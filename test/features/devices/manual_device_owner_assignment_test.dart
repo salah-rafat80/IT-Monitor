@@ -60,14 +60,9 @@ void main() {
           equals('192.168.22.101'),
         ); // IP is strictly unchanged
 
-        // Verify audit log
+        // Verify no audit log recorded
         final logs = await db.select(db.auditLogs).get();
-        final assignLog = logs.firstWhere(
-          (l) => l.action == 'DEVICE_OWNER_ASSIGNED',
-        );
-        expect(assignLog.details, contains('Tariq Al-Mansoor'));
-        expect(assignLog.details, contains('192.168.22.101'));
-        expect(assignLog.username, equals('admin_user'));
+        expect(logs.where((l) => l.action == 'DEVICE_OWNER_ASSIGNED'), isEmpty);
       },
     );
 
@@ -98,11 +93,7 @@ void main() {
         expect(editRes.dataOrNull!.ownerName, equals('Fatima Zahra'));
 
         final logs = await db.select(db.auditLogs).get();
-        final editLog = logs.firstWhere(
-          (l) => l.action == 'DEVICE_OWNER_MODIFIED',
-        );
-        expect(editLog.details, contains('Nour Emam'));
-        expect(editLog.details, contains('Fatima Zahra'));
+        expect(logs.where((l) => l.action == 'DEVICE_OWNER_MODIFIED'), isEmpty);
       },
     );
 
@@ -135,11 +126,7 @@ void main() {
         expect(cleared.isOwnerAssigned, isFalse);
 
         final logs = await db.select(db.auditLogs).get();
-        final clearLog = logs.firstWhere(
-          (l) => l.action == 'DEVICE_OWNER_CLEARED',
-        );
-        expect(clearLog.details, contains('Omar Khaled'));
-        expect(clearLog.details, contains('Unassigned'));
+        expect(logs.where((l) => l.action == 'DEVICE_OWNER_CLEARED'), isEmpty);
       },
     );
 

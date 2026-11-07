@@ -1,14 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
-import '../../../auth/domain/entities/user_entity.dart';
 import '../../domain/entities/monitored_device.dart';
 import '../../domain/entities/monitoring_config.dart';
 import 'device_status_chip.dart';
 
 class DeviceDetailsModal extends StatelessWidget {
   final MonitoredDevice item;
-  final UserRole userRole;
+  final bool isAdmin;
   final MonitoringConfig config;
   final VoidCallback? onTriggerCheck;
   final ValueChanged<bool>? onToggleMaintenance;
@@ -17,7 +16,7 @@ class DeviceDetailsModal extends StatelessWidget {
   const DeviceDetailsModal({
     super.key,
     required this.item,
-    required this.userRole,
+    this.isAdmin = true,
     required this.config,
     this.onTriggerCheck,
     this.onToggleMaintenance,
@@ -29,7 +28,6 @@ class DeviceDetailsModal extends StatelessWidget {
     final theme = Theme.of(context);
     final device = item.device;
     final status = item.status;
-    final isAdmin = userRole == UserRole.admin;
     final dateFormat = DateFormat('yyyy-MM-dd HH:mm:ss');
 
     return Dialog(

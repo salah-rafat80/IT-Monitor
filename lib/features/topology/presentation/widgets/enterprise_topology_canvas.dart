@@ -504,7 +504,8 @@ class EnterpriseLinksPainter extends CustomPainter {
     required EnterpriseTopologyLink link,
   }) {
     // 1. Red: If either endpoint or link is Down or Unreachable
-    final isDown = link.status == DeviceStatusEnum.down ||
+    final isDown =
+        link.status == DeviceStatusEnum.down ||
         link.status == DeviceStatusEnum.unreachable ||
         fromNode.status == DeviceStatusEnum.down ||
         fromNode.status == DeviceStatusEnum.unreachable ||
@@ -516,7 +517,8 @@ class EnterpriseLinksPainter extends CustomPainter {
     }
 
     // 2. Stale: If either endpoint or link is Stale
-    final isStale = link.status == DeviceStatusEnum.stale ||
+    final isStale =
+        link.status == DeviceStatusEnum.stale ||
         fromNode.status == DeviceStatusEnum.stale ||
         toNode.status == DeviceStatusEnum.stale;
 
@@ -525,7 +527,8 @@ class EnterpriseLinksPainter extends CustomPainter {
     }
 
     // 3. Amber: If degraded or transitional probe failures
-    final isAmber = link.status == DeviceStatusEnum.degraded ||
+    final isAmber =
+        link.status == DeviceStatusEnum.degraded ||
         fromNode.status == DeviceStatusEnum.degraded ||
         toNode.status == DeviceStatusEnum.degraded ||
         fromNode.consecutiveFailures > 0 ||
@@ -536,7 +539,8 @@ class EnterpriseLinksPainter extends CustomPainter {
     }
 
     // 4. Unknown: If both endpoints or link are genuinely unknown
-    final isUnknown = (link.status == DeviceStatusEnum.unknown &&
+    final isUnknown =
+        (link.status == DeviceStatusEnum.unknown &&
             fromNode.status == DeviceStatusEnum.unknown &&
             toNode.status == DeviceStatusEnum.unknown) ||
         (fromNode.status == DeviceStatusEnum.unknown &&
@@ -547,7 +551,8 @@ class EnterpriseLinksPainter extends CustomPainter {
     }
 
     // 5. Green: If endpoints are operational (UP) and healthy
-    final isGreen = (link.status == DeviceStatusEnum.up ||
+    final isGreen =
+        (link.status == DeviceStatusEnum.up ||
             fromNode.status == DeviceStatusEnum.up ||
             toNode.status == DeviceStatusEnum.up) &&
         fromNode.consecutiveFailures == 0 &&

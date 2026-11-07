@@ -455,9 +455,9 @@ void main() {
             .toList();
         expect(hazzaIps.length, equals(1));
 
-        // 4. Audit logs are preserved
+        // 4. Obsolete audit logging removed
         final logs = await db.select(db.auditLogs).get();
-        expect(logs.isNotEmpty, isTrue);
+        expect(logs, isEmpty);
       },
     );
 

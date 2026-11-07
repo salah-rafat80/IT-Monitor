@@ -111,7 +111,7 @@ Duplicate User 2,Sales,PC-DUP-02,192.168.2.99,Floor 3,SW-FL3
 
         // Verify Audit Log recorded INVENTORY_IMPORTED
         final logs = await db.select(db.auditLogs).get();
-        expect(logs.any((l) => l.action == 'INVENTORY_IMPORTED'), isTrue);
+        expect(logs.any((l) => l.action == 'INVENTORY_IMPORTED'), isFalse);
       },
     );
 

@@ -141,9 +141,9 @@ void main() {
         );
         expect(addRes.isSuccess, isTrue);
 
-        // 3. Verify audit log attributes action to the explicit implicit administrator actor
+        // 3. Verify no obsolete audit log is created
         final logs = await db.select(db.auditLogs).get();
-        expect(logs.isNotEmpty, isTrue);
+        expect(logs, isEmpty);
       },
     );
 

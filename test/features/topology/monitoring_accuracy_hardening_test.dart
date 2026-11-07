@@ -4,7 +4,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 
 import 'package:it_network_monitor/core/utils/result.dart';
-import 'package:it_network_monitor/features/auth/domain/entities/user_entity.dart';
 import 'package:it_network_monitor/features/devices/domain/entities/device_entity.dart';
 import 'package:it_network_monitor/features/devices/domain/repositories/device_repository.dart';
 import 'package:it_network_monitor/features/infrastructure/domain/entities/unifi_device_entity.dart';
@@ -526,7 +525,7 @@ void main() {
             home: Scaffold(
               body: MonitoredDevicesTable(
                 devices: [dev],
-                userRole: UserRole.admin,
+                isAdmin: true,
                 failureThreshold: 5,
                 onSelectDevice: (_) {},
               ),

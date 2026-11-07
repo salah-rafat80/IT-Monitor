@@ -4,7 +4,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 
 import 'package:it_network_monitor/core/utils/result.dart';
-import 'package:it_network_monitor/features/auth/domain/entities/user_entity.dart';
 import 'package:it_network_monitor/features/devices/domain/entities/device_entity.dart';
 import 'package:it_network_monitor/features/devices/domain/repositories/device_repository.dart';
 import 'package:it_network_monitor/features/monitoring/domain/entities/device_status_entity.dart';
@@ -309,7 +308,7 @@ void main() {
             home: Scaffold(
               body: MonitoredDevicesTable(
                 devices: monitoredList,
-                userRole: UserRole.viewer,
+                isAdmin: false,
                 onSelectDevice: (_) {},
               ),
             ),
@@ -337,7 +336,7 @@ void main() {
             home: Scaffold(
               body: MonitoredDevicesTable(
                 devices: monitoredList,
-                userRole: UserRole.viewer,
+                isAdmin: false,
                 onSelectDevice: (_) {},
               ),
             ),
@@ -362,7 +361,7 @@ void main() {
           home: Scaffold(
             body: MonitoredDevicesTable(
               devices: monitoredList,
-              userRole: UserRole.admin,
+              isAdmin: true,
               onSelectDevice: (_) {},
               onTriggerCheck: (_) {},
               onToggleMaintenance: (_, __) {},

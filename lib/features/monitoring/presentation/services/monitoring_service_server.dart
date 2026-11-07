@@ -11,7 +11,6 @@ import 'package:drift/drift.dart' show InsertMode, Value;
 import '../../../../core/di/injection.dart';
 import '../../../../core/errors/failures.dart';
 import '../../../../core/utils/result.dart';
-import '../../../../core/utils/password_hash.dart';
 import '../../../devices/domain/repositories/device_repository.dart';
 import '../../../topology/domain/services/topology_grouper.dart';
 import '../../../devices/domain/entities/device_entity.dart';
@@ -1002,6 +1001,25 @@ Write-Output 'OK'
 
   // --- Session & Security Helpers ---
 
+  /// Programmatically registers an authorized machine session token (for provisioning, IPC, tests).
+  void registerAuthorizedSession({
+    required String token,
+    required String username,
+    String role = 'admin',
+    int userId = 1,
+    DateTime? expiresAt,
+  }) {
+    final now = DateTime.now();
+    _activeSessions[token] = ServiceSession(
+      token: token,
+      userId: userId,
+      username: username,
+      role: role,
+      createdAt: now,
+      expiresAt: expiresAt ?? now.add(sessionTimeout),
+    );
+  }
+
   static String _generateSecureToken() {
     final random = Random.secure();
     final bytes = List<int>.generate(32, (_) => random.nextInt(256));
@@ -1158,61 +1176,6 @@ Write-Output 'OK'
           'connected_clients': _wsClients.length,
           'timestamp': DateTime.now().toIso8601String(),
         });
-      } else if (path == '/api/auth/login' && request.method == 'POST') {
-        final body = await _readJsonBody(request);
-        final username = body['username']?.toString() ?? '';
-        final password = body['password']?.toString() ?? '';
-
-        final db = getIt<AppDatabase>();
-        final user = await (db.select(
-          db.users,
-        )..where((u) => u.username.equals(username))).getSingleOrNull();
-
-        if (user != null &&
-            user.isEnabled &&
-            PasswordHash.verifyPassword(password, user.passwordHash)) {
-          // Rehash legacy fixed-salt passwords with fresh cryptographically random salt
-          if (PasswordHash.needsRehash(user.passwordHash)) {
-            final upgradedHash = PasswordHash.hashPassword(password);
-            await (db.update(db.users)..where((u) => u.id.equals(user.id)))
-                .write(UsersCompanion(passwordHash: Value(upgradedHash)));
-            _log(
-              'Upgraded password hash to versioned Argon2id with random salt for user [${user.username}].',
-            );
-          }
-
-          final token = _generateSecureToken();
-          final session = ServiceSession(
-            token: token,
-            userId: user.id,
-            username: user.username,
-            role: user.role,
-            createdAt: DateTime.now(),
-            expiresAt: DateTime.now().add(sessionTimeout),
-          );
-
-          _activeSessions[token] = session;
-          _log(
-            'User [${user.username}] successfully authenticated with role [${user.role}]. Active sessions: ${_activeSessions.length}',
-          );
-
-          await _jsonResponse(request, {
-            'success': true,
-            'token': token,
-            'expiresAt': session.expiresAt.toIso8601String(),
-            'user': {
-              'id': user.id,
-              'username': user.username,
-              'role': user.role,
-            },
-          });
-        } else {
-          _log('Failed authentication attempt for username: $username');
-          await _jsonResponse(request, {
-            'success': false,
-            'error': 'Invalid username or password',
-          }, status: HttpStatus.unauthorized);
-        }
       } else if (path == '/api/auth/logout' && request.method == 'POST') {
         final body = await _readJsonBody(request);
         final authHeader = request.headers.value(

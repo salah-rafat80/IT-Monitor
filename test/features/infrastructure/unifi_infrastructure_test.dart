@@ -123,13 +123,12 @@ void main() {
         expect(fetchRes.dataOrNull?.name, equals('UniFi Gateway Pro'));
         expect(fetchRes.dataOrNull?.linkedSubnets, equals(['192.168.27.0/24']));
 
-        // Verify audit log entry in DB
+        // Verify no audit log entry in DB
         final logs = await db.select(db.auditLogs).get();
-        final logEntry = logs.firstWhere(
-          (l) => l.action == 'INFRASTRUCTURE_DEVICE_CREATED',
+        expect(
+          logs.where((l) => l.action == 'INFRASTRUCTURE_DEVICE_CREATED'),
+          isEmpty,
         );
-        expect(logEntry.details, contains('192.168.27.1'));
-        expect(logEntry.details, contains('Critical: true'));
       },
     );
 

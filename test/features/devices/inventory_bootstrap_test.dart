@@ -142,7 +142,7 @@ void main() {
         expect(logs.any((l) => l.action == 'PRE_TEST_ACTION'), isTrue);
         expect(
           logs.any((l) => l.action == 'APPROVED_INVENTORY_BOOTSTRAPPED'),
-          isTrue,
+          isFalse,
         );
       },
     );

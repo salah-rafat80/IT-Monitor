@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../../auth/domain/entities/user_entity.dart';
 import '../../domain/entities/classification_confidence.dart';
 import '../../domain/entities/device_category.dart';
 import '../../domain/entities/discovered_device_entity.dart';
@@ -8,7 +7,7 @@ import '../../domain/entities/review_state.dart';
 
 class DiscoveredDevicesTable extends StatelessWidget {
   final List<DiscoveredDeviceEntity> devices;
-  final UserRole userRole;
+  final bool isAdmin;
   final ValueChanged<DiscoveredDeviceEntity> onViewEvidence;
   final ValueChanged<DiscoveredDeviceEntity> onApprove;
   final ValueChanged<DiscoveredDeviceEntity> onReject;
@@ -19,7 +18,7 @@ class DiscoveredDevicesTable extends StatelessWidget {
   const DiscoveredDevicesTable({
     super.key,
     required this.devices,
-    required this.userRole,
+    this.isAdmin = true,
     required this.onViewEvidence,
     required this.onApprove,
     required this.onReject,
@@ -30,7 +29,6 @@ class DiscoveredDevicesTable extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isAdmin = userRole == UserRole.admin;
 
     if (devices.isEmpty) {
       return Container(

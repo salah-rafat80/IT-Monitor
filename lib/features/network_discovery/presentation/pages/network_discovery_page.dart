@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
-import '../../../auth/domain/entities/user_entity.dart';
 import '../../../factories/presentation/bloc/factory_cubit.dart';
 import '../../domain/entities/device_category.dart';
 import '../../domain/entities/discovered_device_entity.dart';
@@ -21,7 +20,6 @@ class NetworkDiscoveryPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const userRole = UserRole.admin;
     final isAdmin = true;
     final theme = Theme.of(context);
 
@@ -253,7 +251,7 @@ class NetworkDiscoveryPage extends StatelessWidget {
                     // Discovered Devices DataTable
                     DiscoveredDevicesTable(
                       devices: state.filteredDevices,
-                      userRole: userRole,
+                      isAdmin: isAdmin,
                       onViewEvidence: (d) => _showEvidenceDialog(context, d),
                       onApprove: (d) => _showApproveDialog(context, d, cubit),
                       onReject: (d) => cubit.rejectDevice(d.id),

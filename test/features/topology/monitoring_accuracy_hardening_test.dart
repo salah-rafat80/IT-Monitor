@@ -1479,90 +1479,254 @@ void main() {
         },
       );
 
-      test(
-        '8b. Canvas link painter colors links based on endpoint health (Red for DOWN, Green for UP, Slate for UNKNOWN)',
-        () {
-          const fromNode = EnterpriseTopologyNode(
-            id: 'sw_inferred',
-            title: 'Logical Switch',
-            category: TopologyDeviceCategory.switchDevice,
-            status: DeviceStatusEnum.unknown,
-            level: 2,
-            isInferred: true,
-          );
-          const toNodeDown = EnterpriseTopologyNode(
-            id: 'dev_1',
-            title: 'Dev 1',
-            category: TopologyDeviceCategory.pc,
-            status: DeviceStatusEnum.down,
-            level: 4,
-          );
-          const inferredLink = EnterpriseTopologyLink(
-            id: 'l_inferred',
-            fromNodeId: 'sw_inferred',
-            toNodeId: 'dev_1',
-            isInferred: true,
-          );
-          final colorInferred = EnterpriseLinksPainter.resolveLinkColor(
-            fromNode: fromNode,
-            toNode: toNodeDown,
-            link: inferredLink,
-          );
-          expect(
-            colorInferred,
-            const Color(0xFFEF4444),
-            reason: 'Link to a DOWN device must be colored Red',
-          );
+      test('8b. Phase 1.2: Strict Link Color Precedence Tests (A through J)', () {
+        const switchNode = EnterpriseTopologyNode(
+          id: 'sw_1',
+          title: 'Switch 1',
+          category: TopologyDeviceCategory.switchDevice,
+          status: DeviceStatusEnum.up,
+          level: 2,
+        );
+        const wanNode = EnterpriseTopologyNode(
+          id: 'wan_0',
+          title: 'Internet WAN',
+          category: TopologyDeviceCategory.wan,
+          status: DeviceStatusEnum.up,
+          level: 0,
+        );
+        const upDevice = EnterpriseTopologyNode(
+          id: 'dev_up',
+          title: 'Device UP',
+          category: TopologyDeviceCategory.pc,
+          status: DeviceStatusEnum.up,
+          level: 4,
+          consecutiveFailures: 0,
+        );
+        const upDeviceWithFailures = EnterpriseTopologyNode(
+          id: 'dev_up_failures',
+          title: 'Device UP with Failures',
+          category: TopologyDeviceCategory.pc,
+          status: DeviceStatusEnum.up,
+          level: 4,
+          consecutiveFailures: 1,
+        );
+        const downDevice = EnterpriseTopologyNode(
+          id: 'dev_down',
+          title: 'Device DOWN',
+          category: TopologyDeviceCategory.pc,
+          status: DeviceStatusEnum.down,
+          level: 4,
+        );
+        const staleDevice = EnterpriseTopologyNode(
+          id: 'dev_stale',
+          title: 'Device STALE',
+          category: TopologyDeviceCategory.pc,
+          status: DeviceStatusEnum.stale,
+          level: 4,
+        );
+        const unknownDevice = EnterpriseTopologyNode(
+          id: 'dev_unknown',
+          title: 'Device UNKNOWN',
+          category: TopologyDeviceCategory.pc,
+          status: DeviceStatusEnum.unknown,
+          level: 4,
+        );
 
-          const toNodeUp = EnterpriseTopologyNode(
-            id: 'dev_2',
-            title: 'Dev 2',
-            category: TopologyDeviceCategory.pc,
-            status: DeviceStatusEnum.up,
-            level: 4,
-          );
-          const upLink = EnterpriseTopologyLink(
-            id: 'l_up',
-            fromNodeId: 'sw_inferred',
-            toNodeId: 'dev_2',
-            isInferred: true,
-          );
-          final colorUp = EnterpriseLinksPainter.resolveLinkColor(
-            fromNode: fromNode,
-            toNode: toNodeUp,
-            link: upLink,
-          );
-          expect(
-            colorUp,
-            const Color(0xFF10B981),
-            reason: 'Link to an UP device must be colored Green',
-          );
+        // A. Inferred link + DOWN endpoint = UNKNOWN gray
+        const inferredLink = EnterpriseTopologyLink(
+          id: 'l_inf',
+          fromNodeId: 'sw_1',
+          toNodeId: 'dev_down',
+          isInferred: true,
+          status: DeviceStatusEnum.down,
+        );
+        final colorA = EnterpriseLinksPainter.resolveLinkColor(
+          fromNode: switchNode,
+          toNode: downDevice,
+          link: inferredLink,
+        );
+        expect(
+          colorA,
+          const Color(0xFF64748B),
+          reason: 'A. Inferred link + DOWN endpoint = UNKNOWN gray',
+        );
 
-          const toNodeUnknown = EnterpriseTopologyNode(
-            id: 'dev_3',
-            title: 'Dev 3',
-            category: TopologyDeviceCategory.pc,
-            status: DeviceStatusEnum.unknown,
-            level: 4,
-          );
-          const unknownLink = EnterpriseTopologyLink(
-            id: 'l_unknown',
-            fromNodeId: 'sw_inferred',
-            toNodeId: 'dev_3',
-            isInferred: true,
-          );
-          final colorUnknown = EnterpriseLinksPainter.resolveLinkColor(
-            fromNode: fromNode,
-            toNode: toNodeUnknown,
-            link: unknownLink,
-          );
-          expect(
-            colorUnknown,
-            const Color(0xFF64748B),
-            reason: 'Link between UNKNOWN nodes must remain Slate Unknown',
-          );
-        },
-      );
+        // B. WAN link + DOWN endpoint = UNKNOWN gray
+        const wanLink = EnterpriseTopologyLink(
+          id: 'l_wan',
+          fromNodeId: 'wan_0',
+          toNodeId: 'dev_down',
+          isInferred: false,
+          status: DeviceStatusEnum.down,
+        );
+        final colorB = EnterpriseLinksPainter.resolveLinkColor(
+          fromNode: wanNode,
+          toNode: downDevice,
+          link: wanLink,
+        );
+        expect(
+          colorB,
+          const Color(0xFF64748B),
+          reason: 'B. WAN link + DOWN endpoint = UNKNOWN gray',
+        );
+
+        // C. Verified physical link + one UNKNOWN endpoint + other DOWN = RED
+        const physicalLinkToDown = EnterpriseTopologyLink(
+          id: 'l_phys_down',
+          fromNodeId: 'dev_unknown',
+          toNodeId: 'dev_down',
+          isInferred: false,
+          status: DeviceStatusEnum.down,
+        );
+        final colorC = EnterpriseLinksPainter.resolveLinkColor(
+          fromNode: unknownDevice,
+          toNode: downDevice,
+          link: physicalLinkToDown,
+        );
+        expect(
+          colorC,
+          const Color(0xFFEF4444),
+          reason:
+              'C. Verified physical link + one UNKNOWN endpoint + other DOWN = RED',
+        );
+
+        // D. Verified physical link + one UNKNOWN endpoint + other UP = UNKNOWN gray
+        const physicalLinkUp = EnterpriseTopologyLink(
+          id: 'l_phys_up',
+          fromNodeId: 'sw_1',
+          toNodeId: 'dev_unknown',
+          isInferred: false,
+          status: DeviceStatusEnum.up,
+        );
+        final colorD = EnterpriseLinksPainter.resolveLinkColor(
+          fromNode: switchNode,
+          toNode: unknownDevice,
+          link: physicalLinkUp,
+        );
+        expect(
+          colorD,
+          const Color(0xFF64748B),
+          reason:
+              'D. Verified physical link + one UNKNOWN endpoint + other UP = UNKNOWN gray',
+        );
+
+        // E. Verified physical link status UNKNOWN + both endpoints UP = UNKNOWN gray
+        const physicalLinkStatusUnknown = EnterpriseTopologyLink(
+          id: 'l_phys_status_unknown',
+          fromNodeId: 'sw_1',
+          toNodeId: 'dev_up',
+          isInferred: false,
+          status: DeviceStatusEnum.unknown,
+        );
+        final colorE = EnterpriseLinksPainter.resolveLinkColor(
+          fromNode: switchNode,
+          toNode: upDevice,
+          link: physicalLinkStatusUnknown,
+        );
+        expect(
+          colorE,
+          const Color(0xFF64748B),
+          reason:
+              'E. Verified physical link status UNKNOWN + both endpoints UP = UNKNOWN gray',
+        );
+
+        // F. Only one endpoint UP + other endpoint UNKNOWN = UNKNOWN gray
+        const physicalLinkOneUpOneUnknown = EnterpriseTopologyLink(
+          id: 'l_phys_one_up',
+          fromNodeId: 'dev_up',
+          toNodeId: 'dev_unknown',
+          isInferred: false,
+          status: DeviceStatusEnum.up,
+        );
+        final colorF = EnterpriseLinksPainter.resolveLinkColor(
+          fromNode: upDevice,
+          toNode: unknownDevice,
+          link: physicalLinkOneUpOneUnknown,
+        );
+        expect(
+          colorF,
+          const Color(0xFF64748B),
+          reason:
+              'F. Only one endpoint UP + other endpoint UNKNOWN = UNKNOWN gray',
+        );
+
+        // G. Both endpoints UP but one has consecutiveFailures > 0 = AMBER
+        const physicalLinkAmber = EnterpriseTopologyLink(
+          id: 'l_phys_amber',
+          fromNodeId: 'sw_1',
+          toNodeId: 'dev_up_failures',
+          isInferred: false,
+          status: DeviceStatusEnum.up,
+        );
+        final colorG = EnterpriseLinksPainter.resolveLinkColor(
+          fromNode: switchNode,
+          toNode: upDeviceWithFailures,
+          link: physicalLinkAmber,
+        );
+        expect(
+          colorG,
+          const Color(0xFFF59E0B),
+          reason:
+              'G. Both endpoints UP but one has consecutiveFailures > 0 = AMBER',
+        );
+
+        // H. Both endpoints UP, link UP, zero failures = GREEN
+        const physicalLinkGreen = EnterpriseTopologyLink(
+          id: 'l_phys_green',
+          fromNodeId: 'sw_1',
+          toNodeId: 'dev_up',
+          isInferred: false,
+          status: DeviceStatusEnum.up,
+        );
+        final colorH = EnterpriseLinksPainter.resolveLinkColor(
+          fromNode: switchNode,
+          toNode: upDevice,
+          link: physicalLinkGreen,
+        );
+        expect(
+          colorH,
+          const Color(0xFF10B981),
+          reason: 'H. Both endpoints UP, link UP, zero failures = GREEN',
+        );
+
+        // I. STALE endpoint with no DOWN endpoint = YELLOW
+        const physicalLinkStale = EnterpriseTopologyLink(
+          id: 'l_phys_stale',
+          fromNodeId: 'sw_1',
+          toNodeId: 'dev_stale',
+          isInferred: false,
+          status: DeviceStatusEnum.stale,
+        );
+        final colorI = EnterpriseLinksPainter.resolveLinkColor(
+          fromNode: switchNode,
+          toNode: staleDevice,
+          link: physicalLinkStale,
+        );
+        expect(
+          colorI,
+          const Color(0xFFEAB308),
+          reason: 'I. STALE endpoint with no DOWN endpoint = YELLOW',
+        );
+
+        // J. DOWN endpoint with other endpoint STALE = RED
+        const physicalLinkDownAndStale = EnterpriseTopologyLink(
+          id: 'l_phys_down_stale',
+          fromNodeId: 'dev_down',
+          toNodeId: 'dev_stale',
+          isInferred: false,
+          status: DeviceStatusEnum.down,
+        );
+        final colorJ = EnterpriseLinksPainter.resolveLinkColor(
+          fromNode: downDevice,
+          toNode: staleDevice,
+          link: physicalLinkDownAndStale,
+        );
+        expect(
+          colorJ,
+          const Color(0xFFEF4444),
+          reason: 'J. DOWN endpoint with other endpoint STALE = RED',
+        );
+      });
 
       test(
         '8c. MonitoringDashboardCubit config update does not emit empty Loaded state during initialization',

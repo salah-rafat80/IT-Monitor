@@ -492,18 +492,33 @@ class EnterpriseLinksPainter extends CustomPainter {
   });
 
   /// Deterministically resolves link color based on strict precedence rules:
-  /// 1. Inferred links, WAN links, or links connecting to inferred/WAN nodes MUST strictly render Unknown.
-  /// 2. Down / Unreachable: Verified physical link with DOWN or UNREACHABLE endpoint must render Red.
-  /// 3. Stale links must retain their Stale visual state.
-  /// 4. Unknown endpoint on verified physical link (when not Down or Stale) must render Unknown.
-  /// 5. Amber: Verified physical links become Amber when consecutive probe failures > 0 or degraded.
-  /// 6. Green: Verified physical links become Green ONLY when both endpoints are UP and have zero consecutive failures.
+  /// 1. Inferred links, WAN links, or links connected to inferred/WAN nodes: Always UNKNOWN gray.
+  /// 2. Verified physical links with DOWN or UNREACHABLE link/endpoints: RED (#EF4444).
+  /// 3. Verified physical links with STALE link/endpoints: YELLOW (#EAB308).
+  /// 4. Verified physical links where link status or either endpoint is UNKNOWN: GRAY (#64748B).
+  /// 5. Verified physical links with DEGRADED status or consecutive probe failures: AMBER (#F59E0B).
+  /// 6. GREEN (#10B981): Only when link and both endpoints are UP with zero probe failures.
+  /// 7. Any unclassified state: UNKNOWN gray.
   static Color resolveLinkColor({
     required EnterpriseTopologyNode fromNode,
     required EnterpriseTopologyNode toNode,
     required EnterpriseTopologyLink link,
   }) {
-    // 1. Red: If either endpoint or link is Down or Unreachable
+    // 1. Inferred links, WAN links, or links connected to inferred/WAN nodes:
+    // Always UNKNOWN gray, regardless of endpoint status.
+    final isInferredOrWan =
+        link.isInferred ||
+        fromNode.isInferred ||
+        toNode.isInferred ||
+        fromNode.category == TopologyDeviceCategory.wan ||
+        toNode.category == TopologyDeviceCategory.wan;
+
+    if (isInferredOrWan) {
+      return const Color(0xFF64748B); // Slate 500 / Unknown
+    }
+
+    // 2. Verified physical links with DOWN or UNREACHABLE link/endpoints:
+    // RED (#EF4444). (DOWN takes precedence over UNKNOWN for verified physical links)
     final isDown =
         link.status == DeviceStatusEnum.down ||
         link.status == DeviceStatusEnum.unreachable ||
@@ -516,7 +531,8 @@ class EnterpriseLinksPainter extends CustomPainter {
       return const Color(0xFFEF4444); // Alert red
     }
 
-    // 2. Stale: If either endpoint or link is Stale
+    // 3. Verified physical links with STALE link/endpoints:
+    // YELLOW (#EAB308).
     final isStale =
         link.status == DeviceStatusEnum.stale ||
         fromNode.status == DeviceStatusEnum.stale ||
@@ -526,7 +542,19 @@ class EnterpriseLinksPainter extends CustomPainter {
       return const Color(0xFFEAB308); // Stale Amber/Yellow
     }
 
-    // 3. Amber: If degraded or transitional probe failures
+    // 4. Verified physical links where link status or either endpoint is UNKNOWN:
+    // GRAY (#64748B).
+    final isUnknown =
+        link.status == DeviceStatusEnum.unknown ||
+        fromNode.status == DeviceStatusEnum.unknown ||
+        toNode.status == DeviceStatusEnum.unknown;
+
+    if (isUnknown) {
+      return const Color(0xFF64748B); // Slate 500 / Unknown
+    }
+
+    // 5. Verified physical links with DEGRADED status or consecutive probe failures:
+    // AMBER (#F59E0B).
     final isAmber =
         link.status == DeviceStatusEnum.degraded ||
         fromNode.status == DeviceStatusEnum.degraded ||
@@ -538,23 +566,17 @@ class EnterpriseLinksPainter extends CustomPainter {
       return const Color(0xFFF59E0B); // Amber warning
     }
 
-    // 4. Unknown: If both endpoints or link are genuinely unknown
-    final isUnknown =
-        (link.status == DeviceStatusEnum.unknown &&
-            fromNode.status == DeviceStatusEnum.unknown &&
-            toNode.status == DeviceStatusEnum.unknown) ||
-        (fromNode.status == DeviceStatusEnum.unknown &&
-            toNode.status == DeviceStatusEnum.unknown);
-
-    if (isUnknown) {
-      return const Color(0xFF64748B); // Slate 500 / Unknown
-    }
-
-    // 5. Green: If endpoints are operational (UP) and healthy
+    // 6. GREEN (#10B981):
+    // Only when:
+    // - Link status is UP.
+    // - From endpoint status is UP.
+    // - To endpoint status is UP.
+    // - Both endpoints have zero consecutive failures.
+    // - Link is verified physical, not inferred, and not WAN.
     final isGreen =
-        (link.status == DeviceStatusEnum.up ||
-            fromNode.status == DeviceStatusEnum.up ||
-            toNode.status == DeviceStatusEnum.up) &&
+        link.status == DeviceStatusEnum.up &&
+        fromNode.status == DeviceStatusEnum.up &&
+        toNode.status == DeviceStatusEnum.up &&
         fromNode.consecutiveFailures == 0 &&
         toNode.consecutiveFailures == 0;
 
@@ -562,6 +584,7 @@ class EnterpriseLinksPainter extends CustomPainter {
       return const Color(0xFF10B981); // Enterprise Emerald green
     }
 
+    // 7. Any unclassified state:
     return const Color(0xFF64748B); // Slate 500 / Unknown
   }
 

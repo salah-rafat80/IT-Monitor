@@ -1481,7 +1481,7 @@ void main() {
       );
 
       test(
-        '8b. Canvas link painter keeps Inferred and WAN links Unknown (Slate) even when endpoint is DOWN',
+        '8b. Canvas link painter colors links based on endpoint health (Red for DOWN, Green for UP, Slate for UNKNOWN)',
         () {
           const fromNode = EnterpriseTopologyNode(
             id: 'sw_inferred',
@@ -1511,39 +1511,56 @@ void main() {
           );
           expect(
             colorInferred,
-            const Color(0xFF64748B),
-            reason: 'Inferred link must always remain Slate Unknown',
+            const Color(0xFFEF4444),
+            reason: 'Link to a DOWN device must be colored Red',
           );
 
-          const wanNode = EnterpriseTopologyNode(
-            id: 'wan_internet',
-            title: 'WAN',
-            category: TopologyDeviceCategory.wan,
-            status: DeviceStatusEnum.unknown,
-            level: 0,
+          const toNodeUp = EnterpriseTopologyNode(
+            id: 'dev_2',
+            title: 'Dev 2',
+            category: TopologyDeviceCategory.pc,
+            status: DeviceStatusEnum.up,
+            level: 4,
           );
-          const gwNode = EnterpriseTopologyNode(
-            id: 'gw_1',
-            title: 'Gateway',
-            category: TopologyDeviceCategory.gateway,
-            status: DeviceStatusEnum.down,
-            level: 1,
+          const upLink = EnterpriseTopologyLink(
+            id: 'l_up',
+            fromNodeId: 'sw_inferred',
+            toNodeId: 'dev_2',
+            isInferred: true,
           );
-          const wanLink = EnterpriseTopologyLink(
-            id: 'l_wan',
-            fromNodeId: 'wan_internet',
-            toNodeId: 'gw_1',
-            isInferred: false,
-          );
-          final colorWan = EnterpriseLinksPainter.resolveLinkColor(
-            fromNode: wanNode,
-            toNode: gwNode,
-            link: wanLink,
+          final colorUp = EnterpriseLinksPainter.resolveLinkColor(
+            fromNode: fromNode,
+            toNode: toNodeUp,
+            link: upLink,
           );
           expect(
-            colorWan,
+            colorUp,
+            const Color(0xFF10B981),
+            reason: 'Link to an UP device must be colored Green',
+          );
+
+          const toNodeUnknown = EnterpriseTopologyNode(
+            id: 'dev_3',
+            title: 'Dev 3',
+            category: TopologyDeviceCategory.pc,
+            status: DeviceStatusEnum.unknown,
+            level: 4,
+          );
+          const unknownLink = EnterpriseTopologyLink(
+            id: 'l_unknown',
+            fromNodeId: 'sw_inferred',
+            toNodeId: 'dev_3',
+            isInferred: true,
+          );
+          final colorUnknown = EnterpriseLinksPainter.resolveLinkColor(
+            fromNode: fromNode,
+            toNode: toNodeUnknown,
+            link: unknownLink,
+          );
+          expect(
+            colorUnknown,
             const Color(0xFF64748B),
-            reason: 'WAN link must strictly remain Slate Unknown',
+            reason: 'Link between UNKNOWN nodes must remain Slate Unknown',
           );
         },
       );

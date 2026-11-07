@@ -503,71 +503,61 @@ class EnterpriseLinksPainter extends CustomPainter {
     required EnterpriseTopologyNode toNode,
     required EnterpriseTopologyLink link,
   }) {
-    final isInferredOrWan =
-        link.isInferred ||
-        fromNode.isInferred ||
-        toNode.isInferred ||
-        fromNode.category == TopologyDeviceCategory.wan ||
-        toNode.category == TopologyDeviceCategory.wan;
+    // 1. Red: If either endpoint or link is Down or Unreachable
+    final isDown = link.status == DeviceStatusEnum.down ||
+        link.status == DeviceStatusEnum.unreachable ||
+        fromNode.status == DeviceStatusEnum.down ||
+        fromNode.status == DeviceStatusEnum.unreachable ||
+        toNode.status == DeviceStatusEnum.down ||
+        toNode.status == DeviceStatusEnum.unreachable;
 
-    final isDown =
-        !isInferredOrWan &&
-        (link.status == DeviceStatusEnum.down ||
-            link.status == DeviceStatusEnum.unreachable ||
-            fromNode.status == DeviceStatusEnum.down ||
-            fromNode.status == DeviceStatusEnum.unreachable ||
-            toNode.status == DeviceStatusEnum.down ||
-            toNode.status == DeviceStatusEnum.unreachable);
+    if (isDown) {
+      return const Color(0xFFEF4444); // Alert red
+    }
 
-    final isStale =
-        !isInferredOrWan &&
-        !isDown &&
-        (link.status == DeviceStatusEnum.stale ||
-            fromNode.status == DeviceStatusEnum.stale ||
-            toNode.status == DeviceStatusEnum.stale);
+    // 2. Stale: If either endpoint or link is Stale
+    final isStale = link.status == DeviceStatusEnum.stale ||
+        fromNode.status == DeviceStatusEnum.stale ||
+        toNode.status == DeviceStatusEnum.stale;
 
-    final isUnknown =
-        isInferredOrWan ||
-        link.status == DeviceStatusEnum.unknown ||
-        fromNode.status == DeviceStatusEnum.unknown ||
-        toNode.status == DeviceStatusEnum.unknown;
+    if (isStale) {
+      return const Color(0xFFEAB308); // Stale Amber/Yellow
+    }
 
-    final isAmber =
-        !isInferredOrWan &&
-        !isDown &&
-        !isStale &&
-        !isUnknown &&
-        (link.status == DeviceStatusEnum.degraded ||
-            fromNode.consecutiveFailures > 0 ||
-            toNode.consecutiveFailures > 0 ||
-            fromNode.status == DeviceStatusEnum.degraded ||
-            toNode.status == DeviceStatusEnum.degraded);
+    // 3. Amber: If degraded or transitional probe failures
+    final isAmber = link.status == DeviceStatusEnum.degraded ||
+        fromNode.status == DeviceStatusEnum.degraded ||
+        toNode.status == DeviceStatusEnum.degraded ||
+        fromNode.consecutiveFailures > 0 ||
+        toNode.consecutiveFailures > 0;
 
-    final isGreen =
-        !isInferredOrWan &&
-        !isDown &&
-        !isStale &&
-        !isUnknown &&
-        !isAmber &&
-        link.status == DeviceStatusEnum.up &&
-        fromNode.status == DeviceStatusEnum.up &&
-        toNode.status == DeviceStatusEnum.up &&
+    if (isAmber) {
+      return const Color(0xFFF59E0B); // Amber warning
+    }
+
+    // 4. Unknown: If both endpoints or link are genuinely unknown
+    final isUnknown = (link.status == DeviceStatusEnum.unknown &&
+            fromNode.status == DeviceStatusEnum.unknown &&
+            toNode.status == DeviceStatusEnum.unknown) ||
+        (fromNode.status == DeviceStatusEnum.unknown &&
+            toNode.status == DeviceStatusEnum.unknown);
+
+    if (isUnknown) {
+      return const Color(0xFF64748B); // Slate 500 / Unknown
+    }
+
+    // 5. Green: If endpoints are operational (UP) and healthy
+    final isGreen = (link.status == DeviceStatusEnum.up ||
+            fromNode.status == DeviceStatusEnum.up ||
+            toNode.status == DeviceStatusEnum.up) &&
         fromNode.consecutiveFailures == 0 &&
         toNode.consecutiveFailures == 0;
 
-    if (isInferredOrWan) {
-      return const Color(0xFF64748B); // Slate 500 / Unknown
-    } else if (isDown) {
-      return const Color(0xFFEF4444); // Alert red
-    } else if (isStale) {
-      return const Color(0xFFEAB308); // Stale Amber/Yellow
-    } else if (isAmber) {
-      return const Color(0xFFF59E0B); // Amber warning
-    } else if (isGreen) {
+    if (isGreen) {
       return const Color(0xFF10B981); // Enterprise Emerald green
-    } else {
-      return const Color(0xFF64748B); // Slate 500 / Unknown
     }
+
+    return const Color(0xFF64748B); // Slate 500 / Unknown
   }
 
   @override
@@ -592,9 +582,9 @@ class EnterpriseLinksPainter extends CustomPainter {
 
       linePaint
         ..color = linkColor.withValues(
-          alpha: link.id == selectedLinkId ? 1.0 : 0.85,
+          alpha: link.id == selectedLinkId ? 1.0 : 0.9,
         )
-        ..strokeWidth = link.id == selectedLinkId ? 2.5 : 1.6;
+        ..strokeWidth = link.id == selectedLinkId ? 2.5 : 1.8;
 
       final path = Path();
       path.moveTo(start.dx, start.dy);

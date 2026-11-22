@@ -27,6 +27,7 @@ class MonitoringDashboardCubit extends Cubit<MonitoringDashboardState> {
   Map<int, DeviceStatusEntity> _cachedStatusMap = {};
   String? _activeFactoryId;
   String? get activeFactoryId => _activeFactoryId;
+  bool _isInitializing = false;
 
   MonitoringDashboardCubit(
     this._deviceRepo,
@@ -61,6 +62,7 @@ class MonitoringDashboardCubit extends Cubit<MonitoringDashboardState> {
     String? factoryId,
     bool forceSetFactory = false,
   }) async {
+    _isInitializing = true;
     if (forceSetFactory) {
       _activeFactoryId = factoryId;
     } else if (factoryId != null) {
@@ -89,6 +91,7 @@ class MonitoringDashboardCubit extends Cubit<MonitoringDashboardState> {
       if (isClosed) return;
 
       if (devicesRes.isFailure) {
+        _isInitializing = false;
         emit(
           MonitoringDashboardError(
             devicesRes.failureOrNull?.message ?? 'Failed to load devices',
@@ -98,6 +101,7 @@ class MonitoringDashboardCubit extends Cubit<MonitoringDashboardState> {
       }
 
       if (statusesRes.isFailure) {
+        _isInitializing = false;
         final reason = statusesRes.failureOrNull?.message;
         emit(
           MonitoringDashboardError(
@@ -131,8 +135,10 @@ class MonitoringDashboardCubit extends Cubit<MonitoringDashboardState> {
         _scheduler.startMonitoring();
       }
 
+      _isInitializing = false;
       _rebuildAndEmitLoaded();
     } catch (e) {
+      _isInitializing = false;
       if (!isClosed) {
         emit(MonitoringDashboardError('Dashboard initialization failed: $e'));
       }
@@ -332,9 +338,9 @@ class MonitoringDashboardCubit extends Cubit<MonitoringDashboardState> {
 
   void _rebuildAndEmitLoaded() {
     if (isClosed) return;
-    if (state is! MonitoringDashboardLoaded && _cachedDevices.isEmpty) {
-      // Configuration stream updates must not emit an empty Loaded state while
-      // dashboard initialization is still running.
+    if (_isInitializing) {
+      // Configuration or status stream updates must not emit while
+      // dashboard initialization is still actively running.
       return;
     }
     final activeConfig = _pendingConfig ?? _scheduler.config;

@@ -11,8 +11,12 @@ import 'package:it_network_monitor/features/infrastructure/domain/repositories/i
 import 'package:it_network_monitor/features/infrastructure/presentation/bloc/infrastructure_cubit.dart';
 import 'package:it_network_monitor/features/monitoring/domain/entities/device_status_entity.dart';
 import 'package:it_network_monitor/features/monitoring/domain/entities/monitored_device.dart';
+import 'package:it_network_monitor/features/monitoring/domain/entities/monitoring_config.dart';
 import 'package:it_network_monitor/features/monitoring/domain/repositories/monitoring_repository.dart';
+import 'package:it_network_monitor/features/monitoring/domain/services/monitoring_scheduler.dart';
 import 'package:it_network_monitor/features/monitoring/domain/services/ping_checker.dart';
+import 'package:it_network_monitor/features/monitoring/presentation/bloc/monitoring_dashboard_cubit.dart';
+import 'package:it_network_monitor/features/monitoring/presentation/bloc/monitoring_dashboard_state.dart';
 import 'package:it_network_monitor/features/topology/domain/services/enterprise_topology_builder.dart';
 import 'package:it_network_monitor/features/topology/domain/services/topology_grouper.dart';
 import 'package:it_network_monitor/features/topology/presentation/bloc/topology_cubit.dart';
@@ -24,6 +28,8 @@ class MockInfrastructureRepository extends Mock
     implements InfrastructureRepository {}
 
 class MockMonitoringRepository extends Mock implements MonitoringRepository {}
+
+class MockMonitoringScheduler extends Mock implements MonitoringScheduler {}
 
 class MockPingChecker extends Mock implements PingChecker {}
 
@@ -265,5 +271,43 @@ void main() {
 
       expect(graphEmpty.nodes['sw_1']?.status, DeviceStatusEnum.unknown);
     });
+
+    test(
+      '6. MonitoringDashboardCubit transitions from Loading to Loaded when switching to an empty factory (e.g. BNF)',
+      () async {
+        final mockDeviceRepo = MockDeviceRepository();
+        final mockMonitoringRepo = MockMonitoringRepository();
+        final mockScheduler = MockMonitoringScheduler();
+
+        when(() => mockMonitoringRepo.watchAllDeviceStatuses())
+            .thenAnswer((_) => const Stream.empty());
+        when(() => mockMonitoringRepo.getDeviceStatuses())
+            .thenAnswer((_) async => Result.success([]));
+        when(() => mockScheduler.isRunning).thenReturn(false);
+        when(() => mockScheduler.isPaused).thenReturn(false);
+        when(() => mockScheduler.config).thenReturn(const MonitoringConfig());
+
+        // For BNF, getDevices returns empty list (0 devices)
+        when(() => mockDeviceRepo.getDevices(factoryId: 'bnf'))
+            .thenAnswer((_) async => Result.success([]));
+
+        final cubit = MonitoringDashboardCubit(
+          mockDeviceRepo,
+          mockMonitoringRepo,
+          mockScheduler,
+        );
+
+        await cubit.setFactoryFilter('bnf');
+
+        // Must emit MonitoringDashboardLoaded and NOT stay stuck in MonitoringDashboardLoading
+        expect(cubit.state, isA<MonitoringDashboardLoaded>());
+        final loaded = cubit.state as MonitoringDashboardLoaded;
+        expect(loaded.allDevices, isEmpty);
+        expect(loaded.filteredDevices, isEmpty);
+        expect(loaded.totalCount, equals(0));
+
+        await cubit.close();
+      },
+    );
   });
 }

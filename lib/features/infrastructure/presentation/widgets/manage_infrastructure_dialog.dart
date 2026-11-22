@@ -321,7 +321,10 @@ class _ManageInfrastructureDialogState
                             labelText: 'Device Role *',
                             border: OutlineInputBorder(),
                           ),
-                          items: UniFiDeviceRole.values.map((role) {
+                          items: UniFiDeviceRole.values
+                              .where((role) =>
+                                  role != UniFiDeviceRole.switchDevice)
+                              .map((role) {
                             return DropdownMenuItem(
                               value: role,
                               child: Text(role.displayName),

@@ -29,6 +29,7 @@ class InfrastructureCubit extends Cubit<InfrastructureState> {
   StreamSubscription<List<DeviceStatusEntity>>? _statusesSub;
   String? _activeFactoryId;
   String? get activeFactoryId => _activeFactoryId;
+  List<UniFiDeviceEntity> _allInfraDevices = [];
 
   InfrastructureCubit(
     this._infrastructureRepo,
@@ -128,12 +129,13 @@ class InfrastructureCubit extends Cubit<InfrastructureState> {
     for (final st in allStatuses) {
       statusMap[st.deviceId] = st;
     }
-    await _applyInferredSwitchStatuses(state.devices, statusMap);
+    await _applyInferredSwitchStatuses(_allInfraDevices, statusMap);
     if (isClosed) return;
     emit(state.copyWith(statuses: statusMap));
   }
 
   Future<void> _onDevicesUpdated(List<UniFiDeviceEntity> devices) async {
+    _allInfraDevices = devices;
     final statusMap = Map<int, DeviceStatusEntity>.from(state.statuses);
 
     for (final dev in devices) {
@@ -147,11 +149,21 @@ class InfrastructureCubit extends Cubit<InfrastructureState> {
       }
     }
 
-    await _applyInferredSwitchStatuses(devices, statusMap);
+    await _applyInferredSwitchStatuses(_allInfraDevices, statusMap);
 
     if (isClosed) return;
+    // Exclude switches from the infrastructure management screen and table.
+    // Switches have no IP addresses and are structural topology/blueprint components,
+    // not pingable/monitored infrastructure assets.
+    final visibleDevices = devices
+        .where((d) => d.role != UniFiDeviceRole.switchDevice)
+        .toList();
     emit(
-      state.copyWith(isLoading: false, devices: devices, statuses: statusMap),
+      state.copyWith(
+        isLoading: false,
+        devices: visibleDevices,
+        statuses: statusMap,
+      ),
     );
   }
 

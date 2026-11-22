@@ -6,6 +6,9 @@ import 'package:it_network_monitor/features/devices/data/repositories/device_rep
 import 'package:it_network_monitor/features/devices/domain/entities/device_entity.dart';
 import 'package:it_network_monitor/features/infrastructure/data/repositories/infrastructure_repository_impl.dart';
 import 'package:it_network_monitor/features/infrastructure/domain/entities/unifi_device_entity.dart';
+import 'package:it_network_monitor/features/infrastructure/presentation/bloc/infrastructure_cubit.dart';
+import 'package:it_network_monitor/features/monitoring/data/datasources/platform_ping_checker.dart';
+import 'package:it_network_monitor/features/monitoring/data/repositories/monitoring_repository_impl.dart';
 
 void main() {
   late AppDatabase db;
@@ -111,5 +114,37 @@ void main() {
       expect(ap.performsRouting, isFalse);
       expect(ap.isCriticalInfrastructure, isFalse);
     });
+
+    test(
+      '4. InfrastructureCubit excludes switches from visible devices (state.devices)',
+      () async {
+        final monitoringRepo = MonitoringRepositoryImpl(db);
+        final pingChecker = PlatformPingChecker();
+
+        await infraRepo.bootstrapVerifiedAccessPoints();
+        await infraRepo.bootstrapVerifiedSwitches();
+
+        final cubit = InfrastructureCubit(
+          infraRepo,
+          monitoringRepo,
+          pingChecker,
+          deviceRepo,
+        );
+
+        await cubit.loadInfrastructure(triggerPing: false, factoryId: 'rnf');
+
+        // Total visible devices in state must be exactly 4 APs, 0 switches
+        expect(cubit.state.devices.length, equals(4));
+        expect(
+          cubit.state.devices.every(
+            (d) => d.role != UniFiDeviceRole.switchDevice,
+          ),
+          isTrue,
+        );
+        expect(cubit.state.totalCount, equals(4));
+
+        await cubit.close();
+      },
+    );
   });
 }

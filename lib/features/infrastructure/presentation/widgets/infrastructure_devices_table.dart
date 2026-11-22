@@ -71,6 +71,7 @@ class _InfrastructureDevicesTableState
         final query = _searchController.text.trim().toLowerCase();
 
         final filteredDevices = state.devices.where((d) {
+          if (d.role == UniFiDeviceRole.switchDevice) return false;
           if (query.isNotEmpty) {
             final matchName = d.name.toLowerCase().contains(query);
             final matchIp = d.ip.toLowerCase().contains(query);
@@ -244,7 +245,9 @@ class _InfrastructureDevicesTableState
                       value: null,
                       child: Text('All Roles', overflow: TextOverflow.ellipsis),
                     ),
-                    ...UniFiDeviceRole.values.map(
+                    ...UniFiDeviceRole.values
+                        .where((r) => r != UniFiDeviceRole.switchDevice)
+                        .map(
                       (r) => DropdownMenuItem(
                         value: r,
                         child: Text(

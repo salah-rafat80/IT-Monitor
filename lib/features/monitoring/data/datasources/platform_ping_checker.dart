@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:isolate';
 import 'package:injectable/injectable.dart';
 
 import '../../domain/entities/check_result.dart';
@@ -30,7 +29,7 @@ class PlatformPingChecker implements PingChecker {
       targetIp: targetIp,
       timeout: timeout,
     );
-    return Isolate.run(() => _executePing(params));
+    return _executePing(params);
   }
 
   static Future<CheckResult> _executePing(PingParams params) async {
@@ -70,7 +69,7 @@ class PlatformPingChecker implements PingChecker {
       }
 
       final processResult =
-          await Process.run('ping', arguments, runInShell: true).timeout(
+          await Process.run('ping', arguments, runInShell: false).timeout(
             params.timeout + const Duration(seconds: 1),
             onTimeout: () =>
                 ProcessResult(-1, -1, '', 'Ping process execution timeout'),

@@ -20,6 +20,7 @@ class MonitoringRepositoryImpl implements MonitoringRepository {
       StreamController<List<DeviceStatusEntity>>.broadcast();
   final MonitoringServiceClient? _serviceClient;
   StreamSubscription? _serviceEventSub;
+  Timer? _notifyDebounceTimer;
 
   MonitoringRepositoryImpl(this._db, [this._serviceClient]) {
     _initServiceEventSubscription();
@@ -209,11 +210,8 @@ class MonitoringRepositoryImpl implements MonitoringRepository {
             ),
           );
 
-      // Notify broadcast subscribers
-      final allRes = await getDeviceStatuses();
-      if (allRes.isSuccess) {
-        _allStatusesController.add(allRes.dataOrNull!);
-      }
+      // Notify broadcast subscribers with debouncing to prevent UI thread lock during bulk ping cycles
+      _scheduleStatusNotification();
 
       return Result.success(null);
     } catch (e) {
@@ -286,6 +284,17 @@ class MonitoringRepositoryImpl implements MonitoringRepository {
   @override
   Stream<List<DeviceStatusEntity>> watchAllDeviceStatuses() {
     return _allStatusesController.stream;
+  }
+
+  void _scheduleStatusNotification() {
+    if (_notifyDebounceTimer?.isActive ?? false) return;
+    _notifyDebounceTimer = Timer(const Duration(milliseconds: 100), () async {
+      _notifyDebounceTimer = null;
+      final allRes = await getDeviceStatuses();
+      if (allRes.isSuccess && !_allStatusesController.isClosed) {
+        _allStatusesController.add(allRes.dataOrNull!);
+      }
+    });
   }
 
   DeviceStatusEntity _mapToEntity(DeviceStatusData r) {

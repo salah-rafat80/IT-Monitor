@@ -70,13 +70,14 @@ class MonitoringSummaryCards extends StatelessWidget {
                 _SummaryKpiCard(
                   width: cardWidth,
                   title: 'Disconnected',
-                  count: state.downCount + state.unknownCount,
+                  count: state.downCount + state.unknownCount + state.staleCount,
                   icon: Icons.cancel_rounded,
                   color: tokens.statusOffline,
                   filterValue: 'down',
                   isSelected:
                       state.statusFilter == 'down' ||
-                      state.statusFilter == 'unknown',
+                      state.statusFilter == 'unknown' ||
+                      state.statusFilter == 'stale',
                   onTap: () => onStatusCardTap?.call('down'),
                 ),
                 _SummaryKpiCard(

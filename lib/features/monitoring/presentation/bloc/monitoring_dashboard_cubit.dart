@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:injectable/injectable.dart';
 
+import '../../../../core/config/app_run_mode.dart';
 import '../../../../core/errors/failures.dart';
 import '../../../../core/utils/result.dart';
 import '../../../devices/domain/entities/device_entity.dart';
@@ -48,7 +49,11 @@ class MonitoringDashboardCubit extends Cubit<MonitoringDashboardState> {
 
   Future<void> setFactoryFilter(String? factoryId) async {
     _activeFactoryId = factoryId;
-    await initDashboard(factoryId: factoryId, forceSetFactory: true);
+    await initDashboard(
+      factoryId: factoryId,
+      forceSetFactory: true,
+      startScheduler: AppConfig.isStandaloneDevelopment,
+    );
   }
 
   Future<void> initDashboard({
@@ -136,6 +141,9 @@ class MonitoringDashboardCubit extends Cubit<MonitoringDashboardState> {
 
   Future<void> refreshDevices() async {
     try {
+      if (AppConfig.isStandaloneDevelopment && !_scheduler.isRunning) {
+        _scheduler.startMonitoring();
+      }
       await _scheduler.triggerAllChecks(force: true);
       final devicesRes = await _deviceRepo
           .getDevices(factoryId: _activeFactoryId)
@@ -430,7 +438,8 @@ class MonitoringDashboardCubit extends Cubit<MonitoringDashboardState> {
               (item) =>
                   item.status.status == DeviceStatusEnum.down ||
                   item.status.status == DeviceStatusEnum.unknown ||
-                  item.status.status == DeviceStatusEnum.unreachable,
+                  item.status.status == DeviceStatusEnum.unreachable ||
+                  item.status.status == DeviceStatusEnum.stale,
             )
             .toList();
       } else {

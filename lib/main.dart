@@ -173,14 +173,19 @@ class ITNetworkMonitorApp extends StatelessWidget {
           create: (_) => getIt<DevicesCubit>()..loadDevices(),
         ),
         BlocProvider<MonitoringCubit>(
+          lazy: false,
           create: (_) => getIt<MonitoringCubit>()
             ..initMonitoring(startScheduler: AppConfig.isStandaloneDevelopment),
         ),
         BlocProvider<MonitoringDashboardCubit>(
+          lazy: false,
           create: (ctx) {
             final factoryId = ctx.read<FactoryCubit>().state.selectedFactoryId;
             return getIt<MonitoringDashboardCubit>()
-              ..initDashboard(factoryId: factoryId);
+              ..initDashboard(
+                factoryId: factoryId,
+                startScheduler: AppConfig.isStandaloneDevelopment,
+              );
           },
         ),
         BlocProvider<TopologyCubit>(

@@ -59,27 +59,45 @@ class _PaletteEditorPageState extends State<PaletteEditorPage> {
     final onSecondRatio = AppPalette.calculateContrastRatio(palette.onSecond, palette.second);
     final onAccentRatio = AppPalette.calculateContrastRatio(palette.onAccent, palette.accent);
 
-    return Scaffold(
-      backgroundColor: tokens.main,
-      appBar: AppBar(
-        title: const Text('Dynamic Palette & Token Editor'),
-        backgroundColor: tokens.surfaceContainerLow,
-        foregroundColor: tokens.onMain,
-        actions: [
-          IconButton(
-            tooltip: isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode',
-            icon: Icon(isDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded),
-            onPressed: () => cubit.toggleMode(),
-          ),
-          TextButton.icon(
-            icon: const Icon(Icons.restart_alt_rounded, size: 18),
-            label: const Text('Reset Defaults'),
-            onPressed: () => cubit.resetToDefault(),
-          ),
-          const SizedBox(width: 12),
-        ],
-      ),
-      body: SingleChildScrollView(
+    return BlocListener<ThemeCubit, ThemeState>(
+      listenWhen: (prev, curr) =>
+          curr.errorMessage != null && curr.errorMessage != prev.errorMessage,
+      listener: (context, state) {
+        if (state.errorMessage != null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(state.errorMessage!),
+              backgroundColor: tokens.error,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      },
+      child: Scaffold(
+        backgroundColor: tokens.main,
+        appBar: AppBar(
+          title: const Text('Dynamic Palette & Token Editor'),
+          backgroundColor: tokens.surfaceContainerLow,
+          foregroundColor: tokens.onMain,
+          actions: [
+            IconButton(
+              tooltip: isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode',
+              icon: Icon(isDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded),
+              onPressed: () => cubit.toggleMode(),
+            ),
+            TextButton.icon(
+              icon: const Icon(Icons.restart_alt_rounded, size: 18),
+              label: const Text('Reset Defaults'),
+              onPressed: () async {
+                try {
+                  await cubit.resetToDefault();
+                } catch (_) {}
+              },
+            ),
+            const SizedBox(width: 12),
+          ],
+        ),
+        body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -145,7 +163,11 @@ class _PaletteEditorPageState extends State<PaletteEditorPage> {
               children: PalettePresets.all.map((preset) {
                 final isSelected = preset.name == palette.name;
                 return InkWell(
-                  onTap: () => cubit.setPalette(preset),
+                  onTap: () async {
+                    try {
+                      await cubit.setPalette(preset);
+                    } catch (_) {}
+                  },
                   borderRadius: BorderRadius.circular(8),
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 150),
@@ -274,7 +296,8 @@ class _PaletteEditorPageState extends State<PaletteEditorPage> {
           ],
         ),
       ),
-    );
+    ),
+  );
   }
 
   Widget _buildSeedCard({
@@ -392,7 +415,11 @@ class _PaletteEditorPageState extends State<PaletteEditorPage> {
             children: options.map((col) {
               final isCurrent = col.toARGB32() == currentColor.toARGB32();
               return InkWell(
-                onTap: () => cubit.updateSeed(role, col),
+                onTap: () async {
+                  try {
+                    await cubit.updateSeed(role, col);
+                  } catch (_) {}
+                },
                 borderRadius: BorderRadius.circular(20),
                 child: Container(
                   width: 32,

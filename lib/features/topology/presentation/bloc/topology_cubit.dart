@@ -114,19 +114,19 @@ class TopologyCubit extends Cubit<TopologyState> {
   }
 
   void setFactory(String? factoryId) {
-    if (_factoryId != factoryId) {
-      _factoryId = factoryId;
-      init(_factoryId);
-    }
+    _factoryId = factoryId;
+    init(_factoryId);
   }
 
   Future<void> init([String? factoryId]) async {
-    if (factoryId != null || (factoryId == null && _factoryId != null)) {
-      _factoryId = factoryId;
-    }
+    _factoryId = factoryId;
+    if (isClosed) return;
     emit(const TopologyLoading());
     try {
-      final devRes = await _deviceRepo.getDevices(factoryId: _factoryId);
+      final devRes = await _deviceRepo
+          .getDevices(factoryId: _factoryId)
+          .timeout(const Duration(seconds: 10));
+      if (isClosed) return;
       if (devRes.isFailure) {
         emit(
           TopologyError(
@@ -135,22 +135,30 @@ class TopologyCubit extends Cubit<TopologyState> {
         );
         return;
       }
-      _cachedDevices = devRes.dataOrNull!;
+      _cachedDevices = devRes.dataOrNull ?? [];
 
       try {
-        await _infraRepo.bootstrapVerifiedAccessPoints();
-        await _infraRepo.bootstrapVerifiedSwitches();
+        await _infraRepo
+            .bootstrapVerifiedAccessPoints()
+            .timeout(const Duration(seconds: 10));
+        await _infraRepo
+            .bootstrapVerifiedSwitches()
+            .timeout(const Duration(seconds: 10));
       } catch (_) {
         // Gracefully handle unmocked bootstrap in unit test environments
       }
 
-      final infraRes = await _infraRepo.getInfrastructureDevices(
-        factoryId: _factoryId,
-      );
+      final infraRes = await _infraRepo
+          .getInfrastructureDevices(factoryId: _factoryId)
+          .timeout(const Duration(seconds: 10));
+      if (isClosed) return;
       _cachedInfra = infraRes.dataOrNull ?? [];
 
       // Initial statuses
-      final statusRes = await _monitoringRepo.getDeviceStatuses();
+      final statusRes = await _monitoringRepo
+          .getDeviceStatuses()
+          .timeout(const Duration(seconds: 10));
+      if (isClosed) return;
       if (statusRes.isFailure) {
         final reason = statusRes.failureOrNull?.message;
         emit(
@@ -216,6 +224,8 @@ class TopologyCubit extends Cubit<TopologyState> {
         final latestStatusMap = {for (final s in statuses) s.deviceId: s};
         _updateLiveStatuses(latestStatusMap);
       });
+    } on TimeoutException catch (e) {
+      if (!isClosed) emit(TopologyError('Topology loading timed out after 10s: $e'));
     } catch (e) {
       if (!isClosed) emit(TopologyError(e.toString()));
     }

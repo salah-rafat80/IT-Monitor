@@ -5,6 +5,8 @@ import 'package:injectable/injectable.dart';
 
 import '../../../../core/config/app_run_mode.dart';
 import '../../../../core/di/injection.dart';
+import '../../../devices/domain/entities/device_entity.dart';
+import '../../../devices/domain/repositories/device_repository.dart';
 import '../../../monitoring/data/datasources/monitoring_service_client.dart';
 import '../../../monitoring/domain/entities/check_result.dart';
 import '../../../monitoring/domain/entities/device_status_entity.dart';
@@ -21,6 +23,7 @@ class InfrastructureCubit extends Cubit<InfrastructureState> {
   final InfrastructureRepository _infrastructureRepo;
   final MonitoringRepository _monitoringRepo;
   final PingChecker _pingChecker;
+  final DeviceRepository? _deviceRepo;
 
   StreamSubscription<List<UniFiDeviceEntity>>? _devicesSub;
   StreamSubscription<List<DeviceStatusEntity>>? _statusesSub;
@@ -30,8 +33,13 @@ class InfrastructureCubit extends Cubit<InfrastructureState> {
   InfrastructureCubit(
     this._infrastructureRepo,
     this._monitoringRepo,
-    this._pingChecker,
-  ) : super(const InfrastructureState()) {
+    this._pingChecker, [
+    DeviceRepository? deviceRepo,
+  ])  : _deviceRepo = deviceRepo ??
+            (getIt.isRegistered<DeviceRepository>()
+                ? getIt<DeviceRepository>()
+                : null),
+        super(const InfrastructureState()) {
     _devicesSub = _infrastructureRepo.watchInfrastructureDevices().listen((
       devices,
     ) {
@@ -62,49 +70,67 @@ class InfrastructureCubit extends Cubit<InfrastructureState> {
           _onDevicesUpdated(devices);
         });
 
-    await _infrastructureRepo.bootstrapVerifiedAccessPoints();
-    await _infrastructureRepo.bootstrapVerifiedSwitches();
-    final res = await _infrastructureRepo.getInfrastructureDevices(
-      factoryId: _activeFactoryId,
-    );
+    try {
+      await _infrastructureRepo
+          .bootstrapVerifiedAccessPoints()
+          .timeout(const Duration(seconds: 10));
+      await _infrastructureRepo
+          .bootstrapVerifiedSwitches()
+          .timeout(const Duration(seconds: 10));
+      final res = await _infrastructureRepo
+          .getInfrastructureDevices(factoryId: _activeFactoryId)
+          .timeout(const Duration(seconds: 10));
 
-    if (isClosed) return;
-    if (res.isSuccess) {
-      final devices = res.dataOrNull ?? [];
-      await _onDevicesUpdated(devices);
       if (isClosed) return;
+      if (res.isSuccess) {
+        final devices = res.dataOrNull ?? [];
+        await _onDevicesUpdated(devices);
+        if (isClosed) return;
 
-      // In development / standalone mode, probe initial reachability.
-      // In production client mode, the authoritative service daemon manages probe schedules.
-      if (triggerPing && devices.isNotEmpty && !AppConfig.isProductionClient) {
-        unawaited(pingAllInfrastructure());
+        // In development / standalone mode, probe initial reachability.
+        // In production client mode, the authoritative service daemon manages probe schedules.
+        if (triggerPing && devices.isNotEmpty && !AppConfig.isProductionClient) {
+          unawaited(pingAllInfrastructure());
+        }
+      } else {
+        if (isClosed) return;
+        emit(
+          state.copyWith(
+            isLoading: false,
+            errorMessage:
+                res.failureOrNull?.message ??
+                'Failed to load infrastructure devices',
+          ),
+        );
       }
-    } else {
+    } on TimeoutException catch (e) {
       if (isClosed) return;
       emit(
         state.copyWith(
           isLoading: false,
-          errorMessage:
-              res.failureOrNull?.message ??
-              'Failed to load infrastructure devices',
+          errorMessage: 'Loading infrastructure timed out after 10s: $e',
+        ),
+      );
+    } catch (e) {
+      if (isClosed) return;
+      emit(
+        state.copyWith(
+          isLoading: false,
+          errorMessage: 'Failed to load infrastructure: $e',
         ),
       );
     }
   }
 
-  void _onStatusesUpdated(List<DeviceStatusEntity> allStatuses) {
+  Future<void> _onStatusesUpdated(List<DeviceStatusEntity> allStatuses) async {
     if (isClosed) return;
     final statusMap = Map<int, DeviceStatusEntity>.from(state.statuses);
-    bool changed = false;
     for (final st in allStatuses) {
-      if (st.deviceId >= 10000) {
-        statusMap[st.deviceId] = st;
-        changed = true;
-      }
+      statusMap[st.deviceId] = st;
     }
-    if (changed) {
-      emit(state.copyWith(statuses: statusMap));
-    }
+    await _applyInferredSwitchStatuses(state.devices, statusMap);
+    if (isClosed) return;
+    emit(state.copyWith(statuses: statusMap));
   }
 
   Future<void> _onDevicesUpdated(List<UniFiDeviceEntity> devices) async {
@@ -121,15 +147,123 @@ class InfrastructureCubit extends Cubit<InfrastructureState> {
       }
     }
 
+    await _applyInferredSwitchStatuses(devices, statusMap);
+
     if (isClosed) return;
     emit(
       state.copyWith(isLoading: false, devices: devices, statuses: statusMap),
     );
   }
 
+  /// Evaluates and applies inferred statuses for switches from their downstream devices.
+  /// Switches have no IP addresses and are never pinged directly.
+  Future<void> _applyInferredSwitchStatuses(
+    List<UniFiDeviceEntity> devices,
+    Map<int, DeviceStatusEntity> statusMap,
+  ) async {
+    final switches = devices.where((d) => d.role == UniFiDeviceRole.switchDevice).toList();
+    if (switches.isEmpty) return;
+
+    List<DeviceEntity> endpoints = [];
+    if (_deviceRepo != null) {
+      try {
+        final devRes = await _deviceRepo
+            .getDevices(factoryId: _activeFactoryId)
+            .timeout(const Duration(seconds: 5));
+        endpoints = devRes.dataOrNull ?? [];
+      } catch (_) {}
+    }
+
+    final aps = devices.where((d) => d.role == UniFiDeviceRole.accessPoint).toList();
+
+    for (final sw in switches) {
+      final virtualId = 10000 + sw.id;
+      final swNameLower = sw.name.toLowerCase();
+
+      final attachedEndpoints = endpoints.where((ep) {
+        if (ep.parentSwitchId != null && ep.parentSwitchId == sw.id) return true;
+        if (ep.parentSwitchName != null && ep.parentSwitchName!.trim().isNotEmpty) {
+          final t = ep.parentSwitchName!.trim().toLowerCase();
+          if (t == swNameLower) return true;
+          if (t == 'switch 1' && (swNameLower.contains('switch 1') || swNameLower.contains('west'))) return true;
+          if (t == 'switch 2' && (swNameLower.contains('switch 2') || swNameLower.contains('east'))) return true;
+          if (t.contains('warehouse') && swNameLower.contains('warehouse')) return true;
+          if (t.contains('d-link') && swNameLower.contains('d-link')) return true;
+          if (t.contains('spare') && swNameLower.contains('spare')) return true;
+          if (t.contains('security') && swNameLower.contains('security')) return true;
+        }
+        return false;
+      }).toList();
+
+      final attachedAps = aps.where((ap) {
+        final apName = ap.name.toLowerCase();
+        if (swNameLower.contains('west') && apName.contains('meeting')) return true;
+        if (swNameLower.contains('east') && apName.contains('fm office')) return true;
+        if (swNameLower.contains('warehouse core') && (apName.contains('packing') || apName.contains('palitizer'))) return true;
+        return false;
+      }).toList();
+
+      final childStatuses = <DeviceStatusEnum>[];
+      for (final ep in attachedEndpoints) {
+        final epSt = statusMap[ep.id]?.effectiveStatus();
+        if (epSt != null) {
+          childStatuses.add(epSt);
+        } else {
+          childStatuses.add(DeviceStatusEnum.unknown);
+        }
+      }
+
+      for (final ap in attachedAps) {
+        final apVirtualId = 10000 + ap.id;
+        final apSt = statusMap[apVirtualId]?.effectiveStatus();
+        if (apSt != null) {
+          childStatuses.add(apSt);
+        } else {
+          childStatuses.add(DeviceStatusEnum.unknown);
+        }
+      }
+
+      final DeviceStatusEnum inferredStatus;
+      if (childStatuses.isEmpty) {
+        inferredStatus = DeviceStatusEnum.unknown;
+      } else if (childStatuses.any((s) => s == DeviceStatusEnum.up)) {
+        inferredStatus = DeviceStatusEnum.up;
+      } else if (childStatuses.every((s) => s == DeviceStatusEnum.down || s == DeviceStatusEnum.unreachable)) {
+        inferredStatus = DeviceStatusEnum.down;
+      } else if (childStatuses.any((s) => s == DeviceStatusEnum.degraded)) {
+        inferredStatus = DeviceStatusEnum.degraded;
+      } else {
+        inferredStatus = DeviceStatusEnum.unknown;
+      }
+
+      final current = statusMap[virtualId] ?? DeviceStatusEntity.initial(virtualId);
+      final updated = current.copyWith(
+        status: inferredStatus,
+        lastFailureReason: inferredStatus == DeviceStatusEnum.down
+            ? 'All downstream devices unreachable'
+            : null,
+      );
+      statusMap[virtualId] = updated;
+
+      unawaited(_monitoringRepo.saveDeviceStatus(updated));
+    }
+  }
+
   /// Pings a specific infrastructure device immediately, updating its status and active incident.
   Future<CheckResult> pingDevice(UniFiDeviceEntity device) async {
     final virtualId = 10000 + device.id;
+    if (device.role == UniFiDeviceRole.switchDevice) {
+      // Switches have no IP addresses and must never be pinged directly.
+      return CheckResult(
+        deviceId: virtualId,
+        targetIp: '',
+        checkType: CheckType.icmp,
+        isSuccess: false,
+        errorMessage: 'Switches have no IP addresses and are not probed directly.',
+        timestamp: DateTime.now(),
+      );
+    }
+
     final updatedChecking = Set<int>.from(state.checkingDeviceIds)
       ..add(virtualId);
     if (!isClosed) {
@@ -237,7 +371,10 @@ class InfrastructureCubit extends Cubit<InfrastructureState> {
 
     try {
       final targetDevices = state.devices
-          .where((d) => d.isEnabled && d.ip.trim().isNotEmpty)
+          .where((d) =>
+              d.isEnabled &&
+              d.role != UniFiDeviceRole.switchDevice &&
+              d.ip.trim().isNotEmpty)
           .toList();
       await Future.wait(targetDevices.map((d) => pingDevice(d)));
     } finally {

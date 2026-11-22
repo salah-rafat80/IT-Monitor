@@ -2,6 +2,9 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:it_network_monitor/core/theme/theme_cubit.dart';
+import 'package:it_network_monitor/features/theme/domain/entities/palette_entity.dart';
+import 'package:it_network_monitor/features/theme/domain/repositories/theme_repository.dart';
+import 'package:it_network_monitor/features/theme/presentation/theme/app_palette.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -79,5 +82,40 @@ void main() {
         await cubit.close();
       },
     );
+
+    test('surfaces error in state when setPalette persistence fails', () async {
+      final failingRepo = _FailingThemeRepository();
+      final cubit = ThemeCubit(themeRepository: failingRepo);
+
+      await expectLater(
+        () => cubit.setPalette(PalettePresets.all.first),
+        throwsA(isA<Exception>()),
+      );
+      expect(cubit.state.errorMessage, contains('Failed to persist palette'));
+      await cubit.close();
+    });
   });
+}
+
+class _FailingThemeRepository implements ThemeRepository {
+  @override
+  Future<PaletteEntity> getPalette() async => PaletteEntity.defaultPalette;
+
+  @override
+  Future<void> savePalette(PaletteEntity palette) async {
+    throw Exception('Disk I/O error');
+  }
+
+  @override
+  Future<PaletteEntity> resetPalette() async => PaletteEntity.defaultPalette;
+
+  @override
+  Future<PaletteEntity> getRemotePalette({String? url}) async =>
+      PaletteEntity.defaultPalette;
+
+  @override
+  Future<String> getThemeMode() async => 'dark';
+
+  @override
+  Future<void> saveThemeMode(String mode) async {}
 }

@@ -17,10 +17,12 @@ enum SeedRole { main, second, accent }
 class ThemeState extends Equatable {
   final AppPalette palette;
   final ThemeMode themeMode;
+  final String? errorMessage;
 
   const ThemeState({
     required this.palette,
     this.themeMode = ThemeMode.dark,
+    this.errorMessage,
   });
 
   bool get isDark => themeMode == ThemeMode.dark;
@@ -29,15 +31,18 @@ class ThemeState extends Equatable {
   ThemeState copyWith({
     AppPalette? palette,
     ThemeMode? themeMode,
+    String? errorMessage,
+    bool clearError = false,
   }) {
     return ThemeState(
       palette: palette ?? this.palette,
       themeMode: themeMode ?? this.themeMode,
+      errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
     );
   }
 
   @override
-  List<Object?> get props => [palette, themeMode];
+  List<Object?> get props => [palette, themeMode, errorMessage];
 }
 
 @lazySingleton
@@ -137,11 +142,12 @@ class ThemeCubit extends Cubit<ThemeState> {
   /// Replaces the current palette with [palette] and persists it.
   Future<void> setPalette(AppPalette palette) async {
     final updated = palette.copyWith(isDark: state.isDark);
-    emit(state.copyWith(palette: updated));
+    emit(state.copyWith(palette: updated, clearError: true));
     try {
       await _savePaletteUseCase(updated.toEntity());
     } catch (e) {
       debugPrint('[ThemeCubit] Failed to persist palette: $e');
+      emit(state.copyWith(errorMessage: 'Failed to persist palette: $e'));
       rethrow;
     }
   }
@@ -165,9 +171,15 @@ class ThemeCubit extends Cubit<ThemeState> {
 
   /// Resets the palette to the default seeds (Midnight Black, Electric Blue, Sunset Orange).
   Future<void> resetToDefault() async {
-    final defaultEntity = await _resetPaletteUseCase();
-    final defaultPalette = AppPalette.fromEntity(defaultEntity, isDark: state.isDark);
-    emit(state.copyWith(palette: defaultPalette));
+    try {
+      final defaultEntity = await _resetPaletteUseCase();
+      final defaultPalette = AppPalette.fromEntity(defaultEntity, isDark: state.isDark);
+      emit(state.copyWith(palette: defaultPalette, clearError: true));
+    } catch (e) {
+      debugPrint('[ThemeCubit] Failed to reset palette: $e');
+      emit(state.copyWith(errorMessage: 'Failed to reset palette: $e'));
+      rethrow;
+    }
   }
 
   /// Sets the active [ThemeMode] ('dark' or 'light') and persists it.

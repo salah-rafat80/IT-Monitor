@@ -470,42 +470,50 @@ class _InfrastructureDevicesTableState
                               ),
                             ),
                             DataCell(
-                              Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    dev.ip,
-                                    style: const TextStyle(
-                                      fontFamily: 'monospace',
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                  IconButton(
-                                    icon: const Icon(
-                                      Icons.copy_rounded,
-                                      size: 14,
-                                    ),
-                                    tooltip: 'Copy IP',
-                                    padding: EdgeInsets.zero,
-                                    constraints: const BoxConstraints(),
-                                    onPressed: () {
-                                      Clipboard.setData(
-                                        ClipboardData(text: dev.ip),
-                                      );
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).showSnackBar(
-                                        SnackBar(
-                                          content: Text(
-                                            'Copied ${dev.ip} to clipboard',
+                              dev.role == UniFiDeviceRole.switchDevice
+                                  ? Text(
+                                      '--',
+                                      style: TextStyle(
+                                        color: tokens.textSecondary,
+                                        fontStyle: FontStyle.italic,
+                                      ),
+                                    )
+                                  : Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(
+                                          dev.ip,
+                                          style: const TextStyle(
+                                            fontFamily: 'monospace',
+                                            fontWeight: FontWeight.w500,
                                           ),
-                                          duration: const Duration(seconds: 1),
                                         ),
-                                      );
-                                    },
-                                  ),
-                                ],
-                              ),
+                                        IconButton(
+                                          icon: const Icon(
+                                            Icons.copy_rounded,
+                                            size: 14,
+                                          ),
+                                          tooltip: 'Copy IP',
+                                          padding: EdgeInsets.zero,
+                                          constraints: const BoxConstraints(),
+                                          onPressed: () {
+                                            Clipboard.setData(
+                                              ClipboardData(text: dev.ip),
+                                            );
+                                            ScaffoldMessenger.of(
+                                              context,
+                                            ).showSnackBar(
+                                              SnackBar(
+                                                content: Text(
+                                                  'Copied ${dev.ip} to clipboard',
+                                                ),
+                                                duration: const Duration(seconds: 1),
+                                              ),
+                                            );
+                                          },
+                                        ),
+                                      ],
+                                    ),
                             ),
                             DataCell(
                               Container(
@@ -579,26 +587,39 @@ class _InfrastructureDevicesTableState
                               Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  Tooltip(
-                                    message: 'Test Reachability / Ping Now',
-                                    child: IconButton(
-                                      icon: isChecking
-                                          ? const SizedBox(
-                                              width: 14,
-                                              height: 14,
-                                              child: CircularProgressIndicator(
-                                                strokeWidth: 2,
+                                  if (dev.role == UniFiDeviceRole.switchDevice)
+                                    Tooltip(
+                                      message: 'Status is inferred from connected devices (no IP)',
+                                      child: IconButton(
+                                        icon: Icon(
+                                          Icons.lan_outlined,
+                                          size: 18,
+                                          color: tokens.textSecondary,
+                                        ),
+                                        onPressed: null,
+                                      ),
+                                    )
+                                  else
+                                    Tooltip(
+                                      message: 'Test Reachability / Ping Now',
+                                      child: IconButton(
+                                        icon: isChecking
+                                            ? const SizedBox(
+                                                width: 14,
+                                                height: 14,
+                                                child: CircularProgressIndicator(
+                                                  strokeWidth: 2,
+                                                ),
+                                              )
+                                            : const Icon(
+                                                Icons.network_ping_rounded,
+                                                size: 18,
                                               ),
-                                            )
-                                          : const Icon(
-                                              Icons.network_ping_rounded,
-                                              size: 18,
-                                            ),
-                                      onPressed: isChecking
-                                          ? null
-                                          : () => cubit.pingDevice(dev),
+                                        onPressed: isChecking
+                                            ? null
+                                            : () => cubit.pingDevice(dev),
+                                      ),
                                     ),
-                                  ),
                                   Tooltip(
                                     message: 'View Diagnostics & Specs',
                                     child: IconButton(

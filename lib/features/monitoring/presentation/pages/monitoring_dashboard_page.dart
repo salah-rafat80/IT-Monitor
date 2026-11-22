@@ -16,6 +16,7 @@ import '../widgets/monitored_devices_table.dart';
 import '../widgets/monitoring_filter_bar.dart';
 import '../widgets/monitoring_summary_cards.dart';
 
+import '../../../infrastructure/presentation/bloc/infrastructure_cubit.dart';
 import '../../../infrastructure/presentation/widgets/infrastructure_status_cards.dart';
 import '../../../factories/presentation/bloc/factory_cubit.dart';
 import '../../../factories/presentation/widgets/factory_overview_cards.dart';
@@ -54,6 +55,11 @@ class _MonitoringDashboardPageState extends State<MonitoringDashboardPage> {
         context
             .read<MonitoringDashboardCubit>()
             .setFactoryFilter(state.selectedFactoryId);
+        try {
+          context
+              .read<InfrastructureCubit>()
+              .setFactory(state.selectedFactoryId);
+        } catch (_) {}
       },
       child: const MonitoringDashboardView(),
     );

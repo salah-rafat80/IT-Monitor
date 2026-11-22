@@ -175,7 +175,8 @@ class MonitoringServiceClient {
     }
 
     _securityContext = secContext;
-    _httpClient = HttpClient(context: _securityContext);
+    _httpClient = HttpClient(context: _securityContext)
+      ..connectionTimeout = const Duration(seconds: 10);
   }
 
   SecurityContext? _tryResolveLoopbackSecurityContext() {
@@ -320,10 +321,17 @@ class MonitoringServiceClient {
 
     try {
       final uri = Uri.parse('$baseUrl/api/auth/verify');
-      final request = await _httpClient!.getUrl(uri);
+      final request = await _httpClient!
+          .getUrl(uri)
+          .timeout(const Duration(seconds: 10));
       request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $token');
-      final response = await request.close();
-      final responseBody = await utf8.decoder.bind(response).join();
+      final response = await request
+          .close()
+          .timeout(const Duration(seconds: 10));
+      final responseBody = await utf8.decoder
+          .bind(response)
+          .join()
+          .timeout(const Duration(seconds: 10));
 
       dynamic parsed;
       try {
@@ -418,6 +426,13 @@ class MonitoringServiceClient {
       );
       _lastConnectionError = null;
       return ServiceApiResponse.success(_currentSession!);
+    } on TimeoutException catch (e) {
+      clearSession();
+      _lastConnectionError = 'Session verification timed out after 10s: $e';
+      return const ServiceApiResponse.failure(
+        'Session verification timed out after 10s.',
+        statusCode: 408,
+      );
     } catch (e) {
       clearSession();
       final classified = _classifyConnectionException(e);
@@ -1444,7 +1459,9 @@ class MonitoringServiceClient {
       }
 
       final uri = Uri.parse('$baseUrl$endpoint');
-      final request = await _httpClient!.openUrl(method, uri);
+      final request = await _httpClient!
+          .openUrl(method, uri)
+          .timeout(const Duration(seconds: 10));
 
       request.headers.contentType = ContentType.json;
       if (_currentSession != null && !_currentSession!.isExpired) {
@@ -1458,8 +1475,13 @@ class MonitoringServiceClient {
         request.write(jsonEncode(body));
       }
 
-      final response = await request.close();
-      final responseBody = await utf8.decoder.bind(response).join();
+      final response = await request
+          .close()
+          .timeout(const Duration(seconds: 10));
+      final responseBody = await utf8.decoder
+          .bind(response)
+          .join()
+          .timeout(const Duration(seconds: 10));
 
       dynamic parsed;
       if (responseBody.isNotEmpty) {
@@ -1489,6 +1511,11 @@ class MonitoringServiceClient {
           statusCode: response.statusCode,
         );
       }
+    } on TimeoutException catch (e) {
+      return ServiceApiResponse.failure(
+        'Network transport request timed out after 10s: $e',
+        statusCode: 408,
+      );
     } catch (e) {
       return ServiceApiResponse.failure(
         'Network transport error: $e',

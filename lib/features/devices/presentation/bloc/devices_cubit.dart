@@ -6,6 +6,7 @@ import '../../domain/entities/device_entity.dart';
 import '../../domain/entities/device_import_commit_payload.dart';
 import '../../domain/entities/inventory_import_preview.dart';
 import '../../domain/repositories/device_repository.dart';
+import '../../../../core/errors/failures.dart';
 import '../../../../core/utils/result.dart';
 
 sealed class DevicesState extends Equatable {
@@ -91,22 +92,39 @@ class DevicesCubit extends Cubit<DevicesState> {
 
   Future<void> setFactory(String? factoryId) async {
     _activeFactoryId = factoryId;
-    await loadDevices(factoryId: factoryId);
+    await loadDevices(factoryId: factoryId, forceSetFactory: true);
   }
 
-  Future<void> loadDevices({String? factoryId}) async {
-    _activeFactoryId = factoryId ?? _activeFactoryId;
+  Future<void> loadDevices({String? factoryId, bool forceSetFactory = false}) async {
+    if (forceSetFactory) {
+      _activeFactoryId = factoryId;
+    } else if (factoryId != null) {
+      _activeFactoryId = factoryId;
+    }
     if (isClosed) return;
     emit(const DevicesLoading());
 
-    final res = await _deviceRepo.getDevices(factoryId: _activeFactoryId);
-    if (isClosed) return;
+    try {
+      final res = await _deviceRepo
+          .getDevices(factoryId: _activeFactoryId)
+          .timeout(
+            const Duration(seconds: 10),
+            onTimeout: () => Result.failure(
+              NetworkFailure('Loading devices timed out after 10s'),
+            ),
+          );
+      if (isClosed) return;
 
-    res.fold(
-      onSuccess: (devices) =>
-          emit(DevicesLoaded(allDevices: devices, filteredDevices: devices)),
-      onFailure: (failure) => emit(DevicesError(failure.message)),
-    );
+      res.fold(
+        onSuccess: (devices) =>
+            emit(DevicesLoaded(allDevices: devices, filteredDevices: devices)),
+        onFailure: (failure) => emit(DevicesError(failure.message)),
+      );
+    } catch (e) {
+      if (!isClosed) {
+        emit(DevicesError('Failed to load devices: $e'));
+      }
+    }
   }
 
   Future<void> bootstrapApprovedInventory({bool force = false}) async {

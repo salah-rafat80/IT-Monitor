@@ -13,6 +13,7 @@ class NetworkBlueprintCubit extends Cubit<NetworkBlueprintState> {
   final NetworkBlueprintRepository _repository;
   final MonitoringRepository _monitoringRepository;
   StreamSubscription<List<DeviceStatusEntity>>? _statusSubscription;
+  Timer? _statusDebounceTimer;
 
   NetworkBlueprintCubit(
     this._repository,
@@ -24,7 +25,14 @@ class NetworkBlueprintCubit extends Cubit<NetworkBlueprintState> {
   void _initStatusListener() {
     _statusSubscription = _monitoringRepository
         .watchAllDeviceStatuses()
-        .listen((_) => _handleLiveStatusUpdate());
+        .listen((_) {
+      _statusDebounceTimer?.cancel();
+      _statusDebounceTimer = Timer(const Duration(milliseconds: 600), () {
+        if (!isClosed) {
+          _handleLiveStatusUpdate();
+        }
+      });
+    });
   }
 
   Future<void> loadBlueprint() async {
@@ -115,6 +123,7 @@ class NetworkBlueprintCubit extends Cubit<NetworkBlueprintState> {
 
   @override
   Future<void> close() {
+    _statusDebounceTimer?.cancel();
     _statusSubscription?.cancel();
     return super.close();
   }

@@ -9,7 +9,6 @@ import '../../../../core/errors/failures.dart';
 import '../../../../core/utils/ipv4_utils.dart';
 import '../../../../core/utils/result.dart';
 import '../../../monitoring/data/datasources/monitoring_service_client.dart';
-import '../../data/datasources/approved_inventory_seed.dart';
 import '../../data/datasources/excel_inventory_parser.dart';
 import '../../domain/entities/device_entity.dart';
 import '../../domain/entities/device_import_commit_payload.dart';
@@ -777,51 +776,47 @@ class DeviceRepositoryImpl implements DeviceRepository {
 
   @override
   Future<Result<int>> commitImport(List<DeviceEntity> validDevices) async {
-    final inserts = validDevices.where((d) => d.id <= 0).toList();
-    final updates = validDevices.where((d) => d.id > 0).toList();
-    final factoryId = validDevices.isNotEmpty
-        ? validDevices.first.factoryId
-        : 'unassigned';
-    return commitImportPayload(
-      DeviceImportCommitPayload(
-        inserts: inserts,
-        updates: updates,
-        targetFactoryId: factoryId,
-      ),
-    );
+    if (validDevices.isEmpty) return Result.success(0);
+
+    // Group incoming devices strictly by their designated factoryId
+    final grouped = <String, List<DeviceEntity>>{};
+    for (final dev in validDevices) {
+      final fid = dev.factoryId.trim().isEmpty ? 'unassigned' : dev.factoryId.trim().toLowerCase();
+      grouped.putIfAbsent(fid, () => []).add(dev);
+    }
+
+    int totalCommitted = 0;
+    for (final entry in grouped.entries) {
+      final inserts = entry.value.where((d) => d.id <= 0).toList();
+      final updates = entry.value.where((d) => d.id > 0).toList();
+      final res = await commitImportPayload(
+        DeviceImportCommitPayload(
+          inserts: inserts,
+          updates: updates,
+          targetFactoryId: entry.key,
+        ),
+      );
+      if (res.isFailure) return res;
+      totalCommitted += (res.dataOrNull ?? 0);
+    }
+    return Result.success(totalCommitted);
   }
 
   @override
   Future<Result<int>> bootstrapApprovedInventory({bool force = false}) async {
-    if (AppConfig.isProductionClient) {
-      return Result.failure(
-        NetworkFailure(
-          'Inventory bootstrap is restricted to the authoritative service daemon.',
-        ),
-      );
-    }
-
-    try {
-      final existingDevices = await _db.select(_db.devices).get();
-      if (existingDevices.isNotEmpty && !force) {
-        return Result.success(0);
+    if (_useAuthoritativeService) {
+      final client = _effectiveClient;
+      if (client == null || !client.isAuthenticated) {
+        return Result.failure(
+          NetworkFailure(
+            'Production client is not authenticated with the authoritative IT Network Monitor Service.',
+          ),
+        );
       }
-
-      final rawRows = ApprovedInventorySeed.getApprovedRawRows();
-      final existingIps = existingDevices.map((d) => d.ip.trim()).toSet();
-
-      final preview = InventoryValidator.validateRows(
-        rows: rawRows,
-        existingDatabaseIps: existingIps,
-      );
-
-      final countRes = await commitImport(preview.validDevices);
-      if (countRes.isFailure) return countRes;
-
-      return Result.success(preview.validDevices.length);
-    } catch (e) {
-      return Result.failure(DatabaseFailure('Bootstrap failed: $e'));
     }
+    // Zero data fabrication: No automatic seed rows are injected into the database.
+    // Inventory enters the system strictly through user-imported spreadsheets.
+    return Result.success(0);
   }
 
   @override

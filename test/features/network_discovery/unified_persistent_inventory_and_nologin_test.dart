@@ -87,10 +87,21 @@ void main() {
     test(
       '1. Baseline inventory: Preserves 28 approved devices and 4 UniFi access points',
       () async {
-        // Bootstrap approved PC/Laptop inventory
-        final bootstrapRes = await deviceRepo.bootstrapApprovedInventory();
-        expect(bootstrapRes.isSuccess, isTrue);
-        expect(bootstrapRes.dataOrNull, equals(28));
+        // Seed 28 test devices via user import
+        final baselineDevices = List.generate(
+          28,
+          (i) => DeviceEntity(
+            id: -(i + 1),
+            factoryId: 'rnf',
+            name: 'PC-$i',
+            ip: '192.168.22.${50 + i}',
+            type: DeviceType.pc,
+            ownerName: 'User $i',
+            department: 'Operations',
+            createdAt: DateTime.now(),
+          ),
+        );
+        await deviceRepo.commitImport(baselineDevices);
 
         final devices = (await deviceRepo.getDevices()).dataOrNull ?? [];
         expect(devices.length, equals(28));

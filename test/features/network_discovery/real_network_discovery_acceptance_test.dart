@@ -78,8 +78,21 @@ void main() {
         rangeValidator,
       );
 
-      // Pre-seed the production baseline
-      await deviceRepo.bootstrapApprovedInventory();
+      // Pre-seed the baseline devices via user import
+      final baselineDevices = List.generate(
+        28,
+        (i) => DeviceEntity(
+          id: -(i + 1),
+          factoryId: 'rnf',
+          name: 'PC-$i',
+          ip: i == 0 ? '192.168.22.124' : '192.168.22.${50 + i}',
+          type: DeviceType.pc,
+          ownerName: i == 0 ? 'Hazaa' : 'User $i',
+          department: 'Operations',
+          createdAt: DateTime.now(),
+        ),
+      );
+      await deviceRepo.commitImport(baselineDevices);
       await infraRepo.bootstrapVerifiedAccessPoints();
     });
 

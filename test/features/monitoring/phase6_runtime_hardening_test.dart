@@ -86,6 +86,8 @@ void main() {
   late TestFailurePingChecker testPingChecker;
   late MonitoringScheduler scheduler;
 
+  late List<DeviceEntity> testDevices;
+
   setUp(() async {
     db = AppDatabase.forTesting(NativeDatabase.memory());
     deviceRepo = DeviceRepositoryImpl(db);
@@ -97,7 +99,20 @@ void main() {
       testPingChecker,
     );
 
-    await deviceRepo.bootstrapApprovedInventory();
+    testDevices = List.generate(
+      28,
+      (i) => DeviceEntity(
+        id: -(i + 1),
+        factoryId: 'rnf',
+        name: 'PC-$i',
+        ip: '192.168.22.${50 + i}',
+        type: i % 2 == 0 ? DeviceType.pc : DeviceType.laptop,
+        ownerName: 'User $i',
+        department: 'Operations',
+        createdAt: DateTime.now(),
+      ),
+    );
+    await deviceRepo.commitImport(testDevices);
   });
 
   tearDown(() async {
@@ -196,10 +211,8 @@ void main() {
         db = AppDatabase.forTesting(NativeDatabase.memory());
         deviceRepo = DeviceRepositoryImpl(db);
 
-        // Bootstrap check again (should be idempotent)
-        final count =
-            (await deviceRepo.bootstrapApprovedInventory()).dataOrNull!;
-        expect(count, equals(28)); // Clean memory DB re-initializes 28 devices
+        // Re-import into reloaded DB
+        await deviceRepo.commitImport(testDevices);
 
         final reloadedDevices = (await deviceRepo.getDevices()).dataOrNull!;
         expect(reloadedDevices.length, equals(28));

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../core/presentation/widgets/app_empty_state.dart';
@@ -20,6 +21,7 @@ class MonitoredDevicesTable extends StatelessWidget {
   onToggleMaintenance;
   final int failureThreshold;
   final VoidCallback? onClearFilters;
+  final bool isFiltered;
 
   const MonitoredDevicesTable({
     super.key,
@@ -33,6 +35,7 @@ class MonitoredDevicesTable extends StatelessWidget {
     this.onToggleMaintenance,
     this.failureThreshold = 3,
     this.onClearFilters,
+    this.isFiltered = false,
   });
 
   @override
@@ -49,9 +52,15 @@ class MonitoredDevicesTable extends StatelessWidget {
           borderRadius: BorderRadius.circular(AppRadius.lg),
           border: Border.all(color: tokens.border),
         ),
-        child: AppEmptyState.noFilterResults(
-          onClearFilters: onClearFilters ?? () {},
-        ),
+        child: isFiltered
+            ? AppEmptyState.noFilterResults(
+                onClearFilters: onClearFilters ?? () {},
+              )
+            : AppEmptyState.firstUse(
+                entityName: 'Devices',
+                actionLabel: 'Import Excel Inventory',
+                onAction: () => context.go('/inventory'),
+              ),
       );
     }
 

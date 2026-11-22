@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:it_network_monitor/core/database/app_database.dart';
 import 'package:it_network_monitor/features/devices/data/repositories/device_repository_impl.dart';
+import 'package:it_network_monitor/features/devices/domain/entities/device_entity.dart';
 import 'package:it_network_monitor/features/infrastructure/data/repositories/infrastructure_repository_impl.dart';
 import 'package:it_network_monitor/features/infrastructure/domain/entities/unifi_device_entity.dart';
 
@@ -25,10 +26,21 @@ void main() {
     test(
       '1. bootstrapVerifiedAccessPoints registers 4 APs in RNF and preserves approved inventory',
       () async {
-        // Seed 28 approved inventory
-        final seedRes = await deviceRepo.bootstrapApprovedInventory();
-        expect(seedRes.isSuccess, isTrue);
-        expect(seedRes.dataOrNull, equals(28));
+        // Seed 28 test devices via explicit user import
+        final testDevices = List.generate(
+          28,
+          (i) => DeviceEntity(
+            id: -(i + 1),
+            factoryId: 'rnf',
+            name: 'Device-$i',
+            ip: '192.168.22.${50 + i}',
+            type: DeviceType.pc,
+            ownerName: 'User $i',
+            department: 'IT',
+            createdAt: DateTime.now(),
+          ),
+        );
+        await deviceRepo.commitImport(testDevices);
 
         // Bootstrap APs
         final apRes = await infraRepo.bootstrapVerifiedAccessPoints();

@@ -229,6 +229,8 @@ class ExcelInventoryServiceImpl implements ExcelInventoryService {
       case 'video card':
         return 'gpu';
       case 'bios version':
+      case 'bios ver':
+      case 'bios date':
       case 'bios':
         return 'bios';
       case 'lastupdated':
@@ -298,7 +300,33 @@ class ExcelInventoryServiceImpl implements ExcelInventoryService {
     if (norm.contains('model')) {
       return 'model';
     }
-    if (norm.contains('os') || norm.contains('operating')) {
+    // Specific hardware detail tokens MUST run before broad generic tokens:
+    if (norm.contains('bios')) {
+      return 'bios';
+    }
+    if (norm.contains('cpu core') || norm.contains('cores') || norm == 'core') {
+      return 'cpu_cores';
+    }
+    if (norm.contains('cpu thread') || norm.contains('threads') || norm == 'thread') {
+      return 'cpu_threads';
+    }
+    if (norm.contains('ram module') || norm.contains('modules')) {
+      return 'ram_modules';
+    }
+    if (norm.contains('os ver') || norm.contains('os build') || norm.contains('os release')) {
+      return 'os_version';
+    }
+    if (norm.contains('os arch') || norm.contains('architecture') || norm.contains('bitness')) {
+      return 'os_arch';
+    }
+    if (norm.contains('operating') ||
+        norm == 'os' ||
+        norm.startsWith('os ') ||
+        norm.endsWith(' os') ||
+        norm.contains(' os ') ||
+        norm.contains('os_') ||
+        norm.contains('os-') ||
+        norm.contains('os name')) {
       return 'os';
     }
     if (norm.contains('cpu') || norm.contains('processor')) {
@@ -314,9 +342,6 @@ class ExcelInventoryServiceImpl implements ExcelInventoryService {
     }
     if (norm.contains('gpu') || norm.contains('graphic')) {
       return 'gpu';
-    }
-    if (norm.contains('bios')) {
-      return 'bios';
     }
     if (norm.contains('switch')) {
       return 'switch';
@@ -493,15 +518,50 @@ class ExcelInventoryServiceImpl implements ExcelInventoryService {
 
     final hardwareSummary = parts.join(' | ');
     final explicitNotes = row['notes']?.trim() ?? '';
+    final baseNotes = explicitNotes.isNotEmpty
+        ? explicitNotes
+        : (existingNotes?.trim() ?? '');
 
-    if (hardwareSummary.isEmpty) {
-      return explicitNotes.isNotEmpty ? explicitNotes : (existingNotes ?? '');
+    if (parts.isEmpty) {
+      return baseNotes;
     }
 
-    if (explicitNotes.isNotEmpty && explicitNotes != hardwareSummary) {
-      return '$explicitNotes | $hardwareSummary';
+    if (baseNotes.isEmpty) {
+      return hardwareSummary;
     }
-    return hardwareSummary;
+
+    // Split baseNotes by '|' into clean chunks to detect duplicate parts or keys
+    final existingChunks = baseNotes
+        .split('|')
+        .map((c) => c.trim())
+        .where((c) => c.isNotEmpty)
+        .toList();
+
+    final newParts = <String>[];
+    for (final part in parts) {
+      final keyPrefix = part.contains(':')
+          ? part.split(':').first.trim().toLowerCase()
+          : '';
+      final alreadyPresent = existingChunks.any((chunk) {
+        if (chunk.toLowerCase() == part.toLowerCase()) return true;
+        if (keyPrefix.isNotEmpty) {
+          final chunkPrefix = chunk.contains(':')
+              ? chunk.split(':').first.trim().toLowerCase()
+              : '';
+          if (chunkPrefix == keyPrefix) return true;
+        }
+        return false;
+      });
+      if (!alreadyPresent) {
+        newParts.add(part);
+      }
+    }
+
+    if (newParts.isEmpty) {
+      return baseNotes;
+    }
+
+    return '$baseNotes | ${newParts.join(' | ')}';
   }
 
   static String _composeOsString(
@@ -511,13 +571,14 @@ class ExcelInventoryServiceImpl implements ExcelInventoryService {
     final os = row['os']?.trim() ?? '';
     final osArch = row['os_arch']?.trim() ?? '';
     final osVer = row['os_version']?.trim() ?? '';
-    if (os.isEmpty) return existingOs ?? '';
+    if (os.isEmpty && osVer.isEmpty) return existingOs ?? '';
 
-    final segments = <String>[os];
-    if (osArch.isNotEmpty && !os.toLowerCase().contains(osArch.toLowerCase())) {
+    final primaryOs = os.isNotEmpty ? os : osVer;
+    final segments = <String>[primaryOs];
+    if (osArch.isNotEmpty && !primaryOs.toLowerCase().contains(osArch.toLowerCase())) {
       segments.add(osArch);
     }
-    if (osVer.isNotEmpty && !os.contains(osVer)) {
+    if (os.isNotEmpty && osVer.isNotEmpty && !os.contains(osVer)) {
       segments.add('($osVer)');
     }
     return segments.join(' ');

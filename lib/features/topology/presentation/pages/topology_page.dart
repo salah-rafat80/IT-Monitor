@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
-import '../../../../core/di/injection.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/presentation/widgets/app_empty_state.dart';
 import '../../../../core/presentation/widgets/app_error_card.dart';
@@ -15,24 +14,40 @@ import '../widgets/enterprise_topology_canvas.dart';
 import '../widgets/enterprise_topology_summary_bar.dart';
 import '../widgets/topology_widgets.dart';
 
-class TopologyPage extends StatelessWidget {
+class TopologyPage extends StatefulWidget {
   const TopologyPage({super.key});
 
   @override
+  State<TopologyPage> createState() => _TopologyPageState();
+}
+
+class _TopologyPageState extends State<TopologyPage> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      try {
+        final currentFactoryId =
+            context.read<FactoryCubit>().state.selectedFactoryId;
+        final cubit = context.read<TopologyCubit>();
+        if (cubit.currentFactoryId != currentFactoryId) {
+          cubit.setFactory(currentFactoryId);
+        }
+      } catch (_) {}
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
-    try {
-      context.read<TopologyCubit>();
-      return const _TopologyView();
-    } catch (_) {
-      final initialFactoryId = context
-          .read<FactoryCubit>()
-          .state
-          .selectedFactoryId;
-      return BlocProvider<TopologyCubit>(
-        create: (_) => getIt<TopologyCubit>()..init(initialFactoryId),
-        child: const _TopologyView(),
-      );
-    }
+    return BlocListener<FactoryCubit, FactoryState>(
+      listenWhen: (prev, curr) =>
+          prev.selectedFactoryId != curr.selectedFactoryId,
+      listener: (context, state) {
+        context.read<TopologyCubit>().setFactory(state.selectedFactoryId);
+      },
+      child: const _TopologyView(),
+    );
   }
 }
 

@@ -26,80 +26,107 @@ void main() {
   });
 
   group('Phase 6 — Inventory Bootstrap & Integration Unit Tests', () {
-    test('1. Approved inventory seed dataset contains 28 valid devices', () {
+    test('1. Approved inventory seed is empty enforcing zero data fabrication', () {
       final rawRows = ApprovedInventorySeed.getApprovedRawRows();
-      final preview = InventoryValidator.validateRows(rows: rawRows);
-
-      expect(preview.validDevices.length, equals(28));
-      expect(preview.totalRowsProcessed, equals(rawRows.length));
-      expect(preview.excludedDuplicateIps, contains('192.168.22.250'));
-      expect(
-        preview.invalidRecords.any((r) => r.reason.contains('Switch')),
-        isTrue,
-      );
-      expect(
-        preview.invalidRecords.any((r) => r.reason.contains('Missing IP')),
-        isTrue,
-      );
+      expect(rawRows, isEmpty);
     });
 
     test(
-      '2. First-run bootstrap populates empty database with 28 approved devices',
+      '2. Bootstrap does not inject fabricated inventory into empty database',
       () async {
         final bootstrapRes = await deviceRepo.bootstrapApprovedInventory();
 
         expect(bootstrapRes.isSuccess, isTrue);
-        expect(bootstrapRes.dataOrNull, equals(28));
+        expect(bootstrapRes.dataOrNull, equals(0));
 
         final devicesRes = await deviceRepo.getDevices();
         expect(devicesRes.isSuccess, isTrue);
         final devices = devicesRes.dataOrNull!;
-        expect(devices.length, equals(28));
+        expect(devices, isEmpty);
+      },
+    );
 
-        // Verify sample devices identity
-        final inspector = devices.firstWhere((d) => d.ownerName == 'rm.inspector');
+    test(
+      '3. Explicit user import via commitImport is supported and idempotent',
+      () async {
+        final sampleDevices = [
+          DeviceEntity(
+            id: -1,
+            factoryId: 'rnf',
+            name: 'PC-Inspector',
+            type: DeviceType.pc,
+            ip: '192.168.22.67',
+            ownerName: 'rm.inspector',
+            department: 'QC-QA',
+            createdAt: DateTime.now(),
+          ),
+          DeviceEntity(
+            id: -2,
+            factoryId: 'rnf',
+            name: 'PC-Hamdy',
+            type: DeviceType.pc,
+            ip: '192.168.22.72',
+            ownerName: 'Hamdy.Ahmed',
+            department: 'Warehouse',
+            createdAt: DateTime.now(),
+          ),
+        ];
+
+        final importRes = await deviceRepo.commitImport(sampleDevices);
+        expect(importRes.isSuccess, isTrue);
+        expect(importRes.dataOrNull, equals(2));
+
+        final devicesRes = await deviceRepo.getDevices();
+        expect(devicesRes.dataOrNull!.length, equals(2));
+
+        final inspector = devicesRes.dataOrNull!.firstWhere((d) => d.ownerName == 'rm.inspector');
         expect(inspector.department, equals('QC-QA'));
-        expect(inspector.type, equals(DeviceType.pc));
         expect(inspector.ip, equals('192.168.22.67'));
-
-        final hamdy = devices.firstWhere((d) => d.ownerName == 'Hamdy.Ahmed');
-        expect(hamdy.department, equals('Warehouse'));
-        expect(hamdy.type, equals(DeviceType.pc));
-        expect(hamdy.ip, equals('192.168.22.72'));
       },
     );
 
     test(
-      '3. Bootstrap is idempotent and does not duplicate devices on subsequent calls',
+      '4. InventoryValidator rejects duplicate IPs and invalid rows',
       () async {
-        // First bootstrap
-        final firstRes = await deviceRepo.bootstrapApprovedInventory();
-        expect(firstRes.dataOrNull, equals(28));
+        const rawRows = [
+          RawInventoryRow(
+            rowIndex: 1,
+            rawName: 'PC-1',
+            rawType: 'PC',
+            rawIp: '192.168.22.250',
+            rawOwner: 'User1',
+            rawDepartment: 'IT',
+          ),
+          RawInventoryRow(
+            rowIndex: 2,
+            rawName: 'PC-2',
+            rawType: 'PC',
+            rawIp: '192.168.22.250',
+            rawOwner: 'User2',
+            rawDepartment: 'HR',
+          ),
+          RawInventoryRow(
+            rowIndex: 3,
+            rawName: 'SW-CORE',
+            rawType: 'Switch',
+            rawIp: '192.168.22.10',
+            rawOwner: 'Core Switch',
+            rawDepartment: 'IT',
+          ),
+          RawInventoryRow(
+            rowIndex: 4,
+            rawName: 'NO-IP',
+            rawType: 'PC',
+            rawIp: '',
+            rawOwner: 'User3',
+            rawDepartment: 'IT',
+          ),
+        ];
+        final preview = InventoryValidator.validateRows(rows: rawRows);
 
-        // Second bootstrap (should skip)
-        final secondRes = await deviceRepo.bootstrapApprovedInventory();
-        expect(secondRes.dataOrNull, equals(0));
-
-        final devicesRes = await deviceRepo.getDevices();
-        expect(devicesRes.dataOrNull!.length, equals(28));
-      },
-    );
-
-    test(
-      '4. Excluded duplicate IPs, switches, and invalid rows are NOT inserted',
-      () async {
-        await deviceRepo.bootstrapApprovedInventory();
-        final devicesRes = await deviceRepo.getDevices();
-        final devices = devicesRes.dataOrNull!;
-
-        // Excluded duplicate IP 192.168.22.250 must not exist
-        expect(devices.any((d) => d.ip == '192.168.22.250'), isFalse);
-
-        // Excluded switch SW-CORE must not exist
-        expect(devices.any((d) => d.name == 'SW-CORE'), isFalse);
-
-        // Excluded missing IP device must not exist
-        expect(devices.any((d) => d.name == 'NO-IP'), isFalse);
+        expect(preview.excludedDuplicateIps, contains('192.168.22.250'));
+        expect(preview.invalidRecords.any((r) => r.reason.contains('Switch')), isTrue);
+        expect(preview.invalidRecords.any((r) => r.reason.contains('Missing IP')), isTrue);
       },
     );
 
@@ -148,9 +175,19 @@ void main() {
     );
 
     test(
-      '6. Real monitoring status streams emit statuses for all 37 imported devices',
+      '6. Real monitoring status streams emit statuses for imported devices',
       () async {
-        await deviceRepo.bootstrapApprovedInventory();
+        final sampleDevice = DeviceEntity(
+          id: -1,
+          factoryId: 'rnf',
+          name: 'PC-Sample',
+          type: DeviceType.pc,
+          ip: '192.168.22.100',
+          ownerName: 'Sample User',
+          department: 'IT',
+          createdAt: DateTime.now(),
+        );
+        await deviceRepo.commitImport([sampleDevice]);
 
         final statusesRes = await monitoringRepo.getDeviceStatuses();
         expect(statusesRes.isSuccess, isTrue);
@@ -160,10 +197,9 @@ void main() {
           emits(isA<List<DeviceStatusEntity>>()),
         );
 
-        // Save device status for an imported device
         final devicesRes = await deviceRepo.getDevices();
-        final sampleDevice = devicesRes.dataOrNull!.first;
-        final status = DeviceStatusEntity.initial(sampleDevice.id).copyWith(
+        final insertedDevice = devicesRes.dataOrNull!.first;
+        final status = DeviceStatusEntity.initial(insertedDevice.id).copyWith(
           status: DeviceStatusEnum.up,
           lastLatencyMs: 12,
           lastCheckAt: DateTime.now(),

@@ -15,6 +15,6 @@ void main() {
     expect(find.byType(ITNetworkMonitorApp), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox.shrink());
-    await tester.pump(const Duration(milliseconds: 50));
+    await tester.pump(const Duration(seconds: 22));
   });
 }

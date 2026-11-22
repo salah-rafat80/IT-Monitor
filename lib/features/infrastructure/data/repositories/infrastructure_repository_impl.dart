@@ -418,21 +418,8 @@ class InfrastructureRepositoryImpl implements InfrastructureRepository {
           }
 
           anyAdded = true;
-        } else {
-          final dev = existing.dataOrNull!;
-          if (dev.location == null || dev.location != ap.location || dev.factoryId != 'rnf') {
-            await (_db.update(
-              _db.infrastructureDevices,
-            )..where((t) => t.id.equals(dev.id))).write(
-              InfrastructureDevicesCompanion(
-                factoryId: const Value('rnf'),
-                location: Value(ap.location),
-                updatedAt: Value(DateTime.now()),
-              ),
-            );
-            anyAdded = true;
-          }
         }
+        // If record already exists, strictly preserve user-edited fields and do not overwrite.
       }
 
       if (anyAdded) {
@@ -551,23 +538,6 @@ class InfrastructureRepositoryImpl implements InfrastructureRepository {
           }
 
           anyAdded = true;
-        } else {
-          final dev = existing.dataOrNull!;
-          if (dev.location != sw.location || dev.factoryId != sw.factoryId || dev.name != sw.name) {
-            await (_db.update(
-              _db.infrastructureDevices,
-            )..where((t) => t.id.equals(dev.id))).write(
-              InfrastructureDevicesCompanion(
-                name: Value(sw.name),
-                factoryId: Value(sw.factoryId),
-                location: Value(sw.location),
-                role: Value(sw.role),
-                isCriticalInfrastructure: Value(sw.isCritical),
-                updatedAt: Value(DateTime.now()),
-              ),
-            );
-            anyAdded = true;
-          }
         }
       }
 

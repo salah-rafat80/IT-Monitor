@@ -16,43 +16,47 @@ import '../widgets/monitored_devices_table.dart';
 import '../widgets/monitoring_filter_bar.dart';
 import '../widgets/monitoring_summary_cards.dart';
 
-import '../../../infrastructure/presentation/bloc/infrastructure_cubit.dart';
 import '../../../infrastructure/presentation/widgets/infrastructure_status_cards.dart';
 import '../../../factories/presentation/bloc/factory_cubit.dart';
 import '../../../factories/presentation/widgets/factory_overview_cards.dart';
 
-class MonitoringDashboardPage extends StatelessWidget {
+class MonitoringDashboardPage extends StatefulWidget {
   const MonitoringDashboardPage({super.key});
 
   @override
+  State<MonitoringDashboardPage> createState() =>
+      _MonitoringDashboardPageState();
+}
+
+class _MonitoringDashboardPageState extends State<MonitoringDashboardPage> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      try {
+        final currentFactoryId =
+            context.read<FactoryCubit>().state.selectedFactoryId;
+        final cubit = context.read<MonitoringDashboardCubit>();
+        if (cubit.activeFactoryId != currentFactoryId) {
+          cubit.setFactoryFilter(currentFactoryId);
+        }
+      } catch (_) {}
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
-    try {
-      context.read<MonitoringDashboardCubit>();
-      return const MonitoringDashboardView();
-    } catch (_) {
-      final initialFactoryId = context
-          .read<FactoryCubit>()
-          .state
-          .selectedFactoryId;
-      return MultiBlocProvider(
-        providers: [
-          BlocProvider<MonitoringDashboardCubit>(
-            create: (context) {
-              final cubit = getIt<MonitoringDashboardCubit>();
-              if (initialFactoryId != null) {
-                cubit.setFactoryFilter(initialFactoryId);
-              }
-              return cubit..initDashboard();
-            },
-          ),
-          BlocProvider<InfrastructureCubit>.value(
-            value: getIt<InfrastructureCubit>()
-              ..loadInfrastructure(factoryId: initialFactoryId),
-          ),
-        ],
-        child: const MonitoringDashboardView(),
-      );
-    }
+    return BlocListener<FactoryCubit, FactoryState>(
+      listenWhen: (prev, curr) =>
+          prev.selectedFactoryId != curr.selectedFactoryId,
+      listener: (context, state) {
+        context
+            .read<MonitoringDashboardCubit>()
+            .setFactoryFilter(state.selectedFactoryId);
+      },
+      child: const MonitoringDashboardView(),
+    );
   }
 }
 
@@ -444,6 +448,7 @@ class _MonitoringDashboardViewState extends State<MonitoringDashboardView> {
                     failureThreshold: state.config.failureThreshold,
                     selectedDeviceIds: _selectedDeviceIds,
                     onClearFilters: () => cubit.clearAllFilters(),
+                    isFiltered: state.totalCount > 0,
                     onToggleSelect: (deviceId, selected) {
                       setState(() {
                         if (selected) {

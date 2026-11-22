@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:injectable/injectable.dart';
@@ -79,8 +80,29 @@ class BlueprintDrawioParser {
         BlueprintTranslationMap.pageTitles[originalName] ??
         originalName;
 
-    final modelElem = diagElem.findElements('mxGraphModel').firstOrNull;
-    if (modelElem == null) return null;
+    var modelElem = diagElem.findElements('mxGraphModel').firstOrNull;
+    if (modelElem == null) {
+      final text = diagElem.innerText.trim();
+      if (text.isNotEmpty) {
+        try {
+          final decodedBytes = base64.decode(text);
+          final decompressed = utf8.decode(ZLibDecoder(raw: true).convert(decodedBytes));
+          final urlDecoded = Uri.decodeComponent(decompressed);
+          final decompDoc = XmlDocument.parse(urlDecoded);
+          modelElem = decompDoc.findElements('mxGraphModel').firstOrNull ??
+              decompDoc.rootElement;
+        } catch (e) {
+          throw FormatException(
+            'Failed to decompress Draw.io diagram "$originalName": $e',
+          );
+        }
+      }
+      if (modelElem == null) {
+        throw FormatException(
+          'Draw.io diagram "$originalName" is missing <mxGraphModel> definition.',
+        );
+      }
+    }
 
     final rootElem = modelElem.findElements('root').firstOrNull;
     if (rootElem == null) return null;
@@ -116,6 +138,31 @@ class BlueprintDrawioParser {
       absPositions[c.id] = _calculateAbsolutePosition(c.id, cellMap, {});
     }
 
+    // Precalculate Draw.io -> SVG coordinate space translation offset
+    double svgOffsetX = 0.0;
+    double svgOffsetY = 0.0;
+    int matchedCount = 0;
+    if (svgBoundsMap != null) {
+      final xDiffs = <double>[];
+      final yDiffs = <double>[];
+      for (final cell in rawCells) {
+        if (!cell.isVertex) continue;
+        final svgRect = svgBoundsMap[cell.id];
+        if (svgRect != null) {
+          final absPos = absPositions[cell.id] ?? Offset.zero;
+          xDiffs.add(svgRect.left - absPos.dx);
+          yDiffs.add(svgRect.top - absPos.dy);
+          matchedCount++;
+        }
+      }
+      if (xDiffs.isNotEmpty) {
+        xDiffs.sort();
+        yDiffs.sort();
+        svgOffsetX = xDiffs[xDiffs.length ~/ 2];
+        svgOffsetY = yDiffs[yDiffs.length ~/ 2];
+      }
+    }
+
     // Build elements & cables
     final elements = <BlueprintElementEntity>[];
     final cables = <BlueprintCableEntity>[];
@@ -143,6 +190,12 @@ class BlueprintDrawioParser {
         final isRounded = cell.styleMap['rounded'] == '1';
         final shape = cell.styleMap['shape'] ?? 'rectangle';
 
+        final svgRect = svgBoundsMap?[cell.id];
+        final unifiedBounds = svgRect ??
+            (matchedCount > 0
+                ? Rect.fromLTWH(absPos.dx + svgOffsetX, absPos.dy + svgOffsetY, width, height)
+                : Rect.fromLTWH(absPos.dx, absPos.dy, width, height));
+
         elements.add(
           BlueprintElementEntity(
             id: cell.id,
@@ -150,8 +203,8 @@ class BlueprintDrawioParser {
             rawLabel: rawClean,
             englishLabel: english,
             category: category,
-            bounds: Rect.fromLTWH(absPos.dx, absPos.dy, width, height),
-            svgBounds: svgBoundsMap?[cell.id],
+            bounds: unifiedBounds,
+            svgBounds: unifiedBounds,
             fillColor: fillColor,
             strokeColor: strokeColor,
             strokeWidth: strokeWidth,
@@ -171,8 +224,13 @@ class BlueprintDrawioParser {
             ? BlueprintTranslationMap.translate(rawClean, cellId: cell.id)
             : null;
 
-        // Waypoints calculation
-        final waypoints = _resolveCableWaypoints(cell, cellMap, absPositions);
+        // Waypoints calculation converted to unified SVG space
+        final rawWaypoints = _resolveCableWaypoints(cell, cellMap, absPositions);
+        final waypoints = matchedCount > 0
+            ? rawWaypoints
+                .map((pt) => Offset(pt.dx + svgOffsetX, pt.dy + svgOffsetY))
+                .toList()
+            : rawWaypoints;
         if (waypoints.isNotEmpty) {
           cables.add(
             BlueprintCableEntity(
@@ -211,10 +269,21 @@ class BlueprintDrawioParser {
       svgAsset = 'assets/topology/rnf/pages/ground_floor_warehouses.svg';
       imageAsset = 'assets/topology/rnf/pages/ground_floor_warehouses.png';
       svgDimension = const Size(1192, 1379);
-    } else {
+    } else if (pageId == '2SKE6Rj-lpadhde2bo0e' ||
+        originalName.contains('بواب') ||
+        englishTitle.contains('Gate') ||
+        englishTitle.contains('Security')) {
       svgAsset = 'assets/topology/rnf/pages/security_gates.svg';
       imageAsset = 'assets/topology/rnf/pages/security_gates.png';
       svgDimension = const Size(684, 890);
+    } else {
+      // Unknown diagram page: strictly avoid falling through to an unrelated background
+      svgAsset = '';
+      imageAsset = '';
+      svgDimension = Size(
+        contentBounds.width > 0 ? contentBounds.width : 1000,
+        contentBounds.height > 0 ? contentBounds.height : 1000,
+      );
     }
 
     return BlueprintPageEntity(
@@ -388,10 +457,11 @@ class BlueprintDrawioParser {
     double maxY = -double.infinity;
 
     for (final el in elements) {
-      minX = minX < el.bounds.left ? minX : el.bounds.left;
-      minY = minY < el.bounds.top ? minY : el.bounds.top;
-      maxX = maxX > el.bounds.right ? maxX : el.bounds.right;
-      maxY = maxY > el.bounds.bottom ? maxY : el.bounds.bottom;
+      final b = el.renderBounds;
+      minX = minX < b.left ? minX : b.left;
+      minY = minY < b.top ? minY : b.top;
+      maxX = maxX > b.right ? maxX : b.right;
+      maxY = maxY > b.bottom ? maxY : b.bottom;
     }
 
     for (final cable in cables) {

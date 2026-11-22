@@ -3,7 +3,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../../core/di/injection.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../monitoring/presentation/bloc/monitoring_dashboard_cubit.dart';
 import '../../../monitoring/presentation/bloc/monitoring_dashboard_state.dart';
@@ -26,24 +25,7 @@ class WallDisplayPage extends StatelessWidget {
       initialFactoryId = context.read<FactoryCubit>().state.selectedFactoryId;
     } catch (_) {}
 
-    return MultiBlocProvider(
-      providers: [
-        BlocProvider<MonitoringDashboardCubit>(
-          create: (_) {
-            final cubit = getIt<MonitoringDashboardCubit>();
-            if (initialFactoryId != null) {
-              cubit.setFactoryFilter(initialFactoryId);
-            }
-            return cubit..initDashboard(factoryId: initialFactoryId);
-          },
-        ),
-        BlocProvider<InfrastructureCubit>.value(
-          value: getIt<InfrastructureCubit>()
-            ..loadInfrastructure(factoryId: initialFactoryId),
-        ),
-      ],
-      child: _WallDisplayView(initialFactoryId: initialFactoryId),
-    );
+    return _WallDisplayView(initialFactoryId: initialFactoryId);
   }
 }
 

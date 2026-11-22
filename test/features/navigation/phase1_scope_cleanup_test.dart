@@ -133,10 +133,21 @@ void main() {
     test(
       '4. Dashboard initializes successfully with approved inventory',
       () async {
-        // Seed approved inventory
-        final bootstrapRes = await deviceRepo.bootstrapApprovedInventory();
-        expect(bootstrapRes.isSuccess, isTrue);
-        expect(bootstrapRes.dataOrNull, equals(28));
+        // Seed 28 test devices via user import
+        final testDevices = List.generate(
+          28,
+          (i) => DeviceEntity(
+            id: -(i + 1),
+            factoryId: 'rnf',
+            name: 'PC-$i',
+            ip: '192.168.22.${50 + i}',
+            type: DeviceType.pc,
+            ownerName: 'User $i',
+            department: 'IT',
+            createdAt: DateTime.now(),
+          ),
+        );
+        await deviceRepo.commitImport(testDevices);
 
         final mockPing = MockPingChecker();
         final scheduler = MonitoringScheduler(

@@ -138,7 +138,12 @@ class ThemeCubit extends Cubit<ThemeState> {
   Future<void> setPalette(AppPalette palette) async {
     final updated = palette.copyWith(isDark: state.isDark);
     emit(state.copyWith(palette: updated));
-    await _savePaletteUseCase(updated.toEntity());
+    try {
+      await _savePaletteUseCase(updated.toEntity());
+    } catch (e) {
+      debugPrint('[ThemeCubit] Failed to persist palette: $e');
+      rethrow;
+    }
   }
 
   /// Updates a single seed color (main, second, accent) and re-derives all tokens.

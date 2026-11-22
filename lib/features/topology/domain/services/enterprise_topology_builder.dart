@@ -98,7 +98,6 @@ class EnterpriseTopologyBuilder {
         status: gwRnfStatus,
         level: 1,
         location: 'RNF Server Room',
-        vendor: 'Cisco / Enterprise Gateway',
         isInferred: false,
         lastLatencyMs: ent?.lastLatencyMs,
         lastSuccessfulLatencyMs: ent?.lastSuccessfulLatencyMs,
@@ -126,7 +125,6 @@ class EnterpriseTopologyBuilder {
         status: gwBnfStatus,
         level: 1,
         location: 'BNF Server Room',
-        vendor: 'Cisco / Enterprise Gateway',
         isInferred: false,
         lastLatencyMs: ent?.lastLatencyMs,
         lastSuccessfulLatencyMs: ent?.lastSuccessfulLatencyMs,
@@ -245,8 +243,8 @@ class EnterpriseTopologyBuilder {
           status: swStatus,
           level: 2,
           location: vSw.location,
-          vendor: vSw.name.contains('D-Link') ? 'D-Link' : 'Cisco Managed Switch',
-          model: vSw.name.contains('D-Link') ? 'DES-1016D' : 'WS-C2960X-24TS-L',
+          vendor: vSw.name.contains('D-Link') ? 'D-Link' : null,
+          model: null,
           infraRef: vSw,
           isInferred: false,
           isMonitored: true,
@@ -404,97 +402,33 @@ class EnterpriseTopologyBuilder {
 
       // Helper: Match endpoint to its verified switch
       UniFiDeviceEntity? findMatchingSwitch(MonitoredDevice md) {
-        final ip = md.device.ip.trim();
-        final dept = md.device.department.trim().toLowerCase();
+        // 1. Direct parentSwitchId match
+        if (md.device.parentSwitchId != null) {
+          for (final sw in verifiedSwitches) {
+            if (sw.id == md.device.parentSwitchId) return sw;
+          }
+        }
+
+        // 2. Direct parentSwitchName match
+        if (md.device.parentSwitchName?.isNotEmpty == true) {
+          final target = md.device.parentSwitchName!.trim().toLowerCase();
+          for (final sw in verifiedSwitches) {
+            if (sw.name.trim().toLowerCase() == target) return sw;
+          }
+        }
+
+        // 3. Direct officeLocation match against switch location
         final loc = (md.device.officeLocation ?? '').trim().toLowerCase();
-        final owner = md.device.ownerName.trim().toLowerCase();
-
-        // 1. Direct location match against switch location
-        for (final sw in verifiedSwitches) {
-          final swLoc = (sw.location ?? '').toLowerCase();
-          if (swLoc.isNotEmpty && loc.isNotEmpty && (swLoc.contains(loc) || loc.contains(swLoc))) {
-            return sw;
+        if (loc.isNotEmpty) {
+          for (final sw in verifiedSwitches) {
+            final swLoc = (sw.location ?? '').toLowerCase();
+            if (swLoc.isNotEmpty && (swLoc.contains(loc) || loc.contains(swLoc))) {
+              return sw;
+            }
           }
         }
 
-        // 2. RNF Blueprint routing rules
-        if (ip.contains('.22.') || md.device.factoryId == 'rnf') {
-          if (ip.endsWith('.37') ||
-              dept.contains('sec') ||
-              loc.contains('sec') ||
-              loc.contains('gate') ||
-              owner.contains('khamis') ||
-              owner.contains('خميس')) {
-            if (swSecurity != null) return swSecurity;
-          }
-
-          if (ip.endsWith('.115') ||
-              ip.endsWith('.77') ||
-              ip.endsWith('.64') ||
-              ip.endsWith('.29') ||
-              dept.contains('rm') ||
-              loc.contains('rm') ||
-              loc.contains('raw') ||
-              dept.contains('raw') ||
-              dept.contains('logis') ||
-              loc.contains('logis') ||
-              owner.contains('mostafa') ||
-              owner.contains('مصطفي احمد') ||
-              owner.contains('bassem') ||
-              owner.contains('باسم')) {
-            if (swDlink != null) return swDlink;
-          }
-
-          if (ip.endsWith('.70') ||
-              ip.endsWith('.131') ||
-              ip.endsWith('.130') ||
-              dept.contains('spare') ||
-              loc.contains('spare') ||
-              owner.contains('sabry') ||
-              owner.contains('صبري') ||
-              owner.contains('ramadan') ||
-              owner.contains('احمد رمضان')) {
-            if (swSpareparts != null) return swSpareparts;
-          }
-
-          if (ip.endsWith('.73') ||
-              ip.endsWith('.72') ||
-              ip.endsWith('.110') ||
-              ip.endsWith('.75') ||
-              dept.contains('ware') ||
-              loc.contains('ware') ||
-              loc.contains('مخازن') ||
-              owner.contains('elewa') ||
-              owner.contains('عليوة') ||
-              owner.contains('samir') ||
-              owner.contains('سمير')) {
-            if (swGroundCore != null) return swGroundCore;
-          }
-
-          if (ip.endsWith('.117') ||
-              ip.endsWith('.112') ||
-              ip.endsWith('.118') ||
-              ip.endsWith('.129') ||
-              ip.endsWith('.123') ||
-              ip.endsWith('.124') ||
-              ip.endsWith('.122') ||
-              dept.contains('acc') ||
-              dept.contains('fin') ||
-              dept.contains('pur') ||
-              loc.contains('acc') ||
-              loc.contains('fin') ||
-              loc.contains('pur') ||
-              dept.contains('حساب') ||
-              dept.contains('مشتري') ||
-              dept.contains('خزن')) {
-            if (swWest != null) return swWest;
-          }
-
-          if (swEast != null) return swEast;
-          if (swWest != null) return swWest;
-        }
-
-        return verifiedSwitches.first;
+        return null;
       }
 
       // LEVEL 3: UniFi APs (Strictly scoped by factoryId)
@@ -567,7 +501,45 @@ class EnterpriseTopologyBuilder {
         final md = monitoredDevices[i];
         final devId = 'dev_${md.device.id}';
         final parentSw = findMatchingSwitch(md);
-        final swId = parentSw != null ? 'sw_${parentSw.id}' : 'sw_${verifiedSwitches.first.id}';
+        final String swId;
+        if (parentSw != null) {
+          swId = 'sw_${parentSw.id}';
+        } else {
+          final fid = md.device.factoryId.trim().isEmpty
+              ? 'unassigned'
+              : md.device.factoryId.trim().toLowerCase();
+          swId = 'sw_unassigned_$fid';
+          if (!nodes.containsKey(swId)) {
+            nodes[swId] = EnterpriseTopologyNode(
+              id: swId,
+              title: 'Unassigned Switch (${fid.toUpperCase()})',
+              subtitle: 'Unlinked Endpoints',
+              category: TopologyDeviceCategory.switchDevice,
+              status: DeviceStatusEnum.up,
+              level: 2,
+              location: 'Unassigned',
+              isInferred: true,
+              isMonitored: false,
+              size: const Size(168, 60),
+              failureThreshold: failureThreshold,
+            );
+            final upstreamGwId = gatewayIds
+                    .where((id) => id.contains(fid))
+                    .firstOrNull ??
+                gatewayIds.firstOrNull;
+            if (upstreamGwId != null) {
+              links.add(
+                EnterpriseTopologyLink(
+                  id: 'link_${upstreamGwId}_$swId',
+                  fromNodeId: upstreamGwId,
+                  toNodeId: swId,
+                  status: DeviceStatusEnum.up,
+                  isInferred: true,
+                ),
+              );
+            }
+          }
+        }
 
         TopologyDeviceCategory cat = TopologyDeviceCategory.pc;
         if (md.device.type.name.toLowerCase().contains('laptop')) {
@@ -886,21 +858,22 @@ class EnterpriseTopologyBuilder {
     // Iterate through Level 2 switches and allocate vertical space for their branches
     final level2Switches = levels[2] ?? [];
 
-    const rnfOrder = [
-      'sw_rnf_floor1_west',
-      'sw_rnf_floor1_east',
-      'sw_rnf_ground_core',
-      'sw_rnf_dlink_rm',
-      'sw_rnf_spareparts',
-      'sw_rnf_security_core',
-    ];
-    level2Switches.sort((a, b) {
-      final idxARnf = rnfOrder.indexOf(a.id);
-      final idxBRnf = rnfOrder.indexOf(b.id);
-      if (idxARnf != -1 && idxBRnf != -1) return idxARnf.compareTo(idxBRnf);
-      if (idxARnf != -1) return -1;
-      if (idxBRnf != -1) return 1;
+    int compareIpStrings(String? ip1, String? ip2) {
+      if (ip1 == null || ip2 == null) return (ip1 ?? '').compareTo(ip2 ?? '');
+      final parts1 = ip1.split('.').map((p) => int.tryParse(p) ?? 0).toList();
+      final parts2 = ip2.split('.').map((p) => int.tryParse(p) ?? 0).toList();
+      if (parts1.length == 4 && parts2.length == 4) {
+        for (int i = 0; i < 4; i++) {
+          final diff = parts1[i].compareTo(parts2[i]);
+          if (diff != 0) return diff;
+        }
+      }
+      return ip1.compareTo(ip2);
+    }
 
+    level2Switches.sort((a, b) {
+      final comp = compareIpStrings(a.subtitle, b.subtitle);
+      if (comp != 0) return comp;
       return a.title.compareTo(b.title);
     });
 

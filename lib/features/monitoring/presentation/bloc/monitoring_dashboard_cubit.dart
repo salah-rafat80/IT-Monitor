@@ -2,6 +2,8 @@ import 'dart:async';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:injectable/injectable.dart';
 
+import '../../../../core/errors/failures.dart';
+import '../../../../core/utils/result.dart';
 import '../../../devices/domain/entities/device_entity.dart';
 import '../../../devices/domain/repositories/device_repository.dart';
 import '../../domain/entities/device_status_entity.dart';
@@ -46,25 +48,40 @@ class MonitoringDashboardCubit extends Cubit<MonitoringDashboardState> {
 
   Future<void> setFactoryFilter(String? factoryId) async {
     _activeFactoryId = factoryId;
-    await initDashboard(factoryId: factoryId);
+    await initDashboard(factoryId: factoryId, forceSetFactory: true);
   }
 
   Future<void> initDashboard({
     bool startScheduler = false,
     String? factoryId,
+    bool forceSetFactory = false,
   }) async {
-    if (factoryId != null || _activeFactoryId != null) {
-      _activeFactoryId = factoryId ?? _activeFactoryId;
+    if (forceSetFactory) {
+      _activeFactoryId = factoryId;
+    } else if (factoryId != null) {
+      _activeFactoryId = factoryId;
     }
     emit(const MonitoringDashboardLoading());
 
     try {
-      await _deviceRepo.bootstrapApprovedInventory();
+      final devicesRes = await _deviceRepo
+          .getDevices(factoryId: _activeFactoryId)
+          .timeout(
+            const Duration(seconds: 10),
+            onTimeout: () => Result.failure(
+              NetworkFailure('Loading devices timed out after 10s'),
+            ),
+          );
+      final statusesRes = await _monitoringRepo
+          .getDeviceStatuses()
+          .timeout(
+            const Duration(seconds: 10),
+            onTimeout: () => Result.failure(
+              NetworkFailure('Loading device statuses timed out after 10s'),
+            ),
+          );
 
-      final devicesRes = await _deviceRepo.getDevices(
-        factoryId: _activeFactoryId,
-      );
-      final statusesRes = await _monitoringRepo.getDeviceStatuses();
+      if (isClosed) return;
 
       if (devicesRes.isFailure) {
         emit(
@@ -111,17 +128,31 @@ class MonitoringDashboardCubit extends Cubit<MonitoringDashboardState> {
 
       _rebuildAndEmitLoaded();
     } catch (e) {
-      emit(MonitoringDashboardError('Dashboard initialization failed: $e'));
+      if (!isClosed) {
+        emit(MonitoringDashboardError('Dashboard initialization failed: $e'));
+      }
     }
   }
 
   Future<void> refreshDevices() async {
     try {
       await _scheduler.triggerAllChecks(force: true);
-      final devicesRes = await _deviceRepo.getDevices(
-        factoryId: _activeFactoryId,
-      );
-      final statusesRes = await _monitoringRepo.getDeviceStatuses();
+      final devicesRes = await _deviceRepo
+          .getDevices(factoryId: _activeFactoryId)
+          .timeout(
+            const Duration(seconds: 10),
+            onTimeout: () => Result.failure(
+              NetworkFailure('Refreshing devices timed out after 10s'),
+            ),
+          );
+      final statusesRes = await _monitoringRepo
+          .getDeviceStatuses()
+          .timeout(
+            const Duration(seconds: 10),
+            onTimeout: () => Result.failure(
+              NetworkFailure('Refreshing device statuses timed out after 10s'),
+            ),
+          );
       if (devicesRes.isFailure) {
         if (!isClosed) {
           emit(

@@ -128,6 +128,7 @@ void main() {
         wrapWithTheme(
           MonitoredDevicesTable(
             devices: const [],
+            isFiltered: true,
             onSelectDevice: (_) {},
             onClearFilters: () => cleared = true,
           ),
@@ -140,6 +141,21 @@ void main() {
       await tester.tap(find.text('Clear All Filters'));
       await tester.pump();
       expect(cleared, isTrue);
+    });
+
+    testWidgets('MonitoredDevicesTable renders AppEmptyState.firstUse when not filtered', (tester) async {
+      await tester.pumpWidget(
+        wrapWithTheme(
+          MonitoredDevicesTable(
+            devices: const [],
+            isFiltered: false,
+            onSelectDevice: (_) {},
+          ),
+        ),
+      );
+
+      expect(find.byType(AppEmptyState), findsOneWidget);
+      expect(find.text('Import Excel Inventory'), findsOneWidget);
     });
 
     testWidgets('MonitoredDevicesTable renders extreme strings without RenderFlex overflow', (tester) async {

@@ -344,15 +344,7 @@ class MonitoringServiceServer {
       _log('Database and dependencies configured successfully.');
     }
 
-    // Ensure authoritative inventory and verified access points are bootstrapped
-    if (getIt.isRegistered<DeviceRepository>()) {
-      try {
-        final devRepo = getIt<DeviceRepository>();
-        await devRepo.bootstrapApprovedInventory();
-      } catch (e) {
-        _log('Warning: Failed to bootstrap approved inventory at startup: $e');
-      }
-    }
+    // Ensure verified access points are bootstrapped
     if (getIt.isRegistered<InfrastructureRepository>()) {
       try {
         final infraRepo = getIt<InfrastructureRepository>();

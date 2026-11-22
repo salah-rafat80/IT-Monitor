@@ -101,5 +101,55 @@ void main() {
       expect(techNew.device?.mac, equals('8C-EC-4B-D4-F0-BD'));
       expect(techNew.device?.notes, contains('SN: FX57HT2'));
     });
+
+    test('Defect 8: Header fallback resolves BIOS Ver, CPU details, and OS without misrouting', () {
+      final tsv = 'Device Name\tIP\tOwner\tBIOS Ver\tCPU Cores\tCPU Threads\tOS Version\n'
+          'TEST-PC\t192.168.22.99\tJohn Doe\t1.14.0\t8\t16\tWindows 10 Pro (22H2)\n';
+      final summary = service.parseTabularTsv(
+        tsvText: tsv,
+        targetFactoryId: 'rnf',
+        existingFactoryDevices: [],
+      );
+
+      expect(summary.rows.length, equals(1));
+      expect(summary.invalidCount, equals(0), reason: summary.rows.first.rejectionReason);
+      final dev = summary.rows.first.device!;
+      expect(dev.notes, contains('BIOS: 1.14.0'), reason: 'BIOS Ver must map to bios, not os');
+      expect(dev.operatingSystem, equals('Windows 10 Pro (22H2)'));
+    });
+
+    test('Defect 9: Hardware notes composition is idempotent across round-trip re-imports', () {
+      final now = DateTime.now();
+      final existingDevice = DeviceEntity(
+        id: 10,
+        factoryId: 'rnf',
+        name: 'DESKTOP-1',
+        type: DeviceType.pc,
+        ip: '192.168.22.50',
+        ownerName: 'User One',
+        department: 'IT',
+        notes: 'Legacy manual note | SN: ABC1234 | CPU: i5-8500 @ 3.00GHz (6 C) | RAM: 16GB',
+        isMonitored: true,
+        isEnabled: true,
+        createdAt: now,
+      );
+
+      final tsv = 'Device Name\tIP\tOwner\tSerial\tCPU\tRAM GB\tNotes\n'
+          'DESKTOP-1\t192.168.22.50\tUser One\tABC1234\ti5-8500 @ 3.00GHz\t16\tLegacy manual note\n';
+
+      final summary = service.parseTabularTsv(
+        tsvText: tsv,
+        targetFactoryId: 'rnf',
+        existingFactoryDevices: [existingDevice],
+      );
+
+      expect(summary.rows.length, equals(1));
+      expect(summary.invalidCount, equals(0), reason: summary.rows.first.rejectionReason);
+      final updatedNotes = summary.rows.first.device!.notes!;
+      expect('SN: ABC1234'.allMatches(updatedNotes).length, equals(1),
+          reason: 'SN must not be duplicated in notes');
+      expect('Legacy manual note'.allMatches(updatedNotes).length, equals(1),
+          reason: 'Existing notes must not be duplicated');
+    });
   });
 }

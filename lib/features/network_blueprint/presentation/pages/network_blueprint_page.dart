@@ -35,6 +35,7 @@ class _NetworkBlueprintView extends StatefulWidget {
 class _NetworkBlueprintViewState extends State<_NetworkBlueprintView> {
   final TransformationController _transformationController = TransformationController();
   Size _lastViewportSize = Size.zero;
+  String? _lastFittedPageId;
 
   @override
   void dispose() {
@@ -68,12 +69,15 @@ class _NetworkBlueprintViewState extends State<_NetworkBlueprintView> {
     if (_lastViewportSize.width <= 0 || _lastViewportSize.height <= 0) return;
 
     final bounds = page.contentBounds;
+    if (bounds.width <= 0 || bounds.height <= 0) return;
+
     final scaleX = _lastViewportSize.width / bounds.width;
     final scaleY = _lastViewportSize.height / bounds.height;
     final scale = math.min(scaleX, scaleY) * 0.92;
 
-    final offsetX = (_lastViewportSize.width - bounds.width * scale) / 2;
-    final offsetY = (_lastViewportSize.height - bounds.height * scale) / 2;
+    // Honor the bounding box origin (bounds.left, bounds.top)
+    final offsetX = (_lastViewportSize.width - bounds.width * scale) / 2 - bounds.left * scale;
+    final offsetY = (_lastViewportSize.height - bounds.height * scale) / 2 - bounds.top * scale;
 
     final matrix = Matrix4.diagonal3Values(scale, scale, 1.0)
       ..setTranslationRaw(offsetX, offsetY, 0.0);
@@ -89,14 +93,11 @@ class _NetworkBlueprintViewState extends State<_NetworkBlueprintView> {
     if (_lastViewportSize.width <= 0 || _lastViewportSize.height <= 0) return;
 
     final currentScale = _transformationController.value.getMaxScaleOnAxis();
-    final elCenter = element.bounds.center;
-    final offsetCenter = Offset(
-      elCenter.dx - page.contentBounds.left,
-      elCenter.dy - page.contentBounds.top,
-    );
+    // Use renderBounds (strictly in SVG coordinate space matching canvas rendering)
+    final elCenter = element.renderBounds.center;
 
-    final targetX = _lastViewportSize.width / 2 - offsetCenter.dx * currentScale;
-    final targetY = _lastViewportSize.height / 2 - offsetCenter.dy * currentScale;
+    final targetX = _lastViewportSize.width / 2 - elCenter.dx * currentScale;
+    final targetY = _lastViewportSize.height / 2 - elCenter.dy * currentScale;
 
     final matrix = Matrix4.diagonal3Values(currentScale, currentScale, 1.0)
       ..setTranslationRaw(targetX, targetY, 0.0);
@@ -114,10 +115,13 @@ class _NetworkBlueprintViewState extends State<_NetworkBlueprintView> {
       body: BlocConsumer<NetworkBlueprintCubit, NetworkBlueprintState>(
         listener: (context, state) {
           if (state is NetworkBlueprintLoaded && _lastViewportSize != Size.zero) {
-            // Auto fit on initial load
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              _fitToScreen(state.currentPage);
-            });
+            // Auto-fit ONLY on initial load or explicit page change; preserve zoom across telemetry refreshes
+            if (_lastFittedPageId != state.currentPage.id) {
+              _lastFittedPageId = state.currentPage.id;
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                _fitToScreen(state.currentPage);
+              });
+            }
           }
         },
         builder: (context, state) {
@@ -222,6 +226,7 @@ class _NetworkBlueprintViewState extends State<_NetworkBlueprintView> {
           pages: state.pages,
           selectedIndex: state.selectedPageIndex,
           onTabSelected: (index) {
+            _lastFittedPageId = state.pages[index].id;
             cubit.selectPage(index);
             WidgetsBinding.instance.addPostFrameCallback((_) {
               _fitToScreen(state.pages[index]);

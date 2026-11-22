@@ -63,7 +63,11 @@ class ThemeLocalDataSourceImpl implements ThemeLocalDataSource {
         file.parent.createSync(recursive: true);
       }
       file.writeAsStringSync(jsonEncode(map), flush: true);
-    } catch (_) {}
+    } catch (e) {
+      throw FileSystemException(
+        'Failed to persist theme preference configuration: $e',
+      );
+    }
   }
 
   @override

@@ -288,6 +288,7 @@ class MonitoringFilterBar extends StatelessWidget {
                   label: 'Sort By',
                   value: state.sortBy,
                   items: [
+                    DropdownMenuItem(value: 'severity', child: Text('Severity', style: TextStyle(color: tokens.onInput))),
                     DropdownMenuItem(value: 'owner', child: Text('Owner Name', style: TextStyle(color: tokens.onInput))),
                     DropdownMenuItem(value: 'department', child: Text('Department', style: TextStyle(color: tokens.onInput))),
                     DropdownMenuItem(value: 'name', child: Text('Device Name', style: TextStyle(color: tokens.onInput))),
@@ -329,6 +330,10 @@ class MonitoringFilterBar extends StatelessWidget {
     required List<DropdownMenuItem<T>> items,
     required ValueChanged<T?> onChanged,
   }) {
+    final effectiveValue = items.any((item) => item.value == value)
+        ? value
+        : (items.isNotEmpty ? items.first.value : null);
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10),
       decoration: BoxDecoration(
@@ -338,7 +343,7 @@ class MonitoringFilterBar extends StatelessWidget {
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<T>(
-          value: value,
+          value: effectiveValue,
           items: items,
           onChanged: onChanged,
           isDense: true,

@@ -50,6 +50,16 @@ import '../../features/monitoring/presentation/bloc/monitoring_cubit.dart'
     as _i651;
 import '../../features/monitoring/presentation/bloc/monitoring_dashboard_cubit.dart'
     as _i1070;
+import '../../features/network_blueprint/data/datasources/blueprint_drawio_parser.dart'
+    as _i286;
+import '../../features/network_blueprint/data/datasources/blueprint_inventory_matcher.dart'
+    as _i991;
+import '../../features/network_blueprint/data/repositories/network_blueprint_repository_impl.dart'
+    as _i1069;
+import '../../features/network_blueprint/domain/repositories/network_blueprint_repository.dart'
+    as _i1055;
+import '../../features/network_blueprint/presentation/bloc/network_blueprint_cubit.dart'
+    as _i1031;
 import '../../features/network_discovery/data/datasources/strategies/arp_discovery_strategy.dart'
     as _i575;
 import '../../features/network_discovery/data/datasources/strategies/dns_hostname_strategy.dart'
@@ -76,6 +86,20 @@ import '../../features/network_discovery/domain/services/network_range_validator
     as _i185;
 import '../../features/network_discovery/presentation/bloc/network_discovery_cubit.dart'
     as _i319;
+import '../../features/theme/data/datasources/theme_local_datasource.dart'
+    as _i1057;
+import '../../features/theme/data/datasources/theme_remote_datasource.dart'
+    as _i300;
+import '../../features/theme/data/repositories/theme_repository_impl.dart'
+    as _i592;
+import '../../features/theme/domain/repositories/theme_repository.dart'
+    as _i869;
+import '../../features/theme/domain/usecases/get_palette_use_case.dart'
+    as _i598;
+import '../../features/theme/domain/usecases/reset_palette_use_case.dart'
+    as _i391;
+import '../../features/theme/domain/usecases/save_palette_use_case.dart'
+    as _i856;
 import '../../features/topology/domain/services/enterprise_topology_builder.dart'
     as _i524;
 import '../../features/topology/domain/services/topology_grouper.dart' as _i289;
@@ -92,6 +116,12 @@ extension GetItInjectableX on _i174.GetIt {
     final gh = _i526.GetItHelper(this, environment, environmentFilter);
     gh.lazySingleton<_i982.AppDatabase>(() => _i982.AppDatabase());
     gh.lazySingleton<_i1032.UniFiApiClient>(() => _i1032.UniFiApiClient());
+    gh.lazySingleton<_i286.BlueprintDrawioParser>(
+      () => _i286.BlueprintDrawioParser(),
+    );
+    gh.lazySingleton<_i991.BlueprintInventoryMatcher>(
+      () => _i991.BlueprintInventoryMatcher(),
+    );
     gh.lazySingleton<_i819.DnsHostnameStrategy>(
       () => _i819.DnsHostnameStrategy(),
     );
@@ -124,7 +154,6 @@ extension GetItInjectableX on _i174.GetIt {
       ),
     );
     gh.lazySingleton<_i217.PingChecker>(() => _i820.PlatformPingChecker());
-    gh.lazySingleton<_i611.ThemeCubit>(() => _i611.ThemeCubit());
     gh.lazySingleton<_i404.NetworkDetectionService>(
       () => _i404.NetworkDetectionServiceImpl(),
     );
@@ -143,6 +172,9 @@ extension GetItInjectableX on _i174.GetIt {
     gh.lazySingleton<_i93.ExcelInventoryService>(
       () => _i93.ExcelInventoryServiceImpl(),
     );
+    gh.lazySingleton<_i1057.ThemeLocalDataSource>(
+      () => _i1057.ThemeLocalDataSourceImpl(),
+    );
     gh.lazySingleton<_i114.InfrastructureRepository>(
       () => _i921.InfrastructureRepositoryImpl(
         gh<_i982.AppDatabase>(),
@@ -160,6 +192,9 @@ extension GetItInjectableX on _i174.GetIt {
         gh<_i982.AppDatabase>(),
         gh<_i63.MonitoringServiceClient>(),
       ),
+    );
+    gh.lazySingleton<_i300.ThemeRemoteDataSource>(
+      () => _i300.ThemeRemoteDataSourceImpl(),
     );
     gh.factory<_i264.DevicesCubit>(
       () => _i264.DevicesCubit(gh<_i1071.DeviceRepository>()),
@@ -187,12 +222,35 @@ extension GetItInjectableX on _i174.GetIt {
         gh<_i404.NetworkDetectionService>(),
       ),
     );
+    gh.lazySingleton<_i869.ThemeRepository>(
+      () => _i592.ThemeRepositoryImpl(
+        gh<_i1057.ThemeLocalDataSource>(),
+        gh<_i300.ThemeRemoteDataSource>(),
+      ),
+    );
+    gh.lazySingleton<_i1055.NetworkBlueprintRepository>(
+      () => _i1069.NetworkBlueprintRepositoryImpl(
+        gh<_i1071.DeviceRepository>(),
+        gh<_i365.MonitoringRepository>(),
+        gh<_i286.BlueprintDrawioParser>(),
+        gh<_i991.BlueprintInventoryMatcher>(),
+      ),
+    );
     gh.lazySingleton<_i236.InfrastructureCubit>(
       () => _i236.InfrastructureCubit(
         gh<_i114.InfrastructureRepository>(),
         gh<_i365.MonitoringRepository>(),
         gh<_i217.PingChecker>(),
       ),
+    );
+    gh.lazySingleton<_i598.GetPaletteUseCase>(
+      () => _i598.GetPaletteUseCase(gh<_i869.ThemeRepository>()),
+    );
+    gh.lazySingleton<_i391.ResetPaletteUseCase>(
+      () => _i391.ResetPaletteUseCase(gh<_i869.ThemeRepository>()),
+    );
+    gh.lazySingleton<_i856.SavePaletteUseCase>(
+      () => _i856.SavePaletteUseCase(gh<_i869.ThemeRepository>()),
     );
     gh.factory<_i319.NetworkDiscoveryCubit>(
       () => _i319.NetworkDiscoveryCubit(
@@ -220,6 +278,21 @@ extension GetItInjectableX on _i174.GetIt {
         gh<_i217.PingChecker>(),
         gh<_i114.InfrastructureRepository>(),
         gh<_i911.FactoryRepository>(),
+      ),
+    );
+    gh.factory<_i1031.NetworkBlueprintCubit>(
+      () => _i1031.NetworkBlueprintCubit(
+        gh<_i1055.NetworkBlueprintRepository>(),
+        gh<_i365.MonitoringRepository>(),
+      ),
+    );
+    gh.lazySingleton<_i611.ThemeCubit>(
+      () => _i611.ThemeCubit(
+        getPaletteUseCase: gh<_i598.GetPaletteUseCase>(),
+        savePaletteUseCase: gh<_i856.SavePaletteUseCase>(),
+        resetPaletteUseCase: gh<_i391.ResetPaletteUseCase>(),
+        themeRepository: gh<_i869.ThemeRepository>(),
+        localDataSource: gh<_i1057.ThemeLocalDataSource>(),
       ),
     );
     gh.factory<_i1070.MonitoringDashboardCubit>(

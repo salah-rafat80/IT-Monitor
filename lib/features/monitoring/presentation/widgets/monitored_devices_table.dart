@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../../../../core/presentation/widgets/app_empty_state.dart';
+import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_dimensions.dart';
 import '../../domain/entities/device_status_entity.dart';
 import '../../domain/entities/monitored_device.dart';
 import 'device_status_chip.dart';
@@ -16,6 +19,7 @@ class MonitoredDevicesTable extends StatelessWidget {
   final Function(MonitoredDevice device, bool isMaintenance)?
   onToggleMaintenance;
   final int failureThreshold;
+  final VoidCallback? onClearFilters;
 
   const MonitoredDevicesTable({
     super.key,
@@ -28,123 +32,67 @@ class MonitoredDevicesTable extends StatelessWidget {
     this.onTriggerCheck,
     this.onToggleMaintenance,
     this.failureThreshold = 3,
+    this.onClearFilters,
   });
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final tokens = context.appTokens;
+    final isDark = tokens.isDark;
     final dateFormat = DateFormat('HH:mm:ss');
 
     if (devices.isEmpty) {
       return Container(
         width: double.infinity,
-        padding: const EdgeInsets.all(48),
         decoration: BoxDecoration(
-          color: theme.cardColor,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: theme.dividerColor.withValues(alpha: 0.1)),
+          color: tokens.card,
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+          border: Border.all(color: tokens.border),
         ),
-        child: Column(
-          children: [
-            Icon(
-              Icons.devices_other_rounded,
-              size: 48,
-              color: theme.disabledColor,
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'No Monitored Devices Found',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'No PC/Laptop devices match the current filter or search criteria.',
-              style: TextStyle(
-                fontSize: 13,
-                color: theme.textTheme.bodyMedium?.color?.withValues(
-                  alpha: 0.6,
-                ),
-              ),
-            ),
-          ],
+        child: AppEmptyState.noFilterResults(
+          onClearFilters: onClearFilters ?? () {},
         ),
       );
     }
 
+    final headerStyle = TextStyle(
+      fontWeight: FontWeight.bold,
+      fontSize: 13,
+      color: tokens.onTableHeader,
+    );
+
     return Container(
       decoration: BoxDecoration(
-        color: theme.cardColor,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: theme.dividerColor.withValues(alpha: 0.1)),
+        color: tokens.card,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: tokens.border),
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
         child: SingleChildScrollView(
           scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.only(right: AppSpacing.md),
           child: DataTable(
             showCheckboxColumn: onToggleSelect != null,
             onSelectAll: onSelectAll != null
                 ? (selectAll) => onSelectAll!(selectAll ?? false)
                 : null,
-            headingRowColor: WidgetStateProperty.all(
-              theme.primaryColor.withValues(alpha: 0.04),
-            ),
-            horizontalMargin: 20,
-            columnSpacing: 24,
-            columns: const [
-              // Prioritized columns: Owner Name, Department, Device Name, IP, Office/Location, Status, Latency, Last Check, Actions
+            headingRowColor: WidgetStateProperty.all(tokens.tableHeader),
+            horizontalMargin: AppSpacing.lg,
+            columnSpacing: AppSpacing.xl,
+            columns: [
+              DataColumn(label: Text('Owner Name', style: headerStyle)),
+              DataColumn(label: Text('Department', style: headerStyle)),
+              DataColumn(label: Text('Device Name', style: headerStyle)),
+              DataColumn(label: Text('IP Address', style: headerStyle)),
+              DataColumn(label: Text('Office / Location', style: headerStyle)),
+              DataColumn(label: Text('Status', style: headerStyle)),
+              DataColumn(label: Text('Latency', style: headerStyle)),
+              DataColumn(label: Text('Last Check', style: headerStyle)),
               DataColumn(
-                label: Text(
-                  'Owner Name',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-              ),
-              DataColumn(
-                label: Text(
-                  'Department',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-              ),
-              DataColumn(
-                label: Text(
-                  'Device Name',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-              ),
-              DataColumn(
-                label: Text(
-                  'IP Address',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-              ),
-              DataColumn(
-                label: Text(
-                  'Office / Location',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-              ),
-              DataColumn(
-                label: Text(
-                  'Status',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-              ),
-              DataColumn(
-                label: Text(
-                  'Latency',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-              ),
-              DataColumn(
-                label: Text(
-                  'Last Check',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-              ),
-              DataColumn(
-                label: Text(
-                  'Actions',
-                  style: TextStyle(fontWeight: FontWeight.bold),
+                label: SizedBox(
+                  width: 120,
+                  child: Text('Actions', style: headerStyle),
                 ),
               ),
             ],
@@ -169,7 +117,7 @@ class MonitoredDevicesTable extends StatelessWidget {
                           onToggleSelect!(device.id, selected ?? false)
                     : null,
                 cells: [
-                  // 1. Owner Name (Bold primary text)
+                  // 1. Owner Name
                   DataCell(
                     Row(
                       mainAxisSize: MainAxisSize.min,
@@ -179,69 +127,108 @@ class MonitoredDevicesTable extends StatelessWidget {
                               ? Icons.laptop_windows_rounded
                               : Icons.desktop_windows_rounded,
                           size: 18,
-                          color: theme.primaryColor,
+                          color: tokens.primary,
                         ),
-                        const SizedBox(width: 8),
-                        Text(
-                          device.displayOwner,
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 13,
-                            color: device.isOwnerAssigned
-                                ? null
-                                : Colors.orangeAccent,
-                            fontStyle: device.isOwnerAssigned
-                                ? FontStyle.normal
-                                : FontStyle.italic,
+                        const SizedBox(width: AppSpacing.sm),
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 160),
+                          child: Text(
+                            device.displayOwner,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                              color: device.isOwnerAssigned
+                                  ? tokens.onTableRow
+                                  : tokens.onStatusDegraded,
+                              fontStyle: device.isOwnerAssigned
+                                  ? FontStyle.normal
+                                  : FontStyle.italic,
+                            ),
                           ),
                         ),
                       ],
                     ),
                   ),
-                  // 2. Department
+                  // 2. Department Badge
                   DataCell(
                     Container(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
+                        horizontal: AppSpacing.sm,
+                        vertical: AppSpacing.xs,
                       ),
                       decoration: BoxDecoration(
-                        color: theme.primaryColor.withValues(alpha: 0.08),
-                        borderRadius: BorderRadius.circular(6),
+                        color: isDark
+                            ? tokens.surfaceContainerHighest
+                            : tokens.surfaceContainerHigh,
+                        borderRadius: BorderRadius.circular(AppRadius.sm),
+                        border: Border.all(
+                          color: tokens.border,
+                        ),
                       ),
-                      child: Text(
-                        device.department,
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: theme.primaryColor,
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 130),
+                        child: Text(
+                          device.department,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: tokens.onSurface,
+                          ),
                         ),
                       ),
                     ),
                   ),
                   // 3. Device Name
                   DataCell(
-                    Text(device.name, style: const TextStyle(fontSize: 13)),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 150),
+                      child: Text(
+                        device.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          color: tokens.onTableRow,
+                        ),
+                      ),
+                    ),
                   ),
                   // 4. IP Address
                   DataCell(
                     Text(
                       device.ip,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 13,
                         fontFamily: 'monospace',
-                        fontWeight: FontWeight.w500,
+                        fontWeight: FontWeight.w600,
+                        color: tokens.primary,
                       ),
                     ),
                   ),
                   // 5. Office / Location
                   DataCell(
-                    Text(
-                      device.officeLocation ?? '-',
-                      style: const TextStyle(fontSize: 13),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 140),
+                      child: Text(
+                        (device.officeLocation != null &&
+                                device.officeLocation!.trim().isNotEmpty)
+                            ? device.officeLocation!
+                            : '—',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: tokens.onSurfaceVariant,
+                        ),
+                      ),
                     ),
                   ),
-                  // 6. Status (Icon + Text Chip)
+                  // 6. Status
                   DataCell(
                     DeviceStatusChip(
                       status: status.status,
@@ -259,11 +246,10 @@ class MonitoredDevicesTable extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w500,
-                        color:
-                            status.lastLatencyMs != null &&
+                        color: status.lastLatencyMs != null &&
                                 status.lastLatencyMs! > 200
-                            ? Colors.orange
-                            : null,
+                            ? tokens.onStatusDegraded
+                            : tokens.onTableRow,
                       ),
                     ),
                   ),
@@ -271,46 +257,69 @@ class MonitoredDevicesTable extends StatelessWidget {
                   DataCell(
                     Text(
                       lastCheckStr,
-                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: tokens.onSurfaceVariant,
+                      ),
                     ),
                   ),
-                  // 9. Actions
+                  // 9. Actions (Guaranteed never clipped)
                   DataCell(
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          icon: const Icon(
-                            Icons.info_outline_rounded,
-                            size: 18,
-                          ),
-                          tooltip: 'View Details',
-                          onPressed: () => onSelectDevice(item),
-                        ),
-                        if (isAdmin) ...[
+                    Container(
+                      constraints: const BoxConstraints(minWidth: 120),
+                      padding: const EdgeInsets.only(right: AppSpacing.sm),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
                           IconButton(
-                            icon: const Icon(Icons.refresh_rounded, size: 18),
-                            tooltip: 'Trigger Manual Check',
-                            onPressed: () => onTriggerCheck?.call(item),
-                          ),
-                          IconButton(
+                            visualDensity: VisualDensity.compact,
+                            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                            padding: const EdgeInsets.all(AppSpacing.xs),
                             icon: Icon(
-                              status.isMaintenance
-                                  ? Icons.build_circle_outlined
-                                  : Icons.build_circle_rounded,
+                              Icons.info_outline_rounded,
                               size: 18,
-                              color: status.isMaintenance ? Colors.blue : null,
+                              color: tokens.onSurfaceVariant,
                             ),
-                            tooltip: status.isMaintenance
-                                ? 'Exit Maintenance'
-                                : 'Set Maintenance',
-                            onPressed: () => onToggleMaintenance?.call(
-                              item,
-                              !status.isMaintenance,
-                            ),
+                            tooltip: 'View Details',
+                            onPressed: () => onSelectDevice(item),
                           ),
+                          if (isAdmin) ...[
+                            IconButton(
+                              visualDensity: VisualDensity.compact,
+                              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                              padding: const EdgeInsets.all(AppSpacing.xs),
+                              icon: Icon(
+                                Icons.refresh_rounded,
+                                size: 18,
+                                color: tokens.onSurfaceVariant,
+                              ),
+                              tooltip: 'Trigger Manual Check',
+                              onPressed: () => onTriggerCheck?.call(item),
+                            ),
+                            IconButton(
+                              visualDensity: VisualDensity.compact,
+                              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                              padding: const EdgeInsets.all(AppSpacing.xs),
+                              icon: Icon(
+                                status.isMaintenance
+                                    ? Icons.build_circle_outlined
+                                    : Icons.build_circle_rounded,
+                                size: 18,
+                                color: status.isMaintenance
+                                    ? tokens.onStatusDegraded
+                                    : tokens.onSurfaceVariant,
+                              ),
+                              tooltip: status.isMaintenance
+                                  ? 'Exit Maintenance'
+                                  : 'Set Maintenance',
+                              onPressed: () => onToggleMaintenance?.call(
+                                item,
+                                !status.isMaintenance,
+                              ),
+                            ),
+                          ],
                         ],
-                      ],
+                      ),
                     ),
                   ),
                 ],

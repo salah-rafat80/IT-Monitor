@@ -63,6 +63,7 @@ class InfrastructureCubit extends Cubit<InfrastructureState> {
         });
 
     await _infrastructureRepo.bootstrapVerifiedAccessPoints();
+    await _infrastructureRepo.bootstrapVerifiedSwitches();
     final res = await _infrastructureRepo.getInfrastructureDevices(
       factoryId: _activeFactoryId,
     );

@@ -41,7 +41,7 @@ void main() {
             .toList();
         expect(aps.length, equals(4));
 
-        // Verify exact verified IPs
+        // Verify exact verified IPs and RNF factory attribution
         final ips = aps.map((a) => a.ip).toSet();
         expect(
           ips,
@@ -52,6 +52,12 @@ void main() {
             '192.168.8.5',
           ]),
         );
+        for (final ap in aps) {
+          expect(ap.factoryId, equals('rnf'));
+        }
+
+        final rnfInfra = await infraRepo.getInfrastructureDevices(factoryId: 'rnf');
+        expect(rnfInfra.dataOrNull!.length, equals(4));
 
         // Verify 37 PC/laptop inventory is 100% intact
         final allEndpoints = await deviceRepo.getDevices();

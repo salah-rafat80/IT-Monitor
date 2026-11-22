@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../../../../core/theme/app_colors.dart';
 import '../../domain/entities/monitored_device.dart';
 import '../../domain/entities/monitoring_config.dart';
 import 'device_status_chip.dart';
@@ -12,6 +13,7 @@ class DeviceDetailsModal extends StatelessWidget {
   final VoidCallback? onTriggerCheck;
   final ValueChanged<bool>? onToggleMaintenance;
   final VoidCallback? onEditOwner;
+  final VoidCallback? onAssignOwner;
 
   const DeviceDetailsModal({
     super.key,
@@ -21,11 +23,13 @@ class DeviceDetailsModal extends StatelessWidget {
     this.onTriggerCheck,
     this.onToggleMaintenance,
     this.onEditOwner,
+    this.onAssignOwner,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final tokens = context.appTokens;
     final device = item.device;
     final status = item.status;
     final dateFormat = DateFormat('yyyy-MM-dd HH:mm:ss');
@@ -71,8 +75,8 @@ class DeviceDetailsModal extends StatelessWidget {
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
                               color: device.isOwnerAssigned
-                                  ? null
-                                  : Colors.orangeAccent,
+                                  ? tokens.onSurface
+                                  : tokens.onStatusDegraded,
                               fontStyle: device.isOwnerAssigned
                                   ? FontStyle.normal
                                   : FontStyle.italic,
@@ -121,7 +125,7 @@ class DeviceDetailsModal extends StatelessWidget {
                           ? '${status.lastLatencyMs} ms'
                           : '-',
                       icon: Icons.speed_rounded,
-                      color: const Color(0xFF6366F1),
+                      color: tokens.primary,
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -133,8 +137,8 @@ class DeviceDetailsModal extends StatelessWidget {
                           '${status.consecutiveFailures} / ${config.failureThreshold}',
                       icon: Icons.warning_amber_rounded,
                       color: status.consecutiveFailures > 0
-                          ? const Color(0xFFEF4444)
-                          : const Color(0xFF10B981),
+                          ? tokens.statusOffline
+                          : tokens.statusOnline,
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -145,7 +149,7 @@ class DeviceDetailsModal extends StatelessWidget {
                       value:
                           '${status.consecutiveSuccesses} / ${config.recoveryThreshold}',
                       icon: Icons.check_circle_outline_rounded,
-                      color: const Color(0xFF10B981),
+                      color: tokens.statusOnline,
                     ),
                   ),
                 ],
@@ -306,9 +310,9 @@ class DeviceDetailsModal extends StatelessWidget {
                         ),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: status.isMaintenance
-                              ? Colors.orange
-                              : theme.primaryColor,
-                          foregroundColor: Colors.white,
+                              ? tokens.statusDegraded
+                              : tokens.primary,
+                          foregroundColor: tokens.onPrimary,
                           padding: const EdgeInsets.symmetric(vertical: 12),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(8),
@@ -318,12 +322,12 @@ class DeviceDetailsModal extends StatelessWidget {
                     ),
                   ],
                 ),
-                if (onEditOwner != null) ...[
+                if (onEditOwner != null || onAssignOwner != null) ...[
                   const SizedBox(height: 12),
                   SizedBox(
                     width: double.infinity,
                     child: OutlinedButton.icon(
-                      onPressed: onEditOwner,
+                      onPressed: onEditOwner ?? onAssignOwner,
                       icon: Icon(
                         device.isOwnerAssigned
                             ? Icons.edit_rounded
@@ -404,16 +408,36 @@ class DeviceDetailsModal extends StatelessWidget {
     );
   }
 
-  Widget _buildMetaRow(String label, String value) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(label, style: const TextStyle(fontSize: 13, color: Colors.grey)),
-        Text(
-          value,
-          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-        ),
-      ],
+  Widget _buildMetaRow(
+    String label,
+    String value, {
+    Color? labelColor,
+    Color? valueColor,
+  }) {
+    return Builder(
+      builder: (context) {
+        final theme = Theme.of(context);
+        return Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 13,
+                color: labelColor ?? theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            Text(
+              value,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: valueColor ?? theme.colorScheme.onSurface,
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }

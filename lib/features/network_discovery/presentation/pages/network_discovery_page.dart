@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../../../core/presentation/widgets/app_error_card.dart';
+import '../../../../core/presentation/widgets/app_skeleton.dart';
+import '../../../../core/theme/app_colors.dart';
 import '../../../factories/presentation/bloc/factory_cubit.dart';
 import '../../domain/entities/device_category.dart';
 import '../../domain/entities/discovered_device_entity.dart';
@@ -22,12 +25,13 @@ class NetworkDiscoveryPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final isAdmin = true;
     final theme = Theme.of(context);
+    final tokens = context.appTokens;
 
     return Scaffold(
       appBar: AppBar(
         title: Row(
           children: [
-            const Icon(Icons.radar_rounded, size: 24, color: Color(0xFF0F62FE)),
+            Icon(Icons.radar_rounded, size: 24, color: tokens.primary),
             const SizedBox(width: 10),
             const Flexible(
               child: Text(
@@ -146,13 +150,18 @@ class NetworkDiscoveryPage extends StatelessWidget {
           },
           builder: (context, state) {
             if (state is NetworkDiscoveryLoading) {
-              return const Center(
+              return SingleChildScrollView(
+                padding: const EdgeInsets.all(24),
                 child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    CircularProgressIndicator(),
-                    SizedBox(height: 16),
-                    Text('Loading Discovery Engine & Scopes...'),
+                    const AppSkeleton(width: 280, height: 28),
+                    const SizedBox(height: 8),
+                    const AppSkeleton(width: 420, height: 16),
+                    const SizedBox(height: 24),
+                    AppSkeleton.summaryCards(count: 3),
+                    const SizedBox(height: 24),
+                    AppSkeleton.table(rowCount: 6, columnCount: 8),
                   ],
                 ),
               );
@@ -160,23 +169,14 @@ class NetworkDiscoveryPage extends StatelessWidget {
 
             if (state is NetworkDiscoveryError) {
               return Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(
-                      Icons.warning_amber_rounded,
-                      size: 48,
-                      color: Colors.orange,
-                    ),
-                    const SizedBox(height: 16),
-                    Text('Discovery Error: ${state.message}'),
-                    const SizedBox(height: 16),
-                    ElevatedButton(
-                      onPressed: () =>
-                          context.read<NetworkDiscoveryCubit>().init(),
-                      child: const Text('Retry'),
-                    ),
-                  ],
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: AppErrorCard(
+                    title: 'Network Discovery Error',
+                    message: state.message,
+                    onRetry: () =>
+                        context.read<NetworkDiscoveryCubit>().init(),
+                  ),
                 ),
               );
             }
@@ -425,15 +425,16 @@ class _ScanProgressBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final tokens = context.appTokens;
     final percent = (progress.progressFraction * 100).toStringAsFixed(1);
 
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF0F62FE).withValues(alpha: 0.08),
+        color: tokens.primary.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: const Color(0xFF0F62FE).withValues(alpha: 0.3),
+          color: tokens.primary.withValues(alpha: 0.3),
         ),
       ),
       child: Column(
@@ -444,12 +445,12 @@ class _ScanProgressBar extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  const SizedBox(
+                  SizedBox(
                     width: 16,
                     height: 16,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
-                      color: Color(0xFF0F62FE),
+                      color: tokens.primary,
                     ),
                   ),
                   const SizedBox(width: 10),

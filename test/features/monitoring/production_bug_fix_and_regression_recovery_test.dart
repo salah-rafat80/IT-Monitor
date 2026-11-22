@@ -299,6 +299,10 @@ class StubInfrastructureRepository implements InfrastructureRepository {
   @override
   Future<Result<void>> bootstrapVerifiedAccessPoints() async =>
       Result.success(null);
+
+  @override
+  Future<Result<void>> bootstrapVerifiedSwitches() async =>
+      Result.success(null);
 }
 
 void main() {

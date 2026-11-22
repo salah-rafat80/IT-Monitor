@@ -185,6 +185,10 @@ class FakeInfrastructureRepository implements InfrastructureRepository {
       Result.success(null);
 
   @override
+  Future<Result<void>> bootstrapVerifiedSwitches() async =>
+      Result.success(null);
+
+  @override
   Stream<List<UniFiDeviceEntity>> watchInfrastructureDevices({
     String? factoryId,
   }) => Stream.value(

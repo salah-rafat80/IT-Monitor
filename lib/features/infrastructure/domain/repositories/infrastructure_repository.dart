@@ -24,4 +24,5 @@ abstract class InfrastructureRepository {
     String? factoryId,
   });
   Future<Result<void>> bootstrapVerifiedAccessPoints();
+  Future<Result<void>> bootstrapVerifiedSwitches();
 }

@@ -380,6 +380,7 @@ class InfrastructureRepositoryImpl implements InfrastructureRepository {
               .into(_db.infrastructureDevices)
               .insert(
                 InfrastructureDevicesCompanion.insert(
+                  factoryId: const Value('rnf'),
                   name: ap.name,
                   ip: ap.ip,
                   role: const Value('ap'),
@@ -419,11 +420,12 @@ class InfrastructureRepositoryImpl implements InfrastructureRepository {
           anyAdded = true;
         } else {
           final dev = existing.dataOrNull!;
-          if (dev.location == null || dev.location != ap.location) {
+          if (dev.location == null || dev.location != ap.location || dev.factoryId != 'rnf') {
             await (_db.update(
               _db.infrastructureDevices,
             )..where((t) => t.id.equals(dev.id))).write(
               InfrastructureDevicesCompanion(
+                factoryId: const Value('rnf'),
                 location: Value(ap.location),
                 updatedAt: Value(DateTime.now()),
               ),
@@ -441,6 +443,174 @@ class InfrastructureRepositoryImpl implements InfrastructureRepository {
     } catch (e) {
       return Result.failure(
         DatabaseFailure('Failed to bootstrap verified access points: $e'),
+      );
+    }
+  }
+
+  @override
+  Future<Result<void>> bootstrapVerifiedSwitches() async {
+    if (AppConfig.isProductionClient) {
+      return Result.success(null);
+    }
+
+    try {
+      final verifiedSwitches = [
+        (
+          name: 'RNF Core Switch 1 (Floor 1 - West)',
+          ip: '192.168.22.2',
+          role: 'switch',
+          location: 'Floor 1 - Server Area',
+          factoryId: 'rnf',
+          isCritical: true,
+        ),
+        (
+          name: 'RNF Core Switch 2 (Floor 1 - East)',
+          ip: '192.168.22.3',
+          role: 'switch',
+          location: 'Floor 1 - Operations Area',
+          factoryId: 'rnf',
+          isCritical: true,
+        ),
+        (
+          name: 'Warehouse Core Switch',
+          ip: '192.168.22.4',
+          role: 'switch',
+          location: 'Ground Floor - Central Warehouse Hub',
+          factoryId: 'rnf',
+          isCritical: true,
+        ),
+        (
+          name: 'Raw Materials D-Link Switch',
+          ip: '192.168.22.5',
+          role: 'switch',
+          location: 'Ground Floor - Raw Materials Bay',
+          factoryId: 'rnf',
+          isCritical: false,
+        ),
+        (
+          name: 'Spare Parts Switch',
+          ip: '192.168.22.6',
+          role: 'switch',
+          location: 'Ground Floor - Spare Parts Department',
+          factoryId: 'rnf',
+          isCritical: false,
+        ),
+        (
+          name: 'Security Gates Switch',
+          ip: '192.168.22.7',
+          role: 'switch',
+          location: 'Perimeter - Security Gates 1 & 2',
+          factoryId: 'rnf',
+          isCritical: false,
+        ),
+        (
+          name: 'BNF Core Switch',
+          ip: '192.168.21.2',
+          role: 'switch',
+          location: 'BNF Server Room',
+          factoryId: 'bnf',
+          isCritical: true,
+        ),
+        (
+          name: 'BNF Production Switch',
+          ip: '192.168.21.3',
+          role: 'switch',
+          location: 'BNF Production Floor',
+          factoryId: 'bnf',
+          isCritical: true,
+        ),
+        (
+          name: 'BNF Administration Switch',
+          ip: '192.168.21.4',
+          role: 'switch',
+          location: 'BNF Admin Building',
+          factoryId: 'bnf',
+          isCritical: false,
+        ),
+        (
+          name: 'BNF Warehouse Switch',
+          ip: '192.168.21.5',
+          role: 'switch',
+          location: 'BNF Warehouse & Logistics',
+          factoryId: 'bnf',
+          isCritical: false,
+        ),
+      ];
+
+      bool anyAdded = false;
+
+      for (final sw in verifiedSwitches) {
+        final existing = await getDeviceByIp(sw.ip);
+        if (existing.dataOrNull == null) {
+          final insertedId = await _db
+              .into(_db.infrastructureDevices)
+              .insert(
+                InfrastructureDevicesCompanion.insert(
+                  factoryId: Value(sw.factoryId),
+                  name: sw.name,
+                  ip: sw.ip,
+                  role: Value(sw.role),
+                  location: Value(sw.location),
+                  isCriticalInfrastructure: Value(sw.isCritical),
+                  requiresAdminConfirmation: const Value(false),
+                  linkedSubnetsJson: const Value('[]'),
+                  controllerUrl: const Value(null),
+                  siteName: const Value('default'),
+                  isEnabled: const Value(true),
+                  isReadOnly: const Value(true),
+                  createdAt: Value(DateTime.now()),
+                  updatedAt: Value(DateTime.now()),
+                ),
+              );
+
+          final virtualId = 10000 + insertedId;
+          final existingStatus = await (_db.select(
+            _db.deviceStatuses,
+          )..where((t) => t.deviceId.equals(virtualId))).getSingleOrNull();
+
+          if (existingStatus == null) {
+            await _db
+                .into(_db.deviceStatuses)
+                .insert(
+                  DeviceStatusesCompanion.insert(
+                    deviceId: Value(virtualId),
+                    status: const Value('unknown'),
+                    consecutiveFailures: const Value(0),
+                    consecutiveSuccesses: const Value(0),
+                    statusChangedAt: Value(DateTime.now()),
+                  ),
+                );
+          }
+
+          anyAdded = true;
+        } else {
+          final dev = existing.dataOrNull!;
+          if (dev.location != sw.location || dev.factoryId != sw.factoryId || dev.name != sw.name) {
+            await (_db.update(
+              _db.infrastructureDevices,
+            )..where((t) => t.id.equals(dev.id))).write(
+              InfrastructureDevicesCompanion(
+                name: Value(sw.name),
+                factoryId: Value(sw.factoryId),
+                location: Value(sw.location),
+                role: Value(sw.role),
+                isCriticalInfrastructure: Value(sw.isCritical),
+                updatedAt: Value(DateTime.now()),
+              ),
+            );
+            anyAdded = true;
+          }
+        }
+      }
+
+      if (anyAdded) {
+        _notifyChanged();
+      }
+
+      return Result.success(null);
+    } catch (e) {
+      return Result.failure(
+        DatabaseFailure('Failed to bootstrap verified switches: $e'),
       );
     }
   }

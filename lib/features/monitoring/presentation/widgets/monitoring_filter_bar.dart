@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_dimensions.dart';
 import '../bloc/monitoring_dashboard_cubit.dart';
 import '../bloc/monitoring_dashboard_state.dart';
 
@@ -15,7 +17,7 @@ class MonitoringFilterBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final tokens = context.appTokens;
 
     // Extract unique departments and locations for dropdowns
     final departments =
@@ -30,15 +32,14 @@ class MonitoringFilterBar extends StatelessWidget {
           ..sort();
 
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(AppSpacing.lg),
       decoration: BoxDecoration(
-        color: theme.cardColor,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: theme.dividerColor.withValues(alpha: 0.1)),
+        color: tokens.card,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: tokens.border),
       ),
       child: Column(
         children: [
-          // Search & Engine Controller Row
           // Search & Engine Controller Row
           LayoutBuilder(
             builder: (context, constraints) {
@@ -46,13 +47,22 @@ class MonitoringFilterBar extends StatelessWidget {
 
               final searchField = TextField(
                 onChanged: (val) => cubit.setSearchQuery(val),
+                style: TextStyle(color: tokens.onInput, fontSize: 13),
                 decoration: InputDecoration(
                   hintText:
                       'Search by Owner, Department, Device Name, IP, Office Location...',
-                  prefixIcon: const Icon(Icons.search_rounded, size: 20),
+                  prefixIcon: Icon(
+                    Icons.search_rounded,
+                    size: 20,
+                    color: tokens.onSurfaceVariant,
+                  ),
                   suffixIcon: state.searchQuery.isNotEmpty
                       ? IconButton(
-                          icon: const Icon(Icons.clear_rounded, size: 18),
+                          icon: Icon(
+                            Icons.clear_rounded,
+                            size: 18,
+                            color: tokens.onSurfaceVariant,
+                          ),
                           onPressed: () => cubit.setSearchQuery(''),
                         )
                       : null,
@@ -61,29 +71,24 @@ class MonitoringFilterBar extends StatelessWidget {
                     horizontal: 14,
                     vertical: 12,
                   ),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide(
-                      color: theme.dividerColor.withValues(alpha: 0.2),
-                    ),
-                  ),
                 ),
               );
 
+              final isEngineActive = state.isEngineRunning && !state.isEnginePaused;
               final engineStatus = Container(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 8,
+                  horizontal: AppSpacing.md,
+                  vertical: AppSpacing.sm,
                 ),
                 decoration: BoxDecoration(
-                  color: (state.isEngineRunning && !state.isEnginePaused)
-                      ? const Color(0xFF10B981).withValues(alpha: 0.1)
-                      : Colors.orange.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
+                  color: isEngineActive
+                      ? tokens.statusOnlineSurface
+                      : tokens.statusDegradedSurface,
+                  borderRadius: BorderRadius.circular(AppRadius.md),
                   border: Border.all(
-                    color: (state.isEngineRunning && !state.isEnginePaused)
-                        ? const Color(0xFF10B981).withValues(alpha: 0.4)
-                        : Colors.orange.withValues(alpha: 0.4),
+                    color: isEngineActive
+                        ? tokens.onStatusOnline.withValues(alpha: 0.35)
+                        : tokens.onStatusDegraded.withValues(alpha: 0.35),
                   ),
                 ),
                 child: Row(
@@ -94,12 +99,12 @@ class MonitoringFilterBar extends StatelessWidget {
                       height: 8,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: (state.isEngineRunning && !state.isEnginePaused)
-                            ? const Color(0xFF10B981)
-                            : Colors.orange,
+                        color: isEngineActive
+                            ? tokens.onStatusOnline
+                            : tokens.onStatusDegraded,
                       ),
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: AppSpacing.sm),
                     Flexible(
                       child: Text(
                         state.isEngineRunning
@@ -109,10 +114,9 @@ class MonitoringFilterBar extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
-                          color:
-                              (state.isEngineRunning && !state.isEnginePaused)
-                              ? const Color(0xFF10B981)
-                              : Colors.orange,
+                          color: isEngineActive
+                              ? tokens.onStatusOnline
+                              : tokens.onStatusDegraded,
                         ),
                       ),
                     ),
@@ -126,9 +130,9 @@ class MonitoringFilterBar extends StatelessWidget {
                             ? Icons.pause_circle_outline_rounded
                             : Icons.play_circle_outline_rounded,
                         size: 20,
-                        color: state.isEngineRunning
-                            ? Colors.orange
-                            : const Color(0xFF10B981),
+                        color: isEngineActive
+                            ? tokens.onStatusOnline
+                            : tokens.onStatusDegraded,
                       ),
                       onPressed: () => cubit.toggleEngine(),
                       tooltip: state.isEngineRunning
@@ -144,17 +148,15 @@ class MonitoringFilterBar extends StatelessWidget {
                 child: ElevatedButton.icon(
                   onPressed: () => GoRouter.of(context).push('/wall-display'),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(
-                      0xFF00E676,
-                    ).withValues(alpha: 0.15),
-                    foregroundColor: const Color(0xFF00E676),
-                    side: const BorderSide(color: Color(0xFF00E676), width: 1),
+                    backgroundColor: tokens.primary.withValues(alpha: 0.12),
+                    foregroundColor: tokens.primary,
+                    side: BorderSide(color: tokens.primary, width: 1),
                     padding: const EdgeInsets.symmetric(
                       horizontal: 14,
                       vertical: 12,
                     ),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(AppRadius.md),
                     ),
                   ),
                   icon: const Icon(Icons.tv_rounded, size: 18),
@@ -185,15 +187,15 @@ class MonitoringFilterBar extends StatelessWidget {
               return Row(
                 children: [
                   Expanded(child: searchField),
-                  const SizedBox(width: 16),
+                  const SizedBox(width: AppSpacing.lg),
                   engineStatus,
-                  const SizedBox(width: 12),
+                  const SizedBox(width: AppSpacing.md),
                   wallDisplayBtn,
                 ],
               );
             },
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: AppSpacing.md),
 
           // Filters & Sorting Dropdowns Row
           SingleChildScrollView(
@@ -203,102 +205,96 @@ class MonitoringFilterBar extends StatelessWidget {
                 // Status Filter Dropdown
                 _buildDropdown<String>(
                   context,
+                  tokens: tokens,
                   label: 'Status',
                   value: state.statusFilter,
-                  items: const [
-                    DropdownMenuItem(value: null, child: Text('All Statuses')),
-                    DropdownMenuItem(value: 'up', child: Text('Connected')),
-                    DropdownMenuItem(
-                      value: 'degraded',
-                      child: Text('Degraded'),
-                    ),
-                    DropdownMenuItem(
-                      value: 'down',
-                      child: Text('Disconnected'),
-                    ),
-                    DropdownMenuItem(
-                      value: 'maintenance',
-                      child: Text('Maintenance'),
-                    ),
+                  items: [
+                    DropdownMenuItem(value: null, child: Text('All Statuses', style: TextStyle(color: tokens.onInput))),
+                    DropdownMenuItem(value: 'up', child: Text('Connected', style: TextStyle(color: tokens.onInput))),
+                    DropdownMenuItem(value: 'degraded', child: Text('Degraded', style: TextStyle(color: tokens.onInput))),
+                    DropdownMenuItem(value: 'down', child: Text('Disconnected', style: TextStyle(color: tokens.onInput))),
+                    DropdownMenuItem(value: 'maintenance', child: Text('Maintenance', style: TextStyle(color: tokens.onInput))),
                   ],
-
                   onChanged: (val) => cubit.setStatusFilter(val),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: AppSpacing.md),
 
                 // Department Filter Dropdown
                 _buildDropdown<String>(
                   context,
+                  tokens: tokens,
                   label: 'Department',
                   value: state.departmentFilter,
                   items: [
-                    const DropdownMenuItem(
+                    DropdownMenuItem(
                       value: null,
-                      child: Text('All Departments'),
+                      child: Text('All Departments', style: TextStyle(color: tokens.onInput)),
                     ),
                     ...departments.map(
-                      (dept) =>
-                          DropdownMenuItem(value: dept, child: Text(dept)),
+                      (dept) => DropdownMenuItem(
+                        value: dept,
+                        child: Text(dept, style: TextStyle(color: tokens.onInput)),
+                      ),
                     ),
                   ],
                   onChanged: (val) => cubit.setDepartmentFilter(val),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: AppSpacing.md),
 
                 // Location Filter Dropdown
                 _buildDropdown<String>(
                   context,
+                  tokens: tokens,
                   label: 'Location',
                   value: state.locationFilter,
                   items: [
-                    const DropdownMenuItem(
+                    DropdownMenuItem(
                       value: null,
-                      child: Text('All Locations'),
+                      child: Text('All Locations', style: TextStyle(color: tokens.onInput)),
                     ),
                     ...locations.map(
-                      (loc) => DropdownMenuItem(value: loc, child: Text(loc)),
+                      (loc) => DropdownMenuItem(
+                        value: loc,
+                        child: Text(loc, style: TextStyle(color: tokens.onInput)),
+                      ),
                     ),
                   ],
                   onChanged: (val) => cubit.setLocationFilter(val),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: AppSpacing.md),
 
                 // Type Filter Dropdown
                 _buildDropdown<String>(
                   context,
+                  tokens: tokens,
                   label: 'Type',
                   value: state.typeFilter,
-                  items: const [
+                  items: [
                     DropdownMenuItem(
                       value: null,
-                      child: Text('All Types (PC & Laptop)'),
+                      child: Text('All Types (PC & Laptop)', style: TextStyle(color: tokens.onInput)),
                     ),
-                    DropdownMenuItem(value: 'pc', child: Text('PC')),
-                    DropdownMenuItem(value: 'laptop', child: Text('Laptop')),
+                    DropdownMenuItem(value: 'pc', child: Text('PC', style: TextStyle(color: tokens.onInput))),
+                    DropdownMenuItem(value: 'laptop', child: Text('Laptop', style: TextStyle(color: tokens.onInput))),
                   ],
                   onChanged: (val) => cubit.setTypeFilter(val),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: AppSpacing.md),
 
                 // Sorting Selector
                 _buildDropdown<String>(
                   context,
+                  tokens: tokens,
                   label: 'Sort By',
                   value: state.sortBy,
-                  items: const [
-                    DropdownMenuItem(value: 'owner', child: Text('Owner Name')),
-                    DropdownMenuItem(
-                      value: 'department',
-                      child: Text('Department'),
-                    ),
-                    DropdownMenuItem(value: 'name', child: Text('Device Name')),
-                    DropdownMenuItem(value: 'ip', child: Text('IP Address')),
-                    DropdownMenuItem(value: 'status', child: Text('Status')),
-                    DropdownMenuItem(value: 'latency', child: Text('Latency')),
-                    DropdownMenuItem(
-                      value: 'lastCheck',
-                      child: Text('Last Check'),
-                    ),
+                  items: [
+                    DropdownMenuItem(value: 'owner', child: Text('Owner Name', style: TextStyle(color: tokens.onInput))),
+                    DropdownMenuItem(value: 'department', child: Text('Department', style: TextStyle(color: tokens.onInput))),
+                    DropdownMenuItem(value: 'name', child: Text('Device Name', style: TextStyle(color: tokens.onInput))),
+                    DropdownMenuItem(value: 'ip', child: Text('IP Address', style: TextStyle(color: tokens.onInput))),
+                    DropdownMenuItem(value: 'status', child: Text('Status', style: TextStyle(color: tokens.onInput))),
+                    DropdownMenuItem(value: 'latency', child: Text('Latency', style: TextStyle(color: tokens.onInput))),
+                    DropdownMenuItem(value: 'lastCheck', child: Text('Last Check', style: TextStyle(color: tokens.onInput))),
                   ],
                   onChanged: (val) {
                     if (val != null) cubit.setSorting(val);
@@ -310,6 +306,7 @@ class MonitoringFilterBar extends StatelessWidget {
                         ? Icons.arrow_upward_rounded
                         : Icons.arrow_downward_rounded,
                     size: 18,
+                    color: tokens.onSurfaceVariant,
                   ),
                   onPressed: () => cubit.setSorting(state.sortBy),
                   tooltip: state.sortAscending
@@ -326,18 +323,18 @@ class MonitoringFilterBar extends StatelessWidget {
 
   Widget _buildDropdown<T>(
     BuildContext context, {
+    required AppColors tokens,
     required String label,
     required T? value,
     required List<DropdownMenuItem<T>> items,
     required ValueChanged<T?> onChanged,
   }) {
-    final theme = Theme.of(context);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: theme.dividerColor.withValues(alpha: 0.2)),
+        color: tokens.input,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(color: tokens.border),
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<T>(
@@ -345,9 +342,12 @@ class MonitoringFilterBar extends StatelessWidget {
           items: items,
           onChanged: onChanged,
           isDense: true,
+          dropdownColor: tokens.card,
+          iconEnabledColor: tokens.onSurfaceVariant,
           style: TextStyle(
             fontSize: 12,
-            color: theme.textTheme.bodyMedium?.color,
+            color: tokens.onInput,
+            fontWeight: FontWeight.w500,
           ),
         ),
       ),

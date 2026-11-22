@@ -15,8 +15,10 @@ import 'features/factories/presentation/bloc/factory_cubit.dart';
 import 'features/infrastructure/presentation/bloc/infrastructure_cubit.dart';
 import 'features/monitoring/data/datasources/monitoring_service_client.dart';
 import 'features/monitoring/presentation/bloc/monitoring_cubit.dart';
+import 'features/monitoring/presentation/bloc/monitoring_dashboard_cubit.dart';
 import 'features/monitoring/presentation/services/monitoring_service_server.dart';
 import 'features/network_discovery/presentation/bloc/network_discovery_cubit.dart';
+import 'features/topology/presentation/bloc/topology_cubit.dart';
 
 void main(List<String> args) async {
   if (args.contains('--service')) {
@@ -174,7 +176,12 @@ class ITNetworkMonitorApp extends StatelessWidget {
           create: (_) => getIt<MonitoringCubit>()
             ..initMonitoring(startScheduler: AppConfig.isStandaloneDevelopment),
         ),
-
+        BlocProvider<MonitoringDashboardCubit>(
+          create: (_) => getIt<MonitoringDashboardCubit>()..initDashboard(),
+        ),
+        BlocProvider<TopologyCubit>(
+          create: (_) => getIt<TopologyCubit>()..init(),
+        ),
         BlocProvider<NetworkDiscoveryCubit>(
           create: (_) => getIt<NetworkDiscoveryCubit>()..init(),
         ),
@@ -186,10 +193,16 @@ class ITNetworkMonitorApp extends StatelessWidget {
       child: BlocBuilder<ThemeCubit, ThemeState>(
         builder: (context, themeState) {
           return MaterialApp.router(
-            title: 'IT Network Monitor',
+            title: 'IT Network Monitor - Indomie',
             debugShowCheckedModeBanner: false,
-            theme: AppTheme.lightTheme,
-            darkTheme: AppTheme.darkTheme,
+            theme: AppTheme.buildTheme(
+              palette: themeState.palette,
+              isDark: false,
+            ),
+            darkTheme: AppTheme.buildTheme(
+              palette: themeState.palette,
+              isDark: true,
+            ),
             themeMode: themeState.themeMode,
             routerConfig: AppRouter.router,
           );

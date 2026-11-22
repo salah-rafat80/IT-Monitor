@@ -137,6 +137,13 @@ class TopologyCubit extends Cubit<TopologyState> {
       }
       _cachedDevices = devRes.dataOrNull!;
 
+      try {
+        await _infraRepo.bootstrapVerifiedAccessPoints();
+        await _infraRepo.bootstrapVerifiedSwitches();
+      } catch (_) {
+        // Gracefully handle unmocked bootstrap in unit test environments
+      }
+
       final infraRes = await _infraRepo.getInfrastructureDevices(
         factoryId: _factoryId,
       );

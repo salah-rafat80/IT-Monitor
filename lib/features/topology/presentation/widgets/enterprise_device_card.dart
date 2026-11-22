@@ -1,19 +1,11 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_dimensions.dart';
 import '../../../monitoring/domain/entities/device_status_entity.dart';
 import '../../domain/entities/enterprise_topology_models.dart';
 
 /// Enterprise Device Card matching enterprise NMS layout topology diagrams.
-///
-/// Features:
-/// - Pure white rectangular card with rounded corners and subtle elevation.
-/// - Border color communicating device state (Green = Up, Red = Down, Amber = Degraded, Gray = Unknown).
-/// - Top icon with category-tailored visual badge.
-/// - Prominent device name with overflow protection.
-/// - Monospace IP address / secondary identifier.
-/// - Blue numeric port count badge on switch nodes showing active downstream connections.
-/// - Latency / health indicator pill.
-/// - Interactive hover and click handlers.
 class EnterpriseDeviceCard extends StatefulWidget {
   final EnterpriseTopologyNode node;
   final bool isSelected;
@@ -36,28 +28,26 @@ class _EnterpriseDeviceCardState extends State<EnterpriseDeviceCard> {
   bool _isHovered = false;
 
   Color _getStatusColor(
-    DeviceStatusEnum status, {
+    DeviceStatusEnum status,
+    AppColors tokens, {
     bool isTransitional = false,
   }) {
     if (isTransitional) {
-      return const Color(
-        0xFFF59E0B,
-      ); // Warning Amber for probe failures below threshold
+      return tokens.statusDegraded;
     }
     switch (status) {
       case DeviceStatusEnum.up:
-        return const Color(0xFF10B981); // Emerald Green
+        return tokens.statusOnline;
       case DeviceStatusEnum.down:
       case DeviceStatusEnum.unreachable:
-        return const Color(0xFFEF4444); // Alert Red
+        return tokens.statusOffline;
       case DeviceStatusEnum.unknown:
-        return const Color(0xFF94A3B8); // Neutral Slate
+        return tokens.statusUnknown;
       case DeviceStatusEnum.degraded:
-        return const Color(0xFFF59E0B); // Warning Amber
       case DeviceStatusEnum.stale:
-        return const Color(0xFFEAB308); // Stale Amber
+        return tokens.statusDegraded;
       case DeviceStatusEnum.maintenance:
-        return const Color(0xFF64748B); // Slate
+        return tokens.statusMaintenance;
     }
   }
 
@@ -88,44 +78,48 @@ class _EnterpriseDeviceCardState extends State<EnterpriseDeviceCard> {
     }
   }
 
-  Color _getCategoryThemeColor(TopologyDeviceCategory category) {
+  Color _getCategoryThemeColor(TopologyDeviceCategory category, AppColors tokens) {
     switch (category) {
       case TopologyDeviceCategory.wan:
-        return const Color(0xFF818CF8); // Indigo
+        return tokens.primary;
       case TopologyDeviceCategory.gateway:
-        return const Color(0xFF38BDF8); // Sky Blue
+        return tokens.primary;
       case TopologyDeviceCategory.switchDevice:
-        return const Color(0xFF2DD4BF); // Teal
+        return tokens.accent;
       case TopologyDeviceCategory.accessPoint:
-        return const Color(0xFF34D399); // Emerald
+        return tokens.statusOnline;
       case TopologyDeviceCategory.controller:
-        return const Color(0xFFA78BFA); // Purple
+        return tokens.statusMaintenance;
       case TopologyDeviceCategory.server:
-        return const Color(0xFFFB923C); // Orange
+        return tokens.statusDegraded;
       case TopologyDeviceCategory.pc:
+        return tokens.primary;
       case TopologyDeviceCategory.laptop:
-        return const Color(0xFF60A5FA); // Royal Blue
+        return tokens.statusMaintenance;
       case TopologyDeviceCategory.printer:
-        return const Color(0xFF94A3B8); // Slate
+        return tokens.onSurfaceVariant;
       case TopologyDeviceCategory.camera:
-        return const Color(0xFF10B981); // Forest
+        return tokens.accent;
       case TopologyDeviceCategory.other:
-        return const Color(0xFF64748B);
+        return tokens.onSurfaceVariant;
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final isTransitional = widget.node.isTransitionalFailing;
+    final tokens = context.appTokens;
+    final isTransitional =
+        widget.node.consecutiveFailures > 0 &&
+        widget.node.consecutiveFailures < widget.node.failureThreshold &&
+        widget.node.status != DeviceStatusEnum.down;
+
     final statusColor = _getStatusColor(
       widget.node.status,
+      tokens,
       isTransitional: isTransitional,
     );
-    final themeColor = _getCategoryThemeColor(widget.node.category);
-    final hasPortBadge =
-        widget.node.category == TopologyDeviceCategory.switchDevice &&
-        widget.node.activePortCount != null &&
-        widget.node.activePortCount! > 0;
+
+    final themeColor = _getCategoryThemeColor(widget.node.category, tokens);
 
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
@@ -138,23 +132,21 @@ class _EnterpriseDeviceCardState extends State<EnterpriseDeviceCard> {
           width: widget.node.size.width,
           height: widget.node.size.height,
           decoration: BoxDecoration(
-            color: const Color(0xFF1E293B), // Dark surface slate 800
-            borderRadius: BorderRadius.circular(6.0),
+            color: tokens.card,
+            borderRadius: BorderRadius.circular(AppRadius.sm),
             border: Border.all(
               color: widget.isSelected
-                  ? const Color(0xFF3B82F6)
+                  ? tokens.accent
                   : widget.isHighlighted
-                  ? const Color(0xFF60A5FA)
-                  : (_isHovered
-                        ? statusColor.withValues(alpha: 0.9)
-                        : statusColor.withValues(alpha: 0.55)),
+                      ? tokens.primary
+                      : (_isHovered
+                          ? statusColor.withValues(alpha: 0.9)
+                          : statusColor.withValues(alpha: 0.55)),
               width: widget.isSelected ? 2.0 : (_isHovered ? 1.6 : 1.2),
             ),
             boxShadow: [
               BoxShadow(
-                color: widget.isSelected
-                    ? const Color(0xFF3B82F6).withValues(alpha: 0.3)
-                    : Colors.black.withValues(alpha: _isHovered ? 0.35 : 0.2),
+                color: tokens.shadow,
                 blurRadius: _isHovered ? 8 : 4,
                 offset: Offset(0, _isHovered ? 3 : 1.5),
               ),
@@ -173,7 +165,6 @@ class _EnterpriseDeviceCardState extends State<EnterpriseDeviceCard> {
                     // Row 1: Icon + Category Tag + Status Dot
                     Row(
                       children: [
-                        // Category Icon in subtle soft badge
                         Container(
                           width: 18,
                           height: 18,
@@ -188,7 +179,6 @@ class _EnterpriseDeviceCardState extends State<EnterpriseDeviceCard> {
                           ),
                         ),
                         const SizedBox(width: 5),
-                        // Category short label
                         Expanded(
                           child: Text(
                             widget.node.category.shortName.toUpperCase(),
@@ -202,7 +192,6 @@ class _EnterpriseDeviceCardState extends State<EnterpriseDeviceCard> {
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        // Status Indicator Dot & Pulse / Transitional Badge
                         if (isTransitional)
                           Container(
                             padding: const EdgeInsets.symmetric(
@@ -210,22 +199,19 @@ class _EnterpriseDeviceCardState extends State<EnterpriseDeviceCard> {
                               vertical: 1,
                             ),
                             decoration: BoxDecoration(
-                              color: const Color(
-                                0xFFF59E0B,
-                              ).withValues(alpha: 0.2),
+                              color: tokens.statusDegradedSurface,
                               borderRadius: BorderRadius.circular(3),
                               border: Border.all(
-                                color: const Color(
-                                  0xFFF59E0B,
-                                ).withValues(alpha: 0.7),
+                                color: tokens.onStatusDegraded.withValues(alpha: 0.7),
+                                width: 0.8,
                               ),
                             ),
                             child: Text(
                               '${widget.node.consecutiveFailures}/${widget.node.failureThreshold} FAIL',
-                              style: const TextStyle(
-                                fontSize: 7,
-                                fontWeight: FontWeight.w800,
-                                color: Color(0xFFF59E0B),
+                              style: TextStyle(
+                                fontSize: 7.5,
+                                fontWeight: FontWeight.bold,
+                                color: tokens.onStatusDegraded,
                               ),
                             ),
                           )
@@ -236,13 +222,6 @@ class _EnterpriseDeviceCardState extends State<EnterpriseDeviceCard> {
                             decoration: BoxDecoration(
                               color: statusColor,
                               shape: BoxShape.circle,
-                              boxShadow: [
-                                BoxShadow(
-                                  color: statusColor.withValues(alpha: 0.6),
-                                  blurRadius: 4,
-                                  spreadRadius: 0.5,
-                                ),
-                              ],
                             ),
                           ),
                       ],
@@ -251,58 +230,43 @@ class _EnterpriseDeviceCardState extends State<EnterpriseDeviceCard> {
                     // Row 2: Device Title
                     Text(
                       widget.node.title,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 11.5,
                         fontWeight: FontWeight.w700,
-                        color: Color(0xFFF8FAFC), // White / Slate 50
+                        color: tokens.onCard,
                         height: 1.05,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
 
-                    // Row 3: Subtitle / Monospace IP & Health Badge
+                    // Row 3: IP Address & Subtitle
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        // IP Address or Subtitle
                         Expanded(
                           child: Text(
-                            widget.node.subtitle ?? widget.node.ip ?? '--',
-                            style: const TextStyle(
-                              fontFamily: 'Consolas',
+                            widget.node.subtitle ?? '',
+                            style: TextStyle(
                               fontSize: 9.5,
-                              fontWeight: FontWeight.w600,
-                              color: Color(0xFF94A3B8), // Slate 400
-                              height: 1.1,
+                              fontFamily: 'monospace',
+                              fontWeight: FontWeight.w500,
+                              color: tokens.onSurfaceVariant,
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        // Latency pill if available
-                        if (widget.node.lastLatencyMs != null &&
-                            widget.node.lastLatencyMs! > 0)
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 3.5,
-                              vertical: 0.5,
-                            ),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF0F172A),
-                              borderRadius: BorderRadius.circular(3),
-                              border: Border.all(
-                                color: const Color(0xFF334155),
-                              ),
-                            ),
-                            child: Text(
-                              '${widget.node.lastLatencyMs}ms',
-                              style: const TextStyle(
-                                fontSize: 8.0,
-                                fontWeight: FontWeight.w600,
-                                color: Color(0xFF94A3B8),
-                                height: 1.0,
-                              ),
+                        if (widget.node.lastLatencyMs != null)
+                          Text(
+                            '${widget.node.lastLatencyMs}ms',
+                            style: TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w600,
+                              color: widget.node.lastLatencyMs! > 100
+                                  ? tokens.statusDegraded
+                                  : tokens.onSurfaceVariant,
                             ),
                           ),
                       ],
@@ -311,49 +275,36 @@ class _EnterpriseDeviceCardState extends State<EnterpriseDeviceCard> {
                 ),
               ),
 
-              // ── Port Count Badge for Switch Nodes (Ruijie/Enterprise Style) ─
-              if (hasPortBadge)
+              // ── Downstream Active Link Count Badge ─────────────────────────
+              if (widget.node.category == TopologyDeviceCategory.switchDevice &&
+                  (widget.node.activePortCount ?? 0) > 0)
                 Positioned(
-                  top: -7,
-                  right: 8,
+                  top: -6,
+                  right: -6,
                   child: Container(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 5,
+                      horizontal: 4.5,
                       vertical: 1.5,
                     ),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF0284C7), // Blue numeric badge
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: const Color(0xFF0F172A),
-                        width: 1.5,
-                      ),
+                      color: tokens.primary,
+                      borderRadius: BorderRadius.circular(9),
+                      border: Border.all(color: tokens.card, width: 1.2),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.3),
-                          blurRadius: 4,
+                          color: tokens.shadow,
+                          blurRadius: 3,
                           offset: const Offset(0, 1),
                         ),
                       ],
                     ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(
-                          Icons.cable_rounded,
-                          size: 9,
-                          color: Colors.white,
-                        ),
-                        const SizedBox(width: 3),
-                        Text(
-                          '${widget.node.activePortCount}p',
-                          style: const TextStyle(
-                            fontSize: 8.5,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ],
+                    child: Text(
+                      '${widget.node.activePortCount ?? 0}',
+                      style: TextStyle(
+                        color: tokens.onPrimary,
+                        fontSize: 8.5,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                 ),
@@ -363,8 +314,4 @@ class _EnterpriseDeviceCardState extends State<EnterpriseDeviceCard> {
       ),
     );
   }
-}
-
-extension on EnterpriseTopologyNode {
-  String? get ip => subtitle ?? deviceRef?.ip ?? infraRef?.ip;
 }

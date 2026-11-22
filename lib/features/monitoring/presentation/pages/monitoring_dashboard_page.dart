@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/di/injection.dart';
-import '../../../devices/domain/entities/device_entity.dart';
+import '../../../../core/presentation/widgets/app_error_card.dart';
+import '../../../../core/presentation/widgets/app_skeleton.dart';
+import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_dimensions.dart';
 import '../../../devices/domain/repositories/device_repository.dart';
 import '../../../devices/presentation/widgets/assign_owner_dialog.dart';
 import '../../domain/entities/monitored_device.dart';
@@ -23,38 +26,33 @@ class MonitoringDashboardPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final initialFactoryId = context
-        .read<FactoryCubit>()
-        .state
-        .selectedFactoryId;
-    return MultiBlocProvider(
-      providers: [
-        BlocProvider<MonitoringDashboardCubit>(
-          create: (context) {
-            final cubit = getIt<MonitoringDashboardCubit>();
-            if (initialFactoryId != null) {
-              cubit.setFactoryFilter(initialFactoryId);
-            }
-            return cubit..initDashboard();
-          },
-        ),
-        BlocProvider<InfrastructureCubit>.value(
-          value: getIt<InfrastructureCubit>()
-            ..loadInfrastructure(factoryId: initialFactoryId),
-        ),
-      ],
-      child: BlocListener<FactoryCubit, FactoryState>(
-        listener: (context, state) {
-          context.read<MonitoringDashboardCubit>().setFactoryFilter(
-            state.selectedFactoryId,
-          );
-          context.read<InfrastructureCubit>().setFactory(
-            state.selectedFactoryId,
-          );
-        },
+    try {
+      context.read<MonitoringDashboardCubit>();
+      return const MonitoringDashboardView();
+    } catch (_) {
+      final initialFactoryId = context
+          .read<FactoryCubit>()
+          .state
+          .selectedFactoryId;
+      return MultiBlocProvider(
+        providers: [
+          BlocProvider<MonitoringDashboardCubit>(
+            create: (context) {
+              final cubit = getIt<MonitoringDashboardCubit>();
+              if (initialFactoryId != null) {
+                cubit.setFactoryFilter(initialFactoryId);
+              }
+              return cubit..initDashboard();
+            },
+          ),
+          BlocProvider<InfrastructureCubit>.value(
+            value: getIt<InfrastructureCubit>()
+              ..loadInfrastructure(factoryId: initialFactoryId),
+          ),
+        ],
         child: const MonitoringDashboardView(),
-      ),
-    );
+      );
+    }
   }
 }
 
@@ -73,6 +71,7 @@ class _MonitoringDashboardViewState extends State<MonitoringDashboardView> {
   Future<void> _bulkTriggerCheck(
     List<MonitoredDevice> devices,
     MonitoringDashboardCubit cubit,
+    AppColors tokens,
   ) async {
     final targets = devices
         .where((d) => _selectedDeviceIds.contains(d.device.id))
@@ -89,8 +88,9 @@ class _MonitoringDashboardViewState extends State<MonitoringDashboardView> {
           SnackBar(
             content: Text(
               'Triggered instant check for ${targets.length} device(s)',
+              style: TextStyle(color: tokens.onStatusOnline),
             ),
-            backgroundColor: const Color(0xFF10B981),
+            backgroundColor: tokens.statusOnlineSurface,
             duration: const Duration(seconds: 3),
           ),
         );
@@ -106,6 +106,7 @@ class _MonitoringDashboardViewState extends State<MonitoringDashboardView> {
     List<MonitoredDevice> devices,
     bool isMaintenance,
     MonitoringDashboardCubit cubit,
+    AppColors tokens,
   ) async {
     final targets = devices
         .where((d) => _selectedDeviceIds.contains(d.device.id))
@@ -125,8 +126,9 @@ class _MonitoringDashboardViewState extends State<MonitoringDashboardView> {
             isMaintenance
                 ? 'Set ${targets.length} device(s) into maintenance mode'
                 : 'Exited maintenance mode for ${targets.length} device(s)',
+            style: TextStyle(color: tokens.onSurface),
           ),
-          backgroundColor: Colors.blue,
+          backgroundColor: tokens.surfaceVariant,
           duration: const Duration(seconds: 3),
         ),
       );
@@ -135,64 +137,41 @@ class _MonitoringDashboardViewState extends State<MonitoringDashboardView> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final tokens = context.appTokens;
     final isAdmin = true;
 
     return Scaffold(
-      appBar: AppBar(
-        title: Row(
-          children: [
-            const Icon(Icons.monitor_heart_rounded, size: 24),
-            const SizedBox(width: 10),
-            const Expanded(
-              child: Text(
-                'PC & Laptop Monitoring Dashboard',
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: theme.primaryColor.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(6),
-                border: Border.all(
-                  color: theme.primaryColor.withValues(alpha: 0.3),
-                ),
-              ),
-              child: Text(
-                'ADMIN ROLE',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                  color: theme.primaryColor,
-                ),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh_rounded),
-            tooltip: 'Refresh Inventory',
-            onPressed: () =>
-                context.read<MonitoringDashboardCubit>().refreshDevices(),
-          ),
-          const SizedBox(width: 12),
-        ],
-      ),
+      backgroundColor: tokens.background,
       body: BlocBuilder<MonitoringDashboardCubit, MonitoringDashboardState>(
         builder: (context, state) {
           if (state is MonitoringDashboardLoading) {
-            return const Center(
+            return SingleChildScrollView(
+              padding: const EdgeInsets.all(AppSpacing.xl),
               child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  CircularProgressIndicator(),
-                  SizedBox(height: 16),
-                  Text(
-                    'Initializing Monitoring Engine & Persisted Telemetry...',
+                  Row(
+                    children: [
+                      const AppSkeleton(
+                        width: 42,
+                        height: 42,
+                        borderRadius: AppRadius.md,
+                      ),
+                      const SizedBox(width: AppSpacing.md),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: const [
+                          AppSkeleton(width: 260, height: 20),
+                          SizedBox(height: 6),
+                          AppSkeleton(width: 180, height: 14),
+                        ],
+                      ),
+                    ],
                   ),
+                  const SizedBox(height: AppSpacing.xl),
+                  AppSkeleton.summaryCards(count: 4),
+                  const SizedBox(height: AppSpacing.xl),
+                  AppSkeleton.table(rowCount: 6, columnCount: 9),
                 ],
               ),
             );
@@ -201,39 +180,13 @@ class _MonitoringDashboardViewState extends State<MonitoringDashboardView> {
           if (state is MonitoringDashboardError) {
             return Center(
               child: Padding(
-                padding: const EdgeInsets.all(32),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(
-                      Icons.warning_amber_rounded,
-                      size: 48,
-                      color: Colors.orange,
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      'Monitoring Telemetry Issue',
-                      style: theme.textTheme.titleLarge,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      state.message,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: theme.textTheme.bodyMedium?.color?.withValues(
-                          alpha: 0.7,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-                    ElevatedButton.icon(
-                      onPressed: () => context
-                          .read<MonitoringDashboardCubit>()
-                          .initDashboard(),
-                      icon: const Icon(Icons.refresh_rounded),
-                      label: const Text('Retry Monitoring Initialization'),
-                    ),
-                  ],
+                padding: const EdgeInsets.all(AppSpacing.xxl),
+                child: AppErrorCard(
+                  title: 'Monitoring Telemetry Issue',
+                  message: state.message,
+                  onRetry: () => context
+                      .read<MonitoringDashboardCubit>()
+                      .initDashboard(),
                 ),
               ),
             );
@@ -243,16 +196,90 @@ class _MonitoringDashboardViewState extends State<MonitoringDashboardView> {
             final cubit = context.read<MonitoringDashboardCubit>();
 
             return SingleChildScrollView(
-              padding: const EdgeInsets.all(24),
+              padding: const EdgeInsets.all(AppSpacing.xl),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // ── Integrated In-Page Header Bar ──
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: tokens.primary.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(AppRadius.md),
+                        ),
+                        child: Icon(
+                          Icons.monitor_heart_rounded,
+                          size: 22,
+                          color: tokens.primary,
+                        ),
+                      ),
+                      const SizedBox(width: AppSpacing.md),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Text(
+                                  'PC & Laptop Monitoring Dashboard',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    color: tokens.onBackground,
+                                  ),
+                                ),
+                                const SizedBox(width: AppSpacing.sm),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: AppSpacing.sm,
+                                    vertical: 3,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: tokens.primary.withValues(alpha: 0.12),
+                                    borderRadius: BorderRadius.circular(AppRadius.xs),
+                                    border: Border.all(
+                                      color: tokens.primary.withValues(alpha: 0.3),
+                                    ),
+                                  ),
+                                  child: Text(
+                                    'ADMIN ROLE',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                      color: tokens.primary,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Real-time automated telemetry and connectivity monitoring across all plant assets',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: tokens.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        icon: Icon(Icons.refresh_rounded, color: tokens.onSurfaceVariant),
+                        tooltip: 'Refresh Inventory',
+                        onPressed: () => cubit.refreshDevices(),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: AppSpacing.xl),
+
                   // KPI Summary Cards Grid
                   MonitoringSummaryCards(
                     state: state,
                     onStatusCardTap: (status) => cubit.setStatusFilter(status),
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: AppSpacing.xl),
 
                   // Factory Overview Cards for Multi-Factory Architecture (BNF, RNF)
                   FactoryOverviewCards(
@@ -262,28 +289,29 @@ class _MonitoringDashboardViewState extends State<MonitoringDashboardView> {
                     },
                     isAdmin: isAdmin,
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: AppSpacing.xl),
 
                   // Critical UniFi Infrastructure Status
                   const InfrastructureStatusCards(),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: AppSpacing.xl),
 
                   // Search & Filters Bar
                   MonitoringFilterBar(state: state, cubit: cubit),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: AppSpacing.xl),
 
                   // Header title for table
                   Wrap(
                     alignment: WrapAlignment.spaceBetween,
                     crossAxisAlignment: WrapCrossAlignment.center,
-                    spacing: 8,
-                    runSpacing: 8,
+                    spacing: AppSpacing.sm,
+                    runSpacing: AppSpacing.sm,
                     children: [
                       Text(
                         'Monitored Devices (${state.filteredDevices.length} of ${state.totalCount})',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
+                          color: tokens.onBackground,
                         ),
                       ),
                       if (state.searchQuery.isNotEmpty ||
@@ -306,25 +334,25 @@ class _MonitoringDashboardViewState extends State<MonitoringDashboardView> {
                         ),
                     ],
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: AppSpacing.md),
 
                   // ── Bulk Actions Floating / Sticky Bar ──
                   if (_selectedDeviceIds.isNotEmpty) ...[
                     Container(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
+                        horizontal: AppSpacing.md,
                         vertical: 10,
                       ),
                       decoration: BoxDecoration(
-                        color: theme.primaryColor.withValues(alpha: 0.08),
-                        borderRadius: BorderRadius.circular(8),
+                        color: tokens.surfaceVariant,
+                        borderRadius: BorderRadius.circular(AppRadius.md),
                         border: Border.all(
-                          color: theme.primaryColor.withValues(alpha: 0.25),
+                          color: tokens.border,
                         ),
                       ),
                       child: Wrap(
-                        spacing: 12,
-                        runSpacing: 8,
+                        spacing: AppSpacing.md,
+                        runSpacing: AppSpacing.sm,
                         crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
                           Row(
@@ -333,14 +361,14 @@ class _MonitoringDashboardViewState extends State<MonitoringDashboardView> {
                               Icon(
                                 Icons.check_circle_rounded,
                                 size: 18,
-                                color: theme.primaryColor,
+                                color: tokens.primary,
                               ),
                               const SizedBox(width: 6),
                               Text(
                                 '${_selectedDeviceIds.length} device(s) selected',
                                 style: TextStyle(
                                   fontWeight: FontWeight.bold,
-                                  color: theme.primaryColor,
+                                  color: tokens.onSurface,
                                   fontSize: 13,
                                 ),
                               ),
@@ -352,14 +380,15 @@ class _MonitoringDashboardViewState extends State<MonitoringDashboardView> {
                                 : () => _bulkTriggerCheck(
                                     state.filteredDevices,
                                     cubit,
+                                    tokens,
                                   ),
                             icon: _isBulkChecking
-                                ? const SizedBox(
+                                ? SizedBox(
                                     width: 14,
                                     height: 14,
                                     child: CircularProgressIndicator(
                                       strokeWidth: 2,
-                                      color: Colors.white,
+                                      color: tokens.onPrimary,
                                     ),
                                   )
                                 : const Icon(Icons.refresh_rounded, size: 16),
@@ -368,10 +397,6 @@ class _MonitoringDashboardViewState extends State<MonitoringDashboardView> {
                                   ? 'Checking...'
                                   : 'Check Selected (${_selectedDeviceIds.length})',
                             ),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: theme.primaryColor,
-                              foregroundColor: Colors.white,
-                            ),
                           ),
                           if (isAdmin) ...[
                             OutlinedButton.icon(
@@ -379,6 +404,7 @@ class _MonitoringDashboardViewState extends State<MonitoringDashboardView> {
                                 state.filteredDevices,
                                 true,
                                 cubit,
+                                tokens,
                               ),
                               icon: const Icon(
                                 Icons.build_circle_rounded,
@@ -391,6 +417,7 @@ class _MonitoringDashboardViewState extends State<MonitoringDashboardView> {
                                 state.filteredDevices,
                                 false,
                                 cubit,
+                                tokens,
                               ),
                               icon: const Icon(
                                 Icons.build_circle_outlined,
@@ -407,7 +434,7 @@ class _MonitoringDashboardViewState extends State<MonitoringDashboardView> {
                         ],
                       ),
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: AppSpacing.md),
                   ],
 
                   // Prioritized Devices DataTable
@@ -416,6 +443,7 @@ class _MonitoringDashboardViewState extends State<MonitoringDashboardView> {
                     isAdmin: isAdmin,
                     failureThreshold: state.config.failureThreshold,
                     selectedDeviceIds: _selectedDeviceIds,
+                    onClearFilters: () => cubit.clearAllFilters(),
                     onToggleSelect: (deviceId, selected) {
                       setState(() {
                         if (selected) {
@@ -464,86 +492,49 @@ class _MonitoringDashboardViewState extends State<MonitoringDashboardView> {
 
   void _showDeviceDetails(
     BuildContext context,
-    item,
+    MonitoredDevice item,
     bool isAdmin,
-    config,
+    dynamic config,
     MonitoringDashboardCubit cubit,
   ) {
-    showDialog(
+    showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
       builder: (ctx) => DeviceDetailsModal(
         item: item,
         isAdmin: isAdmin,
         config: config,
         onTriggerCheck: () {
+          Navigator.pop(ctx);
           cubit.triggerManualCheck(item.device.id);
-          Navigator.of(ctx).pop();
         },
         onToggleMaintenance: (isMaint) {
+          Navigator.pop(ctx);
           cubit.toggleMaintenanceMode(
             deviceId: item.device.id,
             isMaintenance: isMaint,
           );
-          Navigator.of(ctx).pop();
         },
-        onEditOwner: isAdmin
-            ? () {
-                Navigator.of(ctx).pop();
-                _showAssignOwnerDialog(context, item.device, cubit);
-              }
-            : null,
-      ),
-    );
-  }
-
-  void _showAssignOwnerDialog(
-    BuildContext context,
-    DeviceEntity device,
-    MonitoringDashboardCubit cubit,
-  ) {
-    showDialog(
-      context: context,
-      builder: (dialogCtx) => AssignOwnerDialog(
-        device: device,
-        onSave: (newOwner) async {
-          final repo = getIt<DeviceRepository>();
-          final res = await repo.assignDeviceOwner(
-            deviceId: device.id,
-            ownerName: newOwner,
+        onAssignOwner: () async {
+          Navigator.pop(ctx);
+          final devRepo = getIt<DeviceRepository>();
+          showDialog(
+            context: context,
+            builder: (_) => AssignOwnerDialog(
+              device: item.device,
+              onSave: (newOwnerName) async {
+                final res = await devRepo.assignDeviceOwner(
+                  deviceId: item.device.id,
+                  ownerName: newOwnerName,
+                );
+                if (context.mounted) {
+                  cubit.refreshDevices();
+                }
+                return res.isSuccess;
+              },
+            ),
           );
-          if (res.isSuccess && context.mounted) {
-            cubit.initDashboard();
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  'Assigned person for ${device.ip} updated to "$newOwner".',
-                ),
-                backgroundColor: const Color(0xFF10B981),
-              ),
-            );
-            return true;
-          }
-          return false;
-        },
-        onClear: () async {
-          final repo = getIt<DeviceRepository>();
-          final res = await repo.assignDeviceOwner(
-            deviceId: device.id,
-            ownerName: 'Unassigned',
-          );
-          if (res.isSuccess && context.mounted) {
-            cubit.initDashboard();
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  'Cleared assigned person for ${device.ip} (marked Unassigned).',
-                ),
-                backgroundColor: Colors.orange,
-              ),
-            );
-            return true;
-          }
-          return false;
         },
       ),
     );

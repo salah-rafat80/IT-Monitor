@@ -10,6 +10,8 @@ class WallDisplayHeader extends StatefulWidget {
   final DateTime? lastUpdatedAt;
   final String currentSortBy;
   final ValueChanged<String> onSortChanged;
+  final String? activeFactoryId;
+  final ValueChanged<String?>? onFactoryChanged;
 
   const WallDisplayHeader({
     super.key,
@@ -17,6 +19,8 @@ class WallDisplayHeader extends StatefulWidget {
     this.lastUpdatedAt,
     required this.currentSortBy,
     required this.onSortChanged,
+    this.activeFactoryId,
+    this.onFactoryChanged,
   });
 
   @override
@@ -63,9 +67,31 @@ class _WallDisplayHeaderState extends State<WallDisplayHeader> {
         scrollDirection: Axis.horizontal,
         child: Row(
           children: [
-            // Left: Logo & Title
-            Icon(Icons.monitor_heart_outlined, color: tokens.primary, size: 26),
-            const SizedBox(width: 10),
+// Left: Logo & Title
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(6),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.15),
+                    blurRadius: 4,
+                    offset: const Offset(0, 1),
+                  ),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: Image.asset(
+                  'assets/images/app_logo.png',
+                  width: 36,
+                  height: 24,
+                  fit: BoxFit.contain,
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
             Text(
               'IT NETWORK MONITOR',
               style: TextStyle(
@@ -96,7 +122,39 @@ class _WallDisplayHeaderState extends State<WallDisplayHeader> {
               ),
             ),
 
-            const SizedBox(width: 24),
+            const SizedBox(width: 16),
+
+            // Factory Scope Switcher
+            Container(
+              padding: const EdgeInsets.all(2),
+              decoration: BoxDecoration(
+                color: tokens.surfaceSecondary,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: tokens.cardBorder),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _buildFactoryPill(
+                    label: 'ALL',
+                    factoryId: null,
+                    tokens: tokens,
+                  ),
+                  _buildFactoryPill(
+                    label: 'BNF',
+                    factoryId: 'bnf',
+                    tokens: tokens,
+                  ),
+                  _buildFactoryPill(
+                    label: 'RNF',
+                    factoryId: 'rnf',
+                    tokens: tokens,
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(width: 16),
 
             // Center: Live Time Clock
             Container(
@@ -254,6 +312,43 @@ class _WallDisplayHeaderState extends State<WallDisplayHeader> {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFactoryPill({
+    required String label,
+    required String? factoryId,
+    required AppColors tokens,
+  }) {
+    final isSelected = (widget.activeFactoryId == null && factoryId == null) ||
+        (widget.activeFactoryId?.toLowerCase() == factoryId?.toLowerCase() &&
+            factoryId != null);
+
+    return InkWell(
+      onTap: () => widget.onFactoryChanged?.call(factoryId),
+      borderRadius: BorderRadius.circular(6),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? tokens.primary.withValues(alpha: 0.2)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(
+            color: isSelected ? tokens.primary : Colors.transparent,
+            width: 1,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+            color: isSelected ? tokens.primary : tokens.textSecondary,
+          ),
         ),
       ),
     );

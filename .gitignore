@@ -33,6 +33,7 @@ migrate_working_dir/
 
 # Distribution and Generated Packaging Artifacts
 /dist/
+*.zip
 
 # Test golden artifacts and failure diffs
 failures/

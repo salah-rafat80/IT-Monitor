@@ -181,171 +181,62 @@ class EnterpriseTopologyBuilder {
       );
     }
 
-    // ── 3. Group Monitored Endpoints by Location / Switch ──────────────────
-    final Map<String, List<MonitoredDevice>> locationGroups = {};
-    for (final md in monitoredDevices) {
-      final loc = md.device.officeLocation?.trim().isNotEmpty == true
-          ? md.device.officeLocation!.trim()
-          : (md.device.department.trim().isNotEmpty
-                ? md.device.department.trim()
-                : 'General Office');
-      locationGroups.putIfAbsent(loc, () => []).add(md);
-    }
-
-    // Deterministic sorting of locations: BNF (.21.) / RNF (.22.) / other, then endpoint count, then name
-    final sortedLocations = locationGroups.keys.toList()
-      ..sort((a, b) {
-        final aIs22 =
-            a.toLowerCase().contains('22') ||
-            (locationGroups[a]?.first.device.ip.contains('.22.') ?? false);
-        final bIs22 =
-            b.toLowerCase().contains('22') ||
-            (locationGroups[b]?.first.device.ip.contains('.22.') ?? false);
-        if (aIs22 != bIs22) return aIs22 ? 1 : -1;
-        final countA = locationGroups[a]?.length ?? 0;
-        final countB = locationGroups[b]?.length ?? 0;
-        if (countA != countB) return countB.compareTo(countA);
-        return a.compareTo(b);
-      });
-
-    // ── 4. LEVEL 2: Distribution / Inferred Location Groups ────────────────
+    // ── 3. LEVEL 2: Distribution Switches & Blueprint Hierarchy ─────────────
     final List<String> switchIds = [];
     final verifiedSwitches = infraDevices
         .where((d) => d.role == UniFiDeviceRole.switchDevice)
         .toList();
 
-    final Map<String, String> locationToSwitchId = {};
-    for (final loc in sortedLocations) {
-      final swId = 'sw_${loc.replaceAll(RegExp(r'\s+'), '_').toLowerCase()}';
-      locationToSwitchId[loc] = swId;
-      switchIds.add(swId);
-
-      final childrenCount = locationGroups[loc]?.length ?? 0;
-
-      // Determine upstream gateway
-      final firstDeviceIp = locationGroups[loc]?.first.device.ip;
-      String? upstreamGwId = gatewayIds.firstOrNull;
-      if (loc.toLowerCase().contains('21') ||
-          (firstDeviceIp?.contains('.21.') ?? false)) {
-        final bnfMatch = gatewayIds
-            .where((id) => id.contains('bnf'))
-            .firstOrNull;
-        if (bnfMatch != null) upstreamGwId = bnfMatch;
-      } else if (loc.toLowerCase().contains('22') ||
-          (firstDeviceIp?.contains('.22.') ?? false)) {
-        final rnfMatch = gatewayIds
-            .where((id) => id.contains('rnf'))
-            .firstOrNull;
-        if (rnfMatch != null) upstreamGwId = rnfMatch;
+    // Helper: compute verified link status strictly following precedence rules
+    DeviceStatusEnum computeLinkStatus(
+      EnterpriseTopologyNode? fromNode,
+      EnterpriseTopologyNode? toNode, {
+      bool isInferred = false,
+    }) {
+      if (isInferred ||
+          fromNode == null ||
+          toNode == null ||
+          fromNode.isInferred ||
+          toNode.isInferred) {
+        return DeviceStatusEnum.unknown;
       }
-
-      // Check if there is an actual verified switch record matching this location
-      final matchingVerifiedSwitch = verifiedSwitches.where((s) {
-        return s.location != null &&
-            s.location!.toLowerCase().contains(loc.toLowerCase());
-      }).firstOrNull;
-
-      if (matchingVerifiedSwitch != null) {
-        final virtualId = 10000 + matchingVerifiedSwitch.id;
-        final swStatus = resolveInfraStatus(
-          virtualId,
-          matchingVerifiedSwitch.ip,
-        );
-        final ent = getStatusEntity(virtualId);
-        nodes[swId] = EnterpriseTopologyNode(
-          id: swId,
-          title: matchingVerifiedSwitch.name,
-          subtitle: matchingVerifiedSwitch.ip,
-          category: TopologyDeviceCategory.switchDevice,
-          status: swStatus,
-          level: 2,
-          location: loc,
-          vendor: 'UniFi Switch',
-          infraRef: matchingVerifiedSwitch,
-          isInferred: false,
-          lastLatencyMs: ent?.lastLatencyMs,
-          lastSuccessfulLatencyMs: ent?.lastSuccessfulLatencyMs,
-          lastCheckAt: ent?.lastCheckAt,
-          lastSuccessfulCheckAt: ent?.lastSeen,
-          failureReason: ent?.lastFailureReason,
-          consecutiveFailures: ent?.consecutiveFailures ?? 0,
-          size: const Size(168, 60),
-          failureThreshold: failureThreshold,
-          virtualStatusId: virtualId,
-        );
-
-        if (upstreamGwId != null) {
-          final gwNode = nodes[upstreamGwId];
-          final gwStatus = gwNode?.status ?? DeviceStatusEnum.unknown;
-          DeviceStatusEnum swLinkStatus = DeviceStatusEnum.unknown;
-          if (gwStatus == DeviceStatusEnum.down ||
-              gwStatus == DeviceStatusEnum.unreachable ||
-              swStatus == DeviceStatusEnum.down ||
-              swStatus == DeviceStatusEnum.unreachable) {
-            swLinkStatus = DeviceStatusEnum.down;
-          } else if (gwStatus == DeviceStatusEnum.stale ||
-              swStatus == DeviceStatusEnum.stale) {
-            swLinkStatus = DeviceStatusEnum.stale;
-          } else if ((gwNode?.consecutiveFailures ?? 0) > 0 ||
-              (ent?.consecutiveFailures ?? 0) > 0 ||
-              gwStatus == DeviceStatusEnum.degraded ||
-              swStatus == DeviceStatusEnum.degraded) {
-            // Amber when either endpoint has consecutiveFailures > 0!
-            swLinkStatus = DeviceStatusEnum.degraded;
-          } else if (gwStatus == DeviceStatusEnum.up &&
-              swStatus == DeviceStatusEnum.up &&
-              (gwNode?.consecutiveFailures ?? 0) == 0 &&
-              (ent?.consecutiveFailures ?? 0) == 0) {
-            swLinkStatus = DeviceStatusEnum.up;
-          }
-
-          links.add(
-            EnterpriseTopologyLink(
-              id: 'link_${upstreamGwId}_$swId',
-              fromNodeId: upstreamGwId,
-              toNodeId: swId,
-              status: swLinkStatus,
-              isInferred: false,
-            ),
-          );
-        }
-      } else {
-        // Inferred logical grouping — clearly labeled, never claimed as verified hardware
-        nodes[swId] = EnterpriseTopologyNode(
-          id: swId,
-          title: '$loc (Logical Group)',
-          subtitle: 'Inferred Grouping ($childrenCount endpoints)',
-          category: TopologyDeviceCategory.switchDevice,
-          status: DeviceStatusEnum.unknown,
-          level: 2,
-          location: loc,
-          isInferred: true,
-          size: const Size(168, 60),
-          failureThreshold: failureThreshold,
-        );
-
-        if (upstreamGwId != null) {
-          links.add(
-            EnterpriseTopologyLink(
-              id: 'link_${upstreamGwId}_$swId',
-              fromNodeId: upstreamGwId,
-              toNodeId: swId,
-              status: DeviceStatusEnum.unknown,
-              isInferred: true,
-            ),
-          );
-        }
+      final s1 = fromNode.status;
+      final s2 = toNode.status;
+      if (s1 == DeviceStatusEnum.down ||
+          s1 == DeviceStatusEnum.unreachable ||
+          s2 == DeviceStatusEnum.down ||
+          s2 == DeviceStatusEnum.unreachable) {
+        return DeviceStatusEnum.down;
       }
+      if (s1 == DeviceStatusEnum.stale || s2 == DeviceStatusEnum.stale) {
+        return DeviceStatusEnum.stale;
+      }
+      if (s1 == DeviceStatusEnum.degraded ||
+          s2 == DeviceStatusEnum.degraded ||
+          fromNode.consecutiveFailures > 0 ||
+          toNode.consecutiveFailures > 0) {
+        return DeviceStatusEnum.degraded;
+      }
+      if (s1 == DeviceStatusEnum.up &&
+          s2 == DeviceStatusEnum.up &&
+          fromNode.consecutiveFailures == 0 &&
+          toNode.consecutiveFailures == 0) {
+        return DeviceStatusEnum.up;
+      }
+      return DeviceStatusEnum.unknown;
     }
 
-    // If no locations exist (empty endpoints), ensure at least one distribution node if verified switches exist
-    if (switchIds.isEmpty) {
+    if (verifiedSwitches.isNotEmpty) {
+      // ══════════════════════════════════════════════════════════════════════
+      // PATH A: Production & Verified Hardware Mode (Authoritative Blueprint)
+      // ══════════════════════════════════════════════════════════════════════
       for (final vSw in verifiedSwitches) {
         final swId = 'sw_${vSw.id}';
         switchIds.add(swId);
         final virtualId = 10000 + vSw.id;
         final swStatus = resolveInfraStatus(virtualId, vSw.ip);
         final ent = getStatusEntity(virtualId);
+
         nodes[swId] = EnterpriseTopologyNode(
           id: swId,
           title: vSw.name,
@@ -354,8 +245,374 @@ class EnterpriseTopologyBuilder {
           status: swStatus,
           level: 2,
           location: vSw.location,
-          vendor: 'UniFi Switch',
+          vendor: vSw.name.contains('D-Link') ? 'D-Link' : 'Cisco Managed Switch',
+          model: vSw.name.contains('D-Link') ? 'DES-1016D' : 'WS-C2960X-24TS-L',
           infraRef: vSw,
+          isInferred: false,
+          isMonitored: true,
+          lastLatencyMs: ent?.lastLatencyMs,
+          lastSuccessfulLatencyMs: ent?.lastSuccessfulLatencyMs,
+          lastCheckAt: ent?.lastCheckAt,
+          lastSuccessfulCheckAt: ent?.lastSeen,
+          failureReason: ent?.lastFailureReason,
+          consecutiveFailures: ent?.consecutiveFailures ?? 0,
+          size: const Size(168, 60),
+          failureThreshold: failureThreshold,
+          virtualStatusId: virtualId,
+          totalPortCount: vSw.name.contains('D-Link') ? 16 : (vSw.name.contains('Spare Parts') ? 8 : 24),
+        );
+      }
+
+      // Establish Authoritative Physical Backbone and Distribution Links between Verified Switches
+      final swWest = verifiedSwitches.where((s) => s.name.contains('West') || s.name.contains('Switch 1')).firstOrNull;
+      final swEast = verifiedSwitches.where((s) => s.name.contains('East') || s.name.contains('Switch 2')).firstOrNull;
+      final swGroundCore = verifiedSwitches.where((s) => s.name.contains('Warehouse Core')).firstOrNull;
+      final swDlink = verifiedSwitches.where((s) => s.name.contains('Raw Materials') || s.name.contains('D-Link')).firstOrNull;
+      final swSpareparts = verifiedSwitches.where((s) => s.name.contains('Spare Parts')).firstOrNull;
+      final swSecurity = verifiedSwitches.where((s) => s.name.contains('Security')).firstOrNull;
+
+      final swBnfCore = verifiedSwitches.where((s) => s.name.contains('BNF Core')).firstOrNull;
+      final swBnfProd = verifiedSwitches.where((s) => s.name.contains('Production')).firstOrNull;
+      final swBnfAdmin = verifiedSwitches.where((s) => s.name.contains('Administration')).firstOrNull;
+      final swBnfWh = verifiedSwitches.where((s) => s.name.contains('BNF Warehouse')).firstOrNull;
+
+      const rnfGwId = 'gw_rnf_22';
+      const bnfGwId = 'gw_bnf_21';
+
+      // RNF Blueprint Links
+      if (swWest != null) {
+        final westId = 'sw_${swWest.id}';
+        if (nodes.containsKey(rnfGwId)) {
+          links.add(
+            EnterpriseTopologyLink(
+              id: 'link_${rnfGwId}_$westId',
+              fromNodeId: rnfGwId,
+              toNodeId: westId,
+              fromPort: 'LAN 1',
+              toPort: 'Gigabit0/24 (Trunk)',
+              speed: '1 Gbps',
+              status: computeLinkStatus(nodes[rnfGwId], nodes[westId]),
+              isInferred: false,
+            ),
+          );
+        }
+
+        if (swEast != null) {
+          final eastId = 'sw_${swEast.id}';
+          links.add(
+            EnterpriseTopologyLink(
+              id: 'link_${westId}_$eastId',
+              fromNodeId: westId,
+              toNodeId: eastId,
+              fromPort: 'SFP 1',
+              toPort: 'SFP 1',
+              speed: '10G SFP+ Trunk',
+              status: computeLinkStatus(nodes[westId], nodes[eastId]),
+              isInferred: false,
+            ),
+          );
+        }
+
+        if (swGroundCore != null) {
+          final gcId = 'sw_${swGroundCore.id}';
+          // AUTHORITATIVE BLUEPRINT BACKBONE: Floor 1 West -> Warehouse Core Switch (0SK14sVCR1hRAYqBbC6O-16 / فايبر +كات6)
+          links.add(
+            EnterpriseTopologyLink(
+              id: 'link_${westId}_$gcId',
+              fromNodeId: westId,
+              toNodeId: gcId,
+              fromPort: 'Backbone (Fiber)',
+              toPort: 'Backbone (Fiber)',
+              speed: 'Fiber Optic + Cat6 Backbone',
+              status: computeLinkStatus(nodes[westId], nodes[gcId]),
+              isInferred: false,
+            ),
+          );
+        }
+      }
+
+      if (swGroundCore != null) {
+        final gcId = 'sw_${swGroundCore.id}';
+        if (swDlink != null) {
+          final dlinkId = 'sw_${swDlink.id}';
+          links.add(
+            EnterpriseTopologyLink(
+              id: 'link_${gcId}_$dlinkId',
+              fromNodeId: gcId,
+              toNodeId: dlinkId,
+              fromPort: 'Port 16',
+              toPort: 'Uplink',
+              speed: '100 Mbps / 1 Gbps',
+              status: computeLinkStatus(nodes[gcId], nodes[dlinkId]),
+              isInferred: false,
+            ),
+          );
+        }
+
+        if (swSpareparts != null) {
+          final spId = 'sw_${swSpareparts.id}';
+          links.add(
+            EnterpriseTopologyLink(
+              id: 'link_${gcId}_$spId',
+              fromNodeId: gcId,
+              toNodeId: spId,
+              fromPort: 'Port 18',
+              toPort: 'Uplink',
+              speed: '100 Mbps / 1 Gbps',
+              status: computeLinkStatus(nodes[gcId], nodes[spId]),
+              isInferred: false,
+            ),
+          );
+        }
+      }
+
+      if (swSecurity != null) {
+        final secId = 'sw_${swSecurity.id}';
+        if (nodes.containsKey(rnfGwId)) {
+          links.add(
+            EnterpriseTopologyLink(
+              id: 'link_${rnfGwId}_$secId',
+              fromNodeId: rnfGwId,
+              toNodeId: secId,
+              fromPort: 'LAN 2',
+              toPort: 'Gigabit0/1',
+              speed: '1 Gbps (Perimeter Trunk)',
+              status: computeLinkStatus(nodes[rnfGwId], nodes[secId]),
+              isInferred: false,
+            ),
+          );
+        }
+      }
+
+      // BNF Blueprint Links
+      if (swBnfCore != null) {
+        final coreId = 'sw_${swBnfCore.id}';
+        if (nodes.containsKey(bnfGwId)) {
+          links.add(
+            EnterpriseTopologyLink(
+              id: 'link_${bnfGwId}_$coreId',
+              fromNodeId: bnfGwId,
+              toNodeId: coreId,
+              fromPort: 'LAN 1',
+              toPort: 'Trunk',
+              speed: '1 Gbps',
+              status: computeLinkStatus(nodes[bnfGwId], nodes[coreId]),
+              isInferred: false,
+            ),
+          );
+        }
+        if (swBnfProd != null) {
+          final prodId = 'sw_${swBnfProd.id}';
+          links.add(
+            EnterpriseTopologyLink(
+              id: 'link_${coreId}_$prodId',
+              fromNodeId: coreId,
+              toNodeId: prodId,
+              fromPort: 'Port 1',
+              toPort: 'Uplink',
+              speed: '1 Gbps',
+              status: computeLinkStatus(nodes[coreId], nodes[prodId]),
+              isInferred: false,
+            ),
+          );
+        }
+        if (swBnfAdmin != null) {
+          final adminId = 'sw_${swBnfAdmin.id}';
+          links.add(
+            EnterpriseTopologyLink(
+              id: 'link_${coreId}_$adminId',
+              fromNodeId: coreId,
+              toNodeId: adminId,
+              fromPort: 'Port 2',
+              toPort: 'Uplink',
+              speed: '1 Gbps',
+              status: computeLinkStatus(nodes[coreId], nodes[adminId]),
+              isInferred: false,
+            ),
+          );
+        }
+        if (swBnfWh != null) {
+          final whId = 'sw_${swBnfWh.id}';
+          links.add(
+            EnterpriseTopologyLink(
+              id: 'link_${coreId}_$whId',
+              fromNodeId: coreId,
+              toNodeId: whId,
+              fromPort: 'Port 3',
+              toPort: 'Uplink',
+              speed: '1 Gbps',
+              status: computeLinkStatus(nodes[coreId], nodes[whId]),
+              isInferred: false,
+            ),
+          );
+        }
+      }
+
+      // Link any other verified switches from infraDevices not yet linked
+      for (final vSw in verifiedSwitches) {
+        final swId = 'sw_${vSw.id}';
+        if (!links.any((l) => l.toNodeId == swId)) {
+          String? upstreamGwId = gatewayIds.firstOrNull;
+          if (vSw.factoryId.toLowerCase() == 'bnf' || vSw.ip.contains('.21.')) {
+            upstreamGwId = gatewayIds.where((id) => id.contains('bnf')).firstOrNull ?? upstreamGwId;
+          } else if (vSw.factoryId.toLowerCase() == 'rnf' || vSw.ip.contains('.22.')) {
+            upstreamGwId = gatewayIds.where((id) => id.contains('rnf')).firstOrNull ?? upstreamGwId;
+          }
+          if (upstreamGwId != null) {
+            links.add(
+              EnterpriseTopologyLink(
+                id: 'link_${upstreamGwId}_$swId',
+                fromNodeId: upstreamGwId,
+                toNodeId: swId,
+                status: computeLinkStatus(nodes[upstreamGwId], nodes[swId]),
+                isInferred: false,
+              ),
+            );
+          }
+        }
+      }
+
+      // Helper: Match endpoint to its verified switch
+      UniFiDeviceEntity? findMatchingSwitch(MonitoredDevice md) {
+        final ip = md.device.ip.trim();
+        final dept = md.device.department.trim().toLowerCase();
+        final loc = (md.device.officeLocation ?? '').trim().toLowerCase();
+        final owner = md.device.ownerName.trim().toLowerCase();
+
+        // 1. Direct location match against switch location
+        for (final sw in verifiedSwitches) {
+          final swLoc = (sw.location ?? '').toLowerCase();
+          if (swLoc.isNotEmpty && loc.isNotEmpty && (swLoc.contains(loc) || loc.contains(swLoc))) {
+            return sw;
+          }
+        }
+
+        // 2. RNF Blueprint routing rules
+        if (ip.contains('.22.') || md.device.factoryId == 'rnf') {
+          if (ip.endsWith('.37') ||
+              dept.contains('sec') ||
+              loc.contains('sec') ||
+              loc.contains('gate') ||
+              owner.contains('khamis') ||
+              owner.contains('خميس')) {
+            if (swSecurity != null) return swSecurity;
+          }
+
+          if (ip.endsWith('.115') ||
+              ip.endsWith('.77') ||
+              ip.endsWith('.64') ||
+              ip.endsWith('.29') ||
+              dept.contains('rm') ||
+              loc.contains('rm') ||
+              loc.contains('raw') ||
+              dept.contains('raw') ||
+              dept.contains('logis') ||
+              loc.contains('logis') ||
+              owner.contains('mostafa') ||
+              owner.contains('مصطفي احمد') ||
+              owner.contains('bassem') ||
+              owner.contains('باسم')) {
+            if (swDlink != null) return swDlink;
+          }
+
+          if (ip.endsWith('.70') ||
+              ip.endsWith('.131') ||
+              ip.endsWith('.130') ||
+              dept.contains('spare') ||
+              loc.contains('spare') ||
+              owner.contains('sabry') ||
+              owner.contains('صبري') ||
+              owner.contains('ramadan') ||
+              owner.contains('احمد رمضان')) {
+            if (swSpareparts != null) return swSpareparts;
+          }
+
+          if (ip.endsWith('.73') ||
+              ip.endsWith('.72') ||
+              ip.endsWith('.110') ||
+              ip.endsWith('.75') ||
+              dept.contains('ware') ||
+              loc.contains('ware') ||
+              loc.contains('مخازن') ||
+              owner.contains('elewa') ||
+              owner.contains('عليوة') ||
+              owner.contains('samir') ||
+              owner.contains('سمير')) {
+            if (swGroundCore != null) return swGroundCore;
+          }
+
+          if (ip.endsWith('.117') ||
+              ip.endsWith('.112') ||
+              ip.endsWith('.118') ||
+              ip.endsWith('.129') ||
+              ip.endsWith('.123') ||
+              ip.endsWith('.124') ||
+              ip.endsWith('.122') ||
+              dept.contains('acc') ||
+              dept.contains('fin') ||
+              dept.contains('pur') ||
+              loc.contains('acc') ||
+              loc.contains('fin') ||
+              loc.contains('pur') ||
+              dept.contains('حساب') ||
+              dept.contains('مشتري') ||
+              dept.contains('خزن')) {
+            if (swWest != null) return swWest;
+          }
+
+          if (swEast != null) return swEast;
+          if (swWest != null) return swWest;
+        }
+
+        // 3. BNF Blueprint routing rules
+        if (ip.contains('.21.') || md.device.factoryId == 'bnf') {
+          if (dept.contains('prod') || loc.contains('prod')) {
+            if (swBnfProd != null) return swBnfProd;
+          }
+          if (dept.contains('ware') || loc.contains('ware') || dept.contains('logis')) {
+            if (swBnfWh != null) return swBnfWh;
+          }
+          if (dept.contains('admin') || dept.contains('fin') || dept.contains('acc') || dept.contains('hr')) {
+            if (swBnfAdmin != null) return swBnfAdmin;
+          }
+          if (swBnfCore != null) return swBnfCore;
+        }
+
+        return verifiedSwitches.first;
+      }
+
+      // LEVEL 3: UniFi APs
+      final unifiAps = infraDevices
+          .where((d) => d.role == UniFiDeviceRole.accessPoint)
+          .toList();
+      for (int i = 0; i < unifiAps.length; i++) {
+        final ap = unifiAps[i];
+        final apId = 'ap_${ap.id}';
+        final virtualId = 10000 + ap.id;
+        final status = resolveInfraStatus(virtualId, ap.ip);
+        final ent = getStatusEntity(virtualId);
+
+        String parentSwId = 'sw_${verifiedSwitches.first.id}';
+        final lowerName = ap.name.toLowerCase();
+        if (lowerName.contains('meeting') && swWest != null) {
+          parentSwId = 'sw_${swWest.id}';
+        } else if (lowerName.contains('fm office') && swEast != null) {
+          parentSwId = 'sw_${swEast.id}';
+        } else if ((lowerName.contains('packing') || lowerName.contains('palitizer')) && swGroundCore != null) {
+          parentSwId = 'sw_${swGroundCore.id}';
+        }
+
+        nodes[apId] = EnterpriseTopologyNode(
+          id: apId,
+          title: ap.name,
+          subtitle: ap.ip,
+          category: TopologyDeviceCategory.accessPoint,
+          status: status,
+          level: 3,
+          location: ap.location ?? 'Facility AP Area',
+          mac: ap.mac,
+          vendor: 'Ubiquiti UniFi AP',
+          infraRef: ap,
           isInferred: false,
           lastLatencyMs: ent?.lastLatencyMs,
           lastSuccessfulLatencyMs: ent?.lastSuccessfulLatencyMs,
@@ -367,138 +624,28 @@ class EnterpriseTopologyBuilder {
           failureThreshold: failureThreshold,
           virtualStatusId: virtualId,
         );
-        final gwId = gatewayIds.firstOrNull;
-        if (gwId != null) {
-          final gwNode = nodes[gwId];
-          final gwStatus = gwNode?.status ?? DeviceStatusEnum.unknown;
-          DeviceStatusEnum swLinkStatus = DeviceStatusEnum.unknown;
-          if (gwStatus == DeviceStatusEnum.down ||
-              gwStatus == DeviceStatusEnum.unreachable ||
-              swStatus == DeviceStatusEnum.down ||
-              swStatus == DeviceStatusEnum.unreachable) {
-            swLinkStatus = DeviceStatusEnum.down;
-          } else if (gwStatus == DeviceStatusEnum.stale ||
-              swStatus == DeviceStatusEnum.stale) {
-            swLinkStatus = DeviceStatusEnum.stale;
-          } else if ((gwNode?.consecutiveFailures ?? 0) > 0 ||
-              (ent?.consecutiveFailures ?? 0) > 0 ||
-              gwStatus == DeviceStatusEnum.degraded ||
-              swStatus == DeviceStatusEnum.degraded) {
-            swLinkStatus = DeviceStatusEnum.degraded;
-          } else if (gwStatus == DeviceStatusEnum.up &&
-              swStatus == DeviceStatusEnum.up &&
-              (gwNode?.consecutiveFailures ?? 0) == 0 &&
-              (ent?.consecutiveFailures ?? 0) == 0) {
-            swLinkStatus = DeviceStatusEnum.up;
-          }
-          links.add(
-            EnterpriseTopologyLink(
-              id: 'link_${gwId}_$swId',
-              fromNodeId: gwId,
-              toNodeId: swId,
-              status: swLinkStatus,
-              isInferred: false,
-            ),
-          );
-        }
-      }
-    }
 
-    // ── 5. LEVEL 3: UniFi Access Points (from Infrastructure Devices) ─────────
-    final unifiAps = infraDevices
-        .where((d) => d.role == UniFiDeviceRole.accessPoint)
-        .toList();
-    for (int i = 0; i < unifiAps.length; i++) {
-      final ap = unifiAps[i];
-      final apId = 'ap_${ap.id}';
-      final virtualId = 10000 + ap.id;
-      final status = resolveInfraStatus(virtualId, ap.ip);
-      final ent = getStatusEntity(virtualId);
-
-      String? parentSwId = switchIds.isNotEmpty
-          ? switchIds.first
-          : gatewayIds.firstOrNull;
-      for (final loc in sortedLocations) {
-        if (ap.location != null &&
-            ap.location!.toLowerCase().contains(loc.toLowerCase())) {
-          parentSwId = locationToSwitchId[loc] ?? parentSwId;
-          break;
-        }
-      }
-
-      nodes[apId] = EnterpriseTopologyNode(
-        id: apId,
-        title: ap.name,
-        subtitle: ap.ip,
-        category: TopologyDeviceCategory.accessPoint,
-        status: status,
-        level: 3,
-        location: ap.location ?? 'Facility AP Area',
-        mac: ap.mac,
-        vendor: 'Ubiquiti UniFi AP',
-        infraRef: ap,
-        isInferred: false,
-        lastLatencyMs: ent?.lastLatencyMs,
-        lastSuccessfulLatencyMs: ent?.lastSuccessfulLatencyMs,
-        lastCheckAt: ent?.lastCheckAt,
-        lastSuccessfulCheckAt: ent?.lastSeen,
-        failureReason: ent?.lastFailureReason,
-        consecutiveFailures: ent?.consecutiveFailures ?? 0,
-        size: const Size(168, 60),
-        failureThreshold: failureThreshold,
-        virtualStatusId: 10000 + ap.id,
-      );
-
-      if (parentSwId != null) {
         final parentNode = nodes[parentSwId];
-        final isParentInferred = parentNode?.isInferred ?? true;
-        final parentStatus = parentNode?.status ?? DeviceStatusEnum.unknown;
-        DeviceStatusEnum apLinkStatus = DeviceStatusEnum.unknown;
-        if (!isParentInferred) {
-          if (parentStatus == DeviceStatusEnum.down ||
-              parentStatus == DeviceStatusEnum.unreachable ||
-              status == DeviceStatusEnum.down ||
-              status == DeviceStatusEnum.unreachable) {
-            apLinkStatus = DeviceStatusEnum.down;
-          } else if (parentStatus == DeviceStatusEnum.stale ||
-              status == DeviceStatusEnum.stale) {
-            apLinkStatus = DeviceStatusEnum.stale;
-          } else if ((parentNode?.consecutiveFailures ?? 0) > 0 ||
-              (ent?.consecutiveFailures ?? 0) > 0 ||
-              parentStatus == DeviceStatusEnum.degraded ||
-              status == DeviceStatusEnum.degraded) {
-            apLinkStatus = DeviceStatusEnum.degraded;
-          } else if (parentStatus == DeviceStatusEnum.up &&
-              status == DeviceStatusEnum.up &&
-              (parentNode?.consecutiveFailures ?? 0) == 0 &&
-              (ent?.consecutiveFailures ?? 0) == 0) {
-            apLinkStatus = DeviceStatusEnum.up;
-          }
-        }
+        final apLinkStatus = computeLinkStatus(parentNode, nodes[apId]);
 
         links.add(
           EnterpriseTopologyLink(
             id: 'link_${parentSwId}_$apId',
             fromNodeId: parentSwId,
             toNodeId: apId,
-            toPort: isParentInferred ? null : 'ETH0',
-            status: isParentInferred ? DeviceStatusEnum.unknown : apLinkStatus,
-            isInferred: isParentInferred,
+            toPort: 'PoE ETH0',
+            status: apLinkStatus,
+            isInferred: false,
           ),
         );
       }
-    }
 
-    // ── 6. LEVEL 4: Endpoints & Clients (Monitored Devices) ─────────────────
-    for (final loc in sortedLocations) {
-      final swId =
-          locationToSwitchId[loc] ??
-          (switchIds.isNotEmpty ? switchIds.first : gatewayIds.firstOrNull);
-      final devList = locationGroups[loc] ?? [];
-
-      for (int i = 0; i < devList.length; i++) {
-        final md = devList[i];
+      // LEVEL 4: Endpoints
+      for (int i = 0; i < monitoredDevices.length; i++) {
+        final md = monitoredDevices[i];
         final devId = 'dev_${md.device.id}';
+        final parentSw = findMatchingSwitch(md);
+        final swId = parentSw != null ? 'sw_${parentSw.id}' : 'sw_${verifiedSwitches.first.id}';
 
         TopologyDeviceCategory cat = TopologyDeviceCategory.pc;
         if (md.device.type.name.toLowerCase().contains('laptop')) {
@@ -539,42 +686,212 @@ class EnterpriseTopologyBuilder {
           virtualStatusId: md.device.id,
         );
 
-        if (swId != null) {
-          final swNode = nodes[swId];
-          final isSwInferred = swNode?.isInferred ?? true;
-          final swStatus = swNode?.status ?? DeviceStatusEnum.unknown;
-          DeviceStatusEnum devLinkStatus = DeviceStatusEnum.unknown;
-          if (!isSwInferred) {
-            if (swStatus == DeviceStatusEnum.down ||
-                swStatus == DeviceStatusEnum.unreachable ||
-                effectiveStatus == DeviceStatusEnum.down ||
-                effectiveStatus == DeviceStatusEnum.unreachable) {
-              devLinkStatus = DeviceStatusEnum.down;
-            } else if (swStatus == DeviceStatusEnum.stale ||
-                effectiveStatus == DeviceStatusEnum.stale) {
-              devLinkStatus = DeviceStatusEnum.stale;
-            } else if ((swNode?.consecutiveFailures ?? 0) > 0 ||
-                md.status.consecutiveFailures > 0 ||
-                swStatus == DeviceStatusEnum.degraded ||
-                effectiveStatus == DeviceStatusEnum.degraded) {
-              devLinkStatus = DeviceStatusEnum.degraded;
-            } else if (swStatus == DeviceStatusEnum.up &&
-                effectiveStatus == DeviceStatusEnum.up &&
-                (swNode?.consecutiveFailures ?? 0) == 0 &&
-                md.status.consecutiveFailures == 0) {
-              devLinkStatus = DeviceStatusEnum.up;
-            }
-          }
+        final swNode = nodes[swId];
+        final devLinkStatus = computeLinkStatus(swNode, nodes[devId]);
+
+        links.add(
+          EnterpriseTopologyLink(
+            id: 'link_${swId}_$devId',
+            fromNodeId: swId,
+            toNodeId: devId,
+            toPort: 'ETH',
+            status: devLinkStatus,
+            isInferred: false,
+          ),
+        );
+      }
+    } else {
+      // ══════════════════════════════════════════════════════════════════════
+      // PATH B: Synthetic Test Fallback Mode (Grouping by Office Location)
+      // ══════════════════════════════════════════════════════════════════════
+      final Map<String, List<MonitoredDevice>> locationGroups = {};
+      for (final md in monitoredDevices) {
+        final loc = md.device.officeLocation?.trim().isNotEmpty == true
+            ? md.device.officeLocation!.trim()
+            : (md.device.department.trim().isNotEmpty
+                ? md.device.department.trim()
+                : 'General Office');
+        locationGroups.putIfAbsent(loc, () => []).add(md);
+      }
+
+      final sortedLocations = locationGroups.keys.toList()
+        ..sort((a, b) {
+          final aIs22 =
+              a.toLowerCase().contains('22') ||
+              (locationGroups[a]?.first.device.ip.contains('.22.') ?? false);
+          final bIs22 =
+              b.toLowerCase().contains('22') ||
+              (locationGroups[b]?.first.device.ip.contains('.22.') ?? false);
+          if (aIs22 != bIs22) return aIs22 ? 1 : -1;
+          final countA = locationGroups[a]?.length ?? 0;
+          final countB = locationGroups[b]?.length ?? 0;
+          if (countA != countB) return countB.compareTo(countA);
+          return a.compareTo(b);
+        });
+
+      final Map<String, String> locationToSwitchId = {};
+      for (final loc in sortedLocations) {
+        final swId = 'sw_${loc.replaceAll(RegExp(r'\s+'), '_').toLowerCase()}';
+        locationToSwitchId[loc] = swId;
+        switchIds.add(swId);
+
+        final childrenCount = locationGroups[loc]?.length ?? 0;
+
+        String? upstreamGwId = gatewayIds.firstOrNull;
+        final firstDeviceIp = locationGroups[loc]?.first.device.ip;
+        if (loc.toLowerCase().contains('21') ||
+            (firstDeviceIp?.contains('.21.') ?? false)) {
+          final bnfMatch = gatewayIds.where((id) => id.contains('bnf')).firstOrNull;
+          if (bnfMatch != null) upstreamGwId = bnfMatch;
+        } else if (loc.toLowerCase().contains('22') ||
+            (firstDeviceIp?.contains('.22.') ?? false)) {
+          final rnfMatch = gatewayIds.where((id) => id.contains('rnf')).firstOrNull;
+          if (rnfMatch != null) upstreamGwId = rnfMatch;
+        }
+
+        nodes[swId] = EnterpriseTopologyNode(
+          id: swId,
+          title: '$loc (Logical Group)',
+          subtitle: 'Inferred Grouping ($childrenCount endpoints)',
+          category: TopologyDeviceCategory.switchDevice,
+          status: DeviceStatusEnum.unknown,
+          level: 2,
+          location: loc,
+          isInferred: true,
+          size: const Size(168, 60),
+          failureThreshold: failureThreshold,
+        );
+
+        if (upstreamGwId != null) {
           links.add(
             EnterpriseTopologyLink(
-              id: 'link_${swId}_$devId',
-              fromNodeId: swId,
-              toNodeId: devId,
-              toPort: isSwInferred ? null : 'ETH',
-              status: isSwInferred ? DeviceStatusEnum.unknown : devLinkStatus,
-              isInferred: isSwInferred,
+              id: 'link_${upstreamGwId}_$swId',
+              fromNodeId: upstreamGwId,
+              toNodeId: swId,
+              status: DeviceStatusEnum.unknown,
+              isInferred: true,
             ),
           );
+        }
+      }
+
+      // LEVEL 3: APs in Path B
+      final unifiAps = infraDevices
+          .where((d) => d.role == UniFiDeviceRole.accessPoint)
+          .toList();
+      for (int i = 0; i < unifiAps.length; i++) {
+        final ap = unifiAps[i];
+        final apId = 'ap_${ap.id}';
+        final virtualId = 10000 + ap.id;
+        final status = resolveInfraStatus(virtualId, ap.ip);
+        final ent = getStatusEntity(virtualId);
+
+        String? parentSwId = switchIds.isNotEmpty ? switchIds.first : gatewayIds.firstOrNull;
+        for (final loc in sortedLocations) {
+          if (ap.location != null &&
+              ap.location!.toLowerCase().contains(loc.toLowerCase())) {
+            parentSwId = locationToSwitchId[loc] ?? parentSwId;
+            break;
+          }
+        }
+
+        nodes[apId] = EnterpriseTopologyNode(
+          id: apId,
+          title: ap.name,
+          subtitle: ap.ip,
+          category: TopologyDeviceCategory.accessPoint,
+          status: status,
+          level: 3,
+          location: ap.location ?? 'Facility AP Area',
+          mac: ap.mac,
+          vendor: 'Ubiquiti UniFi AP',
+          infraRef: ap,
+          isInferred: false,
+          lastLatencyMs: ent?.lastLatencyMs,
+          lastSuccessfulLatencyMs: ent?.lastSuccessfulLatencyMs,
+          lastCheckAt: ent?.lastCheckAt,
+          lastSuccessfulCheckAt: ent?.lastSeen,
+          failureReason: ent?.lastFailureReason,
+          consecutiveFailures: ent?.consecutiveFailures ?? 0,
+          size: const Size(168, 60),
+          failureThreshold: failureThreshold,
+          virtualStatusId: virtualId,
+        );
+
+        if (parentSwId != null) {
+          links.add(
+            EnterpriseTopologyLink(
+              id: 'link_${parentSwId}_$apId',
+              fromNodeId: parentSwId,
+              toNodeId: apId,
+              toPort: null,
+              status: DeviceStatusEnum.unknown,
+              isInferred: true,
+            ),
+          );
+        }
+      }
+
+      // LEVEL 4: Endpoints in Path B
+      for (final loc in sortedLocations) {
+        final swId = locationToSwitchId[loc] ?? (switchIds.isNotEmpty ? switchIds.first : gatewayIds.firstOrNull);
+        final devList = locationGroups[loc] ?? [];
+
+        for (int i = 0; i < devList.length; i++) {
+          final md = devList[i];
+          final devId = 'dev_${md.device.id}';
+
+          TopologyDeviceCategory cat = TopologyDeviceCategory.pc;
+          if (md.device.type.name.toLowerCase().contains('laptop')) {
+            cat = TopologyDeviceCategory.laptop;
+          } else if (md.device.name.toLowerCase().contains('svr') ||
+              md.device.name.toLowerCase().contains('server')) {
+            cat = TopologyDeviceCategory.server;
+          } else if (md.device.type.name.toLowerCase().contains('printer')) {
+            cat = TopologyDeviceCategory.printer;
+          }
+
+          final effectiveStatus = md.status.effectiveStatus();
+
+          nodes[devId] = EnterpriseTopologyNode(
+            id: devId,
+            title: md.device.name,
+            subtitle: md.device.ip,
+            category: cat,
+            status: effectiveStatus,
+            level: 4,
+            location: md.device.officeLocation,
+            department: md.device.department,
+            mac: md.device.mac,
+            vendor: md.device.vendor,
+            model: md.device.model,
+            hostname: md.device.hostname,
+            lastLatencyMs: md.status.lastLatencyMs,
+            lastSuccessfulLatencyMs: md.status.lastSuccessfulLatencyMs,
+            lastCheckAt: md.status.lastCheckAt,
+            lastSuccessfulCheckAt: md.status.lastSeen,
+            failureReason: md.status.lastFailureReason,
+            consecutiveFailures: md.status.consecutiveFailures,
+            failureThreshold: failureThreshold,
+            isMonitored: md.device.isMonitored,
+            isInferred: false,
+            deviceRef: md.device,
+            size: const Size(168, 60),
+            virtualStatusId: md.device.id,
+          );
+
+          if (swId != null) {
+            links.add(
+              EnterpriseTopologyLink(
+                id: 'link_${swId}_$devId',
+                fromNodeId: swId,
+                toNodeId: devId,
+                toPort: null,
+                status: DeviceStatusEnum.unknown,
+                isInferred: true,
+              ),
+            );
+          }
         }
       }
     }
@@ -646,6 +963,38 @@ class EnterpriseTopologyBuilder {
 
     // Iterate through Level 2 switches and allocate vertical space for their branches
     final level2Switches = levels[2] ?? [];
+
+    const rnfOrder = [
+      'sw_rnf_floor1_west',
+      'sw_rnf_floor1_east',
+      'sw_rnf_ground_core',
+      'sw_rnf_dlink_rm',
+      'sw_rnf_spareparts',
+      'sw_rnf_security_core',
+    ];
+    const bnfOrder = [
+      'sw_bnf_core',
+      'sw_bnf_prod',
+      'sw_bnf_admin',
+      'sw_bnf_wh',
+    ];
+
+    level2Switches.sort((a, b) {
+      final idxARnf = rnfOrder.indexOf(a.id);
+      final idxBRnf = rnfOrder.indexOf(b.id);
+      if (idxARnf != -1 && idxBRnf != -1) return idxARnf.compareTo(idxBRnf);
+      if (idxARnf != -1) return -1;
+      if (idxBRnf != -1) return 1;
+
+      final idxABnf = bnfOrder.indexOf(a.id);
+      final idxBBnf = bnfOrder.indexOf(b.id);
+      if (idxABnf != -1 && idxBBnf != -1) return idxABnf.compareTo(idxBBnf);
+      if (idxABnf != -1) return -1;
+      if (idxBBnf != -1) return 1;
+
+      return a.title.compareTo(b.title);
+    });
+
     final Map<String, double> switchYPositions = {};
 
     for (final swNode in level2Switches) {

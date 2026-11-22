@@ -63,12 +63,12 @@ class _LocationGroupCardState extends State<LocationGroupCard>
   }
 
   Color _locationHeaderColor(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return isDark ? AppColors.darkSurface : AppColors.lightSurface;
+    return context.appTokens.surface;
   }
 
   @override
   Widget build(BuildContext context) {
+    final tokens = context.appTokens;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final totalDevices = widget.location.totalCount;
     final downCount = widget.location.allDevices
@@ -83,7 +83,7 @@ class _LocationGroupCardState extends State<LocationGroupCard>
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: hasIssues
-              ? AppColors.statusDown.withValues(alpha: 0.4)
+              ? tokens.statusDown.withValues(alpha: 0.4)
               : isDark
               ? AppColors.darkBorder
               : AppColors.lightBorder,
@@ -112,12 +112,12 @@ class _LocationGroupCardState extends State<LocationGroupCard>
                     width: 36,
                     height: 36,
                     decoration: BoxDecoration(
-                      color: AppColors.primary.withValues(alpha: 0.15),
+                      color: tokens.primary.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: const Icon(
+                    child: Icon(
                       Icons.location_on_rounded,
-                      color: AppColors.primary,
+                      color: tokens.primary,
                       size: 20,
                     ),
                   ),
@@ -132,9 +132,7 @@ class _LocationGroupCardState extends State<LocationGroupCard>
                           style: TextStyle(
                             fontSize: 15,
                             fontWeight: FontWeight.w700,
-                            color: isDark
-                                ? AppColors.textPrimaryDark
-                                : AppColors.textPrimaryLight,
+                            color: tokens.textPrimary,
                           ),
                         ),
                         const SizedBox(height: 2),
@@ -144,9 +142,7 @@ class _LocationGroupCardState extends State<LocationGroupCard>
                               '$totalDevices device${totalDevices == 1 ? '' : 's'}',
                               style: TextStyle(
                                 fontSize: 12,
-                                color: isDark
-                                    ? AppColors.textSecondaryDark
-                                    : AppColors.textSecondaryLight,
+                                color: tokens.textSecondary,
                               ),
                             ),
                             if (hasIssues) ...[
@@ -157,16 +153,16 @@ class _LocationGroupCardState extends State<LocationGroupCard>
                                   vertical: 2,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: AppColors.statusDown.withValues(
+                                  color: tokens.statusDown.withValues(
                                     alpha: 0.12,
                                   ),
                                   borderRadius: BorderRadius.circular(4),
                                 ),
                                 child: Text(
                                   '$downCount down',
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontSize: 11,
-                                    color: AppColors.statusDown,
+                                    color: tokens.statusDown,
                                     fontWeight: FontWeight.w600,
                                   ),
                                 ),
@@ -184,16 +180,14 @@ class _LocationGroupCardState extends State<LocationGroupCard>
                       vertical: 4,
                     ),
                     decoration: BoxDecoration(
-                      color: isDark ? AppColors.darkCard : AppColors.lightCard,
+                      color: tokens.surfaceContainerLow,
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: Text(
                       '${widget.location.switchGroups.length} switch${widget.location.switchGroups.length == 1 ? '' : 'es'}',
                       style: TextStyle(
                         fontSize: 11,
-                        color: isDark
-                            ? AppColors.textSecondaryDark
-                            : AppColors.textSecondaryLight,
+                        color: tokens.textSecondary,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
@@ -205,9 +199,7 @@ class _LocationGroupCardState extends State<LocationGroupCard>
                     duration: const Duration(milliseconds: 220),
                     child: Icon(
                       Icons.keyboard_arrow_down_rounded,
-                      color: isDark
-                          ? AppColors.textSecondaryDark
-                          : AppColors.textSecondaryLight,
+                      color: tokens.textSecondary,
                       size: 22,
                     ),
                   ),
@@ -244,7 +236,7 @@ class SwitchGroupWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final tokens = context.appTokens;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
@@ -261,7 +253,7 @@ class SwitchGroupWidget extends StatelessWidget {
                   width: 2,
                   height: 20,
                   decoration: BoxDecoration(
-                    color: AppColors.primary.withValues(alpha: 0.4),
+                    color: tokens.primary.withValues(alpha: 0.4),
                     borderRadius: BorderRadius.circular(1),
                   ),
                 ),
@@ -272,10 +264,8 @@ class SwitchGroupWidget extends StatelessWidget {
                       : Icons.help_outline_rounded,
                   size: 16,
                   color: switchGroup.hasKnownSwitch
-                      ? AppColors.primary
-                      : (isDark
-                            ? AppColors.textSecondaryDark
-                            : AppColors.textSecondaryLight),
+                      ? tokens.primary
+                      : (tokens.textSecondary),
                 ),
                 const SizedBox(width: 6),
                 Text(
@@ -284,10 +274,8 @@ class SwitchGroupWidget extends StatelessWidget {
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
                     color: switchGroup.hasKnownSwitch
-                        ? AppColors.primary
-                        : (isDark
-                              ? AppColors.textSecondaryDark
-                              : AppColors.textSecondaryLight),
+                        ? tokens.primary
+                        : (tokens.textSecondary),
                   ),
                 ),
                 const SizedBox(width: 6),
@@ -295,9 +283,7 @@ class SwitchGroupWidget extends StatelessWidget {
                   '(${switchGroup.devices.length})',
                   style: TextStyle(
                     fontSize: 12,
-                    color: isDark
-                        ? AppColors.textSecondaryDark
-                        : AppColors.textSecondaryLight,
+                    color: tokens.textSecondary,
                   ),
                 ),
                 // "Metadata only" badge — never monitored
@@ -309,16 +295,16 @@ class SwitchGroupWidget extends StatelessWidget {
                       vertical: 2,
                     ),
                     decoration: BoxDecoration(
-                      color: AppColors.statusMaintenance.withValues(
+                      color: tokens.statusMaintenance.withValues(
                         alpha: 0.12,
                       ),
                       borderRadius: BorderRadius.circular(4),
                     ),
-                    child: const Text(
+                    child: Text(
                       'no switch data',
                       style: TextStyle(
                         fontSize: 10,
-                        color: AppColors.statusMaintenance,
+                        color: tokens.statusMaintenance,
                       ),
                     ),
                   ),
@@ -346,7 +332,7 @@ class TopologyDeviceRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final tokens = context.appTokens;
     final device = monitoredDevice.device;
     final status = monitoredDevice.status;
 
@@ -354,12 +340,10 @@ class TopologyDeviceRow extends StatelessWidget {
       margin: const EdgeInsets.only(left: 28, bottom: 4),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: isDark
-            ? AppColors.darkCard.withValues(alpha: 0.6)
-            : AppColors.lightCard,
+        color: tokens.surfaceContainerLow,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+          color: tokens.cardBorder,
         ),
       ),
       child: Row(
@@ -370,9 +354,7 @@ class TopologyDeviceRow extends StatelessWidget {
                 ? Icons.laptop_rounded
                 : Icons.computer_rounded,
             size: 16,
-            color: isDark
-                ? AppColors.textSecondaryDark
-                : AppColors.textSecondaryLight,
+            color: tokens.textSecondary,
           ),
           const SizedBox(width: 10),
           // Owner + department (primary identity)
@@ -387,9 +369,7 @@ class TopologyDeviceRow extends StatelessWidget {
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
                     color: device.isOwnerAssigned
-                        ? (isDark
-                              ? AppColors.textPrimaryDark
-                              : AppColors.textPrimaryLight)
+                        ? (tokens.textPrimary)
                         : Colors.orangeAccent,
                     fontStyle: device.isOwnerAssigned
                         ? FontStyle.normal
@@ -401,9 +381,7 @@ class TopologyDeviceRow extends StatelessWidget {
                   device.department,
                   style: TextStyle(
                     fontSize: 11,
-                    color: isDark
-                        ? AppColors.textSecondaryDark
-                        : AppColors.textSecondaryLight,
+                    color: tokens.textSecondary,
                   ),
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -421,9 +399,7 @@ class TopologyDeviceRow extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 12,
                     fontFamily: 'monospace',
-                    color: isDark
-                        ? AppColors.textSecondaryDark
-                        : AppColors.textSecondaryLight,
+                    color: tokens.textSecondary,
                   ),
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -432,9 +408,7 @@ class TopologyDeviceRow extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 11,
                     fontFamily: 'monospace',
-                    color: isDark
-                        ? AppColors.textSecondaryDark.withValues(alpha: 0.7)
-                        : AppColors.textSecondaryLight.withValues(alpha: 0.7),
+                    color: tokens.textSecondary.withValues(alpha: 0.7),
                   ),
                 ),
               ],
@@ -453,9 +427,7 @@ class TopologyDeviceRow extends StatelessWidget {
               '${status.lastLatencyMs} ms',
               style: TextStyle(
                 fontSize: 11,
-                color: isDark
-                    ? AppColors.textSecondaryDark
-                    : AppColors.textSecondaryLight,
+                color: tokens.textSecondary,
               ),
             ),
           ],

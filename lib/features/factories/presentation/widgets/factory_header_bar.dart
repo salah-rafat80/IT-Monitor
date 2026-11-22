@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_dimensions.dart';
 import '../../../../core/theme/theme_cubit.dart';
 import '../bloc/factory_cubit.dart';
 import 'add_factory_dialog.dart';
@@ -15,7 +17,7 @@ class FactoryHeaderBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final tokens = context.appTokens;
 
     final FactoryState factoryState;
     try {
@@ -25,19 +27,20 @@ class FactoryHeaderBar extends StatelessWidget {
     }
 
     final isAdmin = true;
-
     final factories = factoryState.factories;
     final selected = factoryState.selectedFactory;
     final selectedId = selected?.id;
-
     final isConsolidated = selectedId == null;
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.lg,
+        vertical: AppSpacing.sm,
+      ),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
+        color: tokens.header,
         border: Border(
-          bottom: BorderSide(color: theme.dividerColor.withValues(alpha: 0.15)),
+          bottom: BorderSide(color: tokens.border),
         ),
       ),
       child: LayoutBuilder(
@@ -56,9 +59,9 @@ class FactoryHeaderBar extends StatelessWidget {
                         padding: const EdgeInsets.all(6),
                         decoration: BoxDecoration(
                           color: isConsolidated
-                              ? const Color(0xFF0F62FE).withValues(alpha: 0.12)
-                              : const Color(0xFF10B981).withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(8),
+                              ? tokens.primary.withValues(alpha: 0.12)
+                              : tokens.statusOnlineSurface,
+                          borderRadius: BorderRadius.circular(AppRadius.md),
                         ),
                         child: Icon(
                           isConsolidated
@@ -66,39 +69,43 @@ class FactoryHeaderBar extends StatelessWidget {
                               : Icons.factory_rounded,
                           size: 20,
                           color: isConsolidated
-                              ? const Color(0xFF0F62FE)
-                              : const Color(0xFF10B981),
+                              ? tokens.primary
+                              : tokens.onStatusOnline,
                         ),
                       ),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: AppSpacing.md),
                       Text(
                         'Factory Context:',
-                        style: theme.textTheme.titleSmall?.copyWith(
+                        style: TextStyle(
                           fontWeight: FontWeight.bold,
-                          color: Colors.grey[400],
+                          fontSize: 13,
+                          color: tokens.onHeader,
                         ),
                       ),
-                      const SizedBox(width: 10),
+                      const SizedBox(width: AppSpacing.sm),
                       Container(
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
+                          horizontal: AppSpacing.md,
                           vertical: 2,
                         ),
                         decoration: BoxDecoration(
-                          color: theme.colorScheme.surfaceContainerHighest
-                              .withValues(alpha: 0.5),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
-                            color: theme.dividerColor.withValues(alpha: 0.3),
-                          ),
+                          color: tokens.input,
+                          borderRadius: BorderRadius.circular(AppRadius.md),
+                          border: Border.all(color: tokens.border),
                         ),
                         child: DropdownButtonHideUnderline(
                           child: DropdownButton<String?>(
                             value: selectedId,
                             isDense: true,
-                            dropdownColor: theme.colorScheme.surface,
+                            dropdownColor: tokens.card,
+                            iconEnabledColor: tokens.onSurfaceVariant,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: tokens.onInput,
+                            ),
                             items: [
-                              const DropdownMenuItem<String?>(
+                              DropdownMenuItem<String?>(
                                 value: null,
                                 child: Row(
                                   mainAxisSize: MainAxisSize.min,
@@ -106,13 +113,14 @@ class FactoryHeaderBar extends StatelessWidget {
                                     Icon(
                                       Icons.all_inclusive_rounded,
                                       size: 16,
-                                      color: Color(0xFF0F62FE),
+                                      color: tokens.primary,
                                     ),
-                                    SizedBox(width: 8),
+                                    const SizedBox(width: AppSpacing.sm),
                                     Text(
                                       'All Factories (Consolidated)',
                                       style: TextStyle(
                                         fontWeight: FontWeight.w600,
+                                        color: tokens.onInput,
                                       ),
                                     ),
                                   ],
@@ -126,28 +134,30 @@ class FactoryHeaderBar extends StatelessWidget {
                                     children: [
                                       Container(
                                         padding: const EdgeInsets.symmetric(
-                                          horizontal: 6,
-                                          vertical: 2,
+                                          horizontal: AppSpacing.xs,
+                                          vertical: AppSpacing.xxs,
                                         ),
                                         decoration: BoxDecoration(
-                                          color: const Color(
-                                            0xFF10B981,
-                                          ).withValues(alpha: 0.2),
-                                          borderRadius: BorderRadius.circular(
-                                            4,
-                                          ),
+                                          color: tokens.statusOnlineSurface,
+                                          borderRadius: BorderRadius.circular(AppRadius.xs),
                                         ),
                                         child: Text(
                                           f.code,
-                                          style: const TextStyle(
+                                          style: TextStyle(
                                             fontSize: 11,
                                             fontWeight: FontWeight.bold,
-                                            color: Color(0xFF10B981),
+                                            color: tokens.onStatusOnline,
                                           ),
                                         ),
                                       ),
-                                      const SizedBox(width: 8),
-                                      Text(f.name),
+                                      const SizedBox(width: AppSpacing.sm),
+                                      Text(
+                                        f.name,
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w600,
+                                          color: tokens.onInput,
+                                        ),
+                                      ),
                                     ],
                                   ),
                                 ),
@@ -156,24 +166,22 @@ class FactoryHeaderBar extends StatelessWidget {
                           ),
                         ),
                       ),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: AppSpacing.md),
                       // Scope badge
                       Container(
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
+                          horizontal: AppSpacing.sm,
+                          vertical: AppSpacing.xs,
                         ),
                         decoration: BoxDecoration(
                           color: isConsolidated
-                              ? const Color(0xFF0F62FE).withValues(alpha: 0.1)
-                              : const Color(0xFF10B981).withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(6),
+                              ? tokens.primary.withValues(alpha: 0.12)
+                              : tokens.statusOnlineSurface,
+                          borderRadius: BorderRadius.circular(AppRadius.sm),
                           border: Border.all(
                             color: isConsolidated
-                                ? const Color(0xFF0F62FE).withValues(alpha: 0.3)
-                                : const Color(
-                                    0xFF10B981,
-                                  ).withValues(alpha: 0.3),
+                                ? tokens.primary.withValues(alpha: 0.35)
+                                : tokens.onStatusOnline.withValues(alpha: 0.35),
                           ),
                         ),
                         child: Text(
@@ -184,27 +192,27 @@ class FactoryHeaderBar extends StatelessWidget {
                             fontSize: 11,
                             fontWeight: FontWeight.bold,
                             color: isConsolidated
-                                ? const Color(0xFF0F62FE)
-                                : const Color(0xFF10B981),
+                                ? tokens.primary
+                                : tokens.onStatusOnline,
                           ),
                         ),
                       ),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: AppSpacing.sm),
                       // Network Detection Status Badge
                       if (factoryState.isDetectingNetwork) ...[
                         Container(
                           padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 4,
+                            horizontal: AppSpacing.sm,
+                            vertical: AppSpacing.xs,
                           ),
                           decoration: BoxDecoration(
-                            color: Colors.blue.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(6),
+                            color: tokens.primary.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(AppRadius.sm),
                             border: Border.all(
-                              color: Colors.blue.withValues(alpha: 0.3),
+                              color: tokens.primary.withValues(alpha: 0.3),
                             ),
                           ),
-                          child: const Row(
+                          child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               SizedBox(
@@ -212,14 +220,15 @@ class FactoryHeaderBar extends StatelessWidget {
                                 height: 10,
                                 child: CircularProgressIndicator(
                                   strokeWidth: 1.5,
+                                  color: tokens.primary,
                                 ),
                               ),
-                              SizedBox(width: 6),
+                              const SizedBox(width: 6),
                               Text(
                                 'Detecting Network...',
                                 style: TextStyle(
                                   fontSize: 11,
-                                  color: Colors.blue,
+                                  color: tokens.primary,
                                 ),
                               ),
                             ],
@@ -230,26 +239,22 @@ class FactoryHeaderBar extends StatelessWidget {
                           message: factoryState.detectionResult!.message ?? '',
                           child: Container(
                             padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 4,
+                              horizontal: AppSpacing.sm,
+                              vertical: AppSpacing.xs,
                             ),
                             decoration: BoxDecoration(
                               color: factoryState.detectionResult!.isDetected
-                                  ? const Color(
-                                      0xFF10B981,
-                                    ).withValues(alpha: 0.15)
+                                  ? tokens.statusOnlineSurface
                                   : factoryState.detectionResult!.isAmbiguous
-                                  ? Colors.amber.withValues(alpha: 0.15)
-                                  : Colors.grey.withValues(alpha: 0.15),
-                              borderRadius: BorderRadius.circular(6),
+                                      ? tokens.statusDegradedSurface
+                                      : tokens.statusUnknownSurface,
+                              borderRadius: BorderRadius.circular(AppRadius.sm),
                               border: Border.all(
                                 color: factoryState.detectionResult!.isDetected
-                                    ? const Color(
-                                        0xFF10B981,
-                                      ).withValues(alpha: 0.4)
+                                    ? tokens.onStatusOnline.withValues(alpha: 0.4)
                                     : factoryState.detectionResult!.isAmbiguous
-                                    ? Colors.amber.withValues(alpha: 0.4)
-                                    : Colors.grey.withValues(alpha: 0.4),
+                                        ? tokens.onStatusDegraded.withValues(alpha: 0.4)
+                                        : tokens.onStatusUnknown.withValues(alpha: 0.4),
                               ),
                             ),
                             child: Row(
@@ -258,41 +263,31 @@ class FactoryHeaderBar extends StatelessWidget {
                                 Icon(
                                   factoryState.detectionResult!.isDetected
                                       ? Icons.wifi_find_rounded
-                                      : factoryState
-                                            .detectionResult!
-                                            .isAmbiguous
-                                      ? Icons.warning_amber_rounded
-                                      : Icons.wifi_off_rounded,
+                                      : factoryState.detectionResult!.isAmbiguous
+                                          ? Icons.warning_amber_rounded
+                                          : Icons.wifi_off_rounded,
                                   size: 13,
-                                  color:
-                                      factoryState.detectionResult!.isDetected
-                                      ? const Color(0xFF10B981)
-                                      : factoryState
-                                            .detectionResult!
-                                            .isAmbiguous
-                                      ? Colors.amber[400]
-                                      : Colors.grey[400],
+                                  color: factoryState.detectionResult!.isDetected
+                                      ? tokens.onStatusOnline
+                                      : factoryState.detectionResult!.isAmbiguous
+                                          ? tokens.onStatusDegraded
+                                          : tokens.onStatusUnknown,
                                 ),
                                 const SizedBox(width: 5),
                                 Text(
                                   factoryState.detectionResult!.isDetected
                                       ? 'AUTO: ${factoryState.detectionResult!.detectedFactory?.code}'
-                                      : factoryState
-                                            .detectionResult!
-                                            .isAmbiguous
-                                      ? 'AMBIGUOUS LAN'
-                                      : 'UNKNOWN LAN',
+                                      : factoryState.detectionResult!.isAmbiguous
+                                          ? 'AMBIGUOUS LAN'
+                                          : 'UNKNOWN LAN',
                                   style: TextStyle(
                                     fontSize: 11,
                                     fontWeight: FontWeight.bold,
-                                    color:
-                                        factoryState.detectionResult!.isDetected
-                                        ? const Color(0xFF10B981)
-                                        : factoryState
-                                              .detectionResult!
-                                              .isAmbiguous
-                                        ? Colors.amber[400]
-                                        : Colors.grey[400],
+                                    color: factoryState.detectionResult!.isDetected
+                                        ? tokens.onStatusOnline
+                                        : factoryState.detectionResult!.isAmbiguous
+                                            ? tokens.onStatusDegraded
+                                            : tokens.onStatusUnknown,
                                   ),
                                 ),
                               ],
@@ -310,7 +305,7 @@ class FactoryHeaderBar extends StatelessWidget {
                       ),
                     ],
                   ),
-                  const SizedBox(width: 16),
+                  const SizedBox(width: AppSpacing.lg),
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -325,20 +320,18 @@ class FactoryHeaderBar extends StatelessWidget {
                             child: Material(
                               color: Colors.transparent,
                               child: InkWell(
-                                borderRadius: BorderRadius.circular(8),
+                                borderRadius: BorderRadius.circular(AppRadius.md),
                                 onTap: () =>
                                     context.read<ThemeCubit>().toggleTheme(),
                                 child: Container(
                                   padding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
+                                    horizontal: AppSpacing.md,
                                     vertical: 6,
                                   ),
                                   decoration: BoxDecoration(
-                                    color: theme.appTokens.surfaceSecondary,
-                                    borderRadius: BorderRadius.circular(8),
-                                    border: Border.all(
-                                      color: theme.appTokens.border,
-                                    ),
+                                    color: tokens.surfaceVariant,
+                                    borderRadius: BorderRadius.circular(AppRadius.md),
+                                    border: Border.all(color: tokens.border),
                                   ),
                                   child: Row(
                                     mainAxisSize: MainAxisSize.min,
@@ -348,9 +341,7 @@ class FactoryHeaderBar extends StatelessWidget {
                                             ? Icons.dark_mode_rounded
                                             : Icons.light_mode_rounded,
                                         size: 16,
-                                        color: isDark
-                                            ? const Color(0xFF00E5FF)
-                                            : const Color(0xFF1769FF),
+                                        color: tokens.accent,
                                       ),
                                       const SizedBox(width: 6),
                                       Text(
@@ -358,9 +349,7 @@ class FactoryHeaderBar extends StatelessWidget {
                                         style: TextStyle(
                                           fontSize: 11,
                                           fontWeight: FontWeight.bold,
-                                          color: isDark
-                                              ? const Color(0xFF00E5FF)
-                                              : const Color(0xFF1769FF),
+                                          color: tokens.onSurface,
                                         ),
                                       ),
                                     ],
@@ -371,7 +360,45 @@ class FactoryHeaderBar extends StatelessWidget {
                           );
                         },
                       ),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: AppSpacing.sm),
+                      Tooltip(
+                        message: 'Customize 60-30-10 Theme Palette',
+                        child: InkWell(
+                          onTap: () => GoRouter.of(context).push('/palette-editor'),
+                          borderRadius: BorderRadius.circular(AppRadius.md),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: AppSpacing.md,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: tokens.surfaceVariant,
+                              borderRadius: BorderRadius.circular(AppRadius.md),
+                              border: Border.all(color: tokens.border),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.palette_rounded,
+                                  size: 16,
+                                  color: tokens.accent,
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  'PALETTE',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                    color: tokens.onSurface,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: AppSpacing.md),
                       if (isAdmin)
                         TextButton.icon(
                           onPressed: () {
@@ -386,7 +413,7 @@ class FactoryHeaderBar extends StatelessWidget {
                           ),
                           label: const Text('Add Factory'),
                           style: TextButton.styleFrom(
-                            foregroundColor: theme.appTokens.primary,
+                            foregroundColor: tokens.primary,
                             visualDensity: VisualDensity.compact,
                           ),
                         ),

@@ -184,6 +184,22 @@ class DevicesCubit extends Cubit<DevicesState> {
     );
   }
 
+  void resetFilters() {
+    final current = state;
+    if (current is! DevicesLoaded) return;
+    emit(
+      DevicesLoaded(
+        allDevices: current.allDevices,
+        filteredDevices: current.allDevices,
+        searchQuery: '',
+        selectedDepartment: 'All',
+        selectedLocation: 'All',
+        selectedCategory: 'All',
+        selectedMonitoring: 'All',
+      ),
+    );
+  }
+
   Future<void> addDevice(DeviceEntity device) async {
     final res = await _deviceRepo.addDevice(device);
 

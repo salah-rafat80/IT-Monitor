@@ -16,6 +16,7 @@ class InfrastructureStatusCards extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final tokens = context.appTokens;
     final isDark = theme.brightness == Brightness.dark;
 
     return BlocBuilder<InfrastructureCubit, InfrastructureState>(
@@ -23,7 +24,7 @@ class InfrastructureStatusCards extends StatelessWidget {
         final isAdmin = true;
 
         if (state.devices.isEmpty) {
-          return _buildEmptyStateCard(context, theme, isDark, isAdmin);
+          return _buildEmptyStateCard(context, theme, tokens, isDark, isAdmin);
         }
 
         final cubit = context.read<InfrastructureCubit>();
@@ -45,17 +46,19 @@ class InfrastructureStatusCards extends StatelessWidget {
                     Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(
+                        Icon(
                           Icons.hub_outlined,
-                          color: AppColors.primary,
+                          color: tokens.primary,
                           size: 22,
                         ),
                         const SizedBox(width: 8),
                         Flexible(
                           child: Text(
                             'Critical UniFi Infrastructure',
-                            style: theme.textTheme.titleMedium?.copyWith(
+                            style: TextStyle(
+                              fontSize: 16,
                               fontWeight: FontWeight.bold,
+                              color: tokens.onBackground,
                             ),
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -68,18 +71,18 @@ class InfrastructureStatusCards extends StatelessWidget {
                         vertical: 2,
                       ),
                       decoration: BoxDecoration(
-                        color: AppColors.primary.withValues(alpha: 0.1),
+                        color: tokens.primary.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: AppColors.primary.withValues(alpha: 0.3),
+                          color: tokens.primary.withValues(alpha: 0.3),
                         ),
                       ),
                       child: Text(
                         state.staleCount > 0
                             ? '${state.totalCount} Assets (${state.upCount} Online, ${state.downCount} Offline, ${state.unknownCount} Unknown, ${state.staleCount} Stale)'
                             : '${state.totalCount} Assets (${state.upCount} Online, ${state.downCount} Offline, ${state.unknownCount} Unknown)',
-                        style: const TextStyle(
-                          color: AppColors.primary,
+                        style: TextStyle(
+                          color: tokens.primary,
                           fontWeight: FontWeight.w600,
                           fontSize: 11,
                         ),
@@ -99,12 +102,12 @@ class InfrastructureStatusCards extends StatelessWidget {
                             ? null
                             : () => cubit.pingAllInfrastructure(),
                         icon: state.isCheckingAll
-                            ? const SizedBox(
+                            ? SizedBox(
                                 width: 14,
                                 height: 14,
                                 child: CircularProgressIndicator(
                                   strokeWidth: 2,
-                                  color: Colors.white,
+                                  color: tokens.onPrimary,
                                 ),
                               )
                             : const Icon(Icons.network_ping_rounded, size: 16),
@@ -112,8 +115,8 @@ class InfrastructureStatusCards extends StatelessWidget {
                           state.isCheckingAll ? 'Testing All...' : 'Ping All',
                         ),
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.primary,
-                          foregroundColor: Colors.white,
+                          backgroundColor: tokens.primary,
+                          foregroundColor: tokens.onPrimary,
                         ),
                       ),
                     ),
@@ -139,6 +142,7 @@ class InfrastructureStatusCards extends StatelessWidget {
                   return _buildDeviceCard(
                     context,
                     theme,
+                    tokens,
                     isDark,
                     device,
                     state.getStatusFor(device),
@@ -177,16 +181,17 @@ class InfrastructureStatusCards extends StatelessWidget {
   Widget _buildEmptyStateCard(
     BuildContext context,
     ThemeData theme,
+    AppColors tokens,
     bool isDark,
     bool isAdmin,
   ) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+        color: tokens.surface,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+          color: tokens.cardBorder,
         ),
       ),
       child: Row(
@@ -194,10 +199,10 @@ class InfrastructureStatusCards extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: AppColors.primary.withValues(alpha: 0.08),
+              color: tokens.primary.withValues(alpha: 0.08),
               borderRadius: BorderRadius.circular(10),
             ),
-            child: const Icon(Icons.router, color: AppColors.primary, size: 28),
+            child: Icon(Icons.router, color: tokens.primary, size: 28),
           ),
           const SizedBox(width: 16),
           Expanded(
@@ -214,9 +219,7 @@ class InfrastructureStatusCards extends StatelessWidget {
                 Text(
                   'No UniFi infrastructure devices registered yet. Authoritative management IPs can be configured for core routing and controller health tracking.',
                   style: theme.textTheme.bodySmall?.copyWith(
-                    color: isDark
-                        ? AppColors.textSecondaryDark
-                        : AppColors.textSecondaryLight,
+                    color: tokens.textSecondary,
                   ),
                 ),
               ],
@@ -238,6 +241,7 @@ class InfrastructureStatusCards extends StatelessWidget {
   Widget _buildDeviceCard(
     BuildContext context,
     ThemeData theme,
+    AppColors tokens,
     bool isDark,
     UniFiDeviceEntity device,
     DeviceStatusEntity? status,
@@ -249,24 +253,22 @@ class InfrastructureStatusCards extends StatelessWidget {
         statusEnum == DeviceStatusEnum.unknown ||
         statusEnum == DeviceStatusEnum.unreachable;
 
-    final cardBorder = isDark ? AppColors.darkBorder : AppColors.lightBorder;
-    final textSecondary = isDark
-        ? AppColors.textSecondaryDark
-        : AppColors.textSecondaryLight;
+    final cardBorder = tokens.cardBorder;
+    final textSecondary = tokens.textSecondary;
 
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+        color: tokens.surface,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: isDown ? AppColors.statusDown : cardBorder,
+          color: isDown ? tokens.statusDown : cardBorder,
           width: isDown ? 1.5 : 1.0,
         ),
         boxShadow: isDown
             ? [
                 BoxShadow(
-                  color: AppColors.statusDown.withValues(alpha: 0.12),
+                  color: tokens.statusDown.withValues(alpha: 0.12),
                   blurRadius: 8,
                   offset: const Offset(0, 2),
                 ),
@@ -288,7 +290,7 @@ class InfrastructureStatusCards extends StatelessWidget {
                   Icon(
                     _getRoleIcon(device.role),
                     color: device.isCriticalInfrastructure
-                        ? AppColors.primary
+                        ? tokens.primary
                         : textSecondary,
                     size: 20,
                   ),
@@ -298,7 +300,7 @@ class InfrastructureStatusCards extends StatelessWidget {
                     style: theme.textTheme.bodySmall?.copyWith(
                       fontWeight: FontWeight.bold,
                       color: device.isCriticalInfrastructure
-                          ? AppColors.primary
+                          ? tokens.primary
                           : null,
                     ),
                     overflow: TextOverflow.ellipsis,
@@ -366,7 +368,7 @@ class InfrastructureStatusCards extends StatelessWidget {
                         : '--',
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: status?.status == DeviceStatusEnum.up
-                          ? AppColors.statusUp
+                          ? tokens.statusUp
                           : textSecondary,
                       fontWeight: FontWeight.w600,
                       fontSize: 11,
@@ -399,17 +401,17 @@ class InfrastructureStatusCards extends StatelessWidget {
             runSpacing: 6,
             children: [
               if (device.isCriticalInfrastructure)
-                _buildBadge('Critical Core Gateway', AppColors.primary),
+                _buildBadge('Critical Core Gateway', tokens.primary),
               if (device.requiresAdminConfirmation)
-                _buildBadge('Needs Confirmation', AppColors.statusDegraded),
+                _buildBadge('Needs Confirmation', tokens.statusDegraded),
               if (device.isController)
-                _buildBadge('Management Plane', AppColors.statusUnreachable),
+                _buildBadge('Management Plane', tokens.statusUnreachable),
               if (device.role == UniFiDeviceRole.accessPoint)
-                _buildBadge('Wireless AP', Colors.teal),
+                _buildBadge('Wireless AP', tokens.second),
               if (device.linkedSubnets.isNotEmpty)
                 _buildBadge(
                   '${device.linkedSubnets.length} Subnet(s)',
-                  AppColors.accent,
+                  tokens.accent,
                 ),
             ],
           ),
@@ -419,17 +421,17 @@ class InfrastructureStatusCards extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: AppColors.statusDown.withValues(alpha: 0.1),
+                color: tokens.statusDown.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(6),
                 border: Border.all(
-                  color: AppColors.statusDown.withValues(alpha: 0.3),
+                  color: tokens.statusDown.withValues(alpha: 0.3),
                 ),
               ),
               child: Row(
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.warning_amber_rounded,
-                    color: AppColors.statusDown,
+                    color: tokens.statusDown,
                     size: 16,
                   ),
                   const SizedBox(width: 6),
@@ -438,8 +440,8 @@ class InfrastructureStatusCards extends StatelessWidget {
                       device.linkedSubnets.isNotEmpty
                           ? 'Routing impacted on: ${device.linkedSubnets.join(', ')}'
                           : 'Core routing impacted. Check downstream connectivity.',
-                      style: const TextStyle(
-                        color: AppColors.statusDown,
+                      style: TextStyle(
+                        color: tokens.statusDown,
                         fontSize: 11,
                         fontWeight: FontWeight.w600,
                       ),

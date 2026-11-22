@@ -53,9 +53,11 @@ class FactoryOverviewCards extends StatelessWidget {
             const SizedBox(width: 8),
             Text(
               'Factory Overview & Network Scopes',
-              style: Theme.of(
-                context,
-              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: tokens.onBackground,
+              ),
             ),
           ],
         ),
@@ -392,9 +394,7 @@ class _FactoryCard extends StatelessWidget {
                   label: const Text('Start Discovery'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: tokens.primary,
-                    foregroundColor: tokens.isDark
-                        ? const Color(0xFF090D19)
-                        : Colors.white,
+                    foregroundColor: tokens.onPrimary,
                     visualDensity: VisualDensity.compact,
                   ),
                 ),

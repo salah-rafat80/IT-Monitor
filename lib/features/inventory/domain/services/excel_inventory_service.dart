@@ -142,6 +142,9 @@ class ExcelInventoryServiceImpl implements ExcelInventoryService {
       case 'factory code':
         return 'factory';
       case 'device name':
+      case 'computername':
+      case 'computer name':
+      case 'pc name':
       case 'name':
         return 'name';
       case 'device type':
@@ -154,7 +157,14 @@ class ExcelInventoryServiceImpl implements ExcelInventoryService {
         return 'ip';
       case 'owner name':
       case 'owner':
+      case 'username':
+      case 'user name':
+      case 'user':
         return 'owner';
+      case 'email':
+      case 'user email':
+      case 'mail':
+        return 'email';
       case 'department':
       case 'dept':
         return 'department';
@@ -178,6 +188,52 @@ class ExcelInventoryServiceImpl implements ExcelInventoryService {
       case 'operating system':
       case 'os':
         return 'os';
+      case 'os version':
+        return 'os_version';
+      case 'os architecture':
+      case 'os arch':
+      case 'architecture':
+        return 'os_arch';
+      case 'serialnumber':
+      case 'serial number':
+      case 'serial':
+      case 'sn':
+        return 'serial';
+      case 'cpu':
+      case 'processor':
+        return 'cpu';
+      case 'cpu cores':
+      case 'cores':
+      case 'cpu core':
+        return 'cpu_cores';
+      case 'cpu threads':
+      case 'threads':
+      case 'cpu thread':
+        return 'cpu_threads';
+      case 'ram gb':
+      case 'ram':
+      case 'memory':
+        return 'ram_gb';
+      case 'ram modules':
+      case 'ram module':
+        return 'ram_modules';
+      case 'storage':
+      case 'disk':
+      case 'drive':
+      case 'hdd':
+      case 'ssd':
+        return 'storage';
+      case 'gpu':
+      case 'graphics':
+      case 'display adapter':
+      case 'video card':
+        return 'gpu';
+      case 'bios version':
+      case 'bios':
+        return 'bios';
+      case 'lastupdated':
+      case 'last updated':
+        return 'last_updated';
       case 'parent switch':
       case 'switch':
         return 'switch';
@@ -195,7 +251,7 @@ class ExcelInventoryServiceImpl implements ExcelInventoryService {
     }
 
     // 2. Fallbacks for third-party spreadsheets.
-    // Order matters: check more specific tokens ('type', 'mac') BEFORE broad tokens ('device', 'name', 'address').
+    // Order matters: check more specific tokens before broad tokens.
     if (norm.contains('type') || norm.contains('category')) {
       return 'type';
     }
@@ -206,15 +262,22 @@ class ExcelInventoryServiceImpl implements ExcelInventoryService {
         (norm.contains('address') && !norm.contains('mac'))) {
       return 'ip';
     }
-    if (norm.contains('device') ||
-        norm.contains('asset') ||
-        norm.contains('name')) {
-      return 'name';
+    if (norm.contains('serial') || norm == 'sn') {
+      return 'serial';
+    }
+    if (norm.contains('email') || norm.contains('mail')) {
+      return 'email';
     }
     if (norm.contains('owner') ||
         norm.contains('user') ||
         norm.contains('assigned')) {
       return 'owner';
+    }
+    if (norm.contains('device') ||
+        norm.contains('asset') ||
+        norm.contains('computer') ||
+        norm.contains('name')) {
+      return 'name';
     }
     if (norm.contains('dept') || norm.contains('department')) {
       return 'department';
@@ -237,6 +300,23 @@ class ExcelInventoryServiceImpl implements ExcelInventoryService {
     }
     if (norm.contains('os') || norm.contains('operating')) {
       return 'os';
+    }
+    if (norm.contains('cpu') || norm.contains('processor')) {
+      return 'cpu';
+    }
+    if (norm.contains('ram') || norm.contains('memory')) {
+      return 'ram_gb';
+    }
+    if (norm.contains('storage') ||
+        norm.contains('disk') ||
+        norm.contains('ssd')) {
+      return 'storage';
+    }
+    if (norm.contains('gpu') || norm.contains('graphic')) {
+      return 'gpu';
+    }
+    if (norm.contains('bios')) {
+      return 'bios';
     }
     if (norm.contains('switch')) {
       return 'switch';
@@ -289,6 +369,158 @@ class ExcelInventoryServiceImpl implements ExcelInventoryService {
       return false;
     }
     return null;
+  }
+
+  static String _cleanOwnerName(String rawOwner) {
+    var owner = rawOwner.trim();
+    if (owner.contains(r'\')) {
+      owner = owner.split(r'\').last.trim();
+    }
+    if (owner.contains('/') && !owner.contains('http')) {
+      owner = owner.split('/').last.trim();
+    }
+    if (owner.contains('.') && !owner.contains('@') && !owner.contains(' ')) {
+      final parts = owner.split('.');
+      if (parts.length >= 2 && parts.every((p) => p.length > 1)) {
+        owner = parts
+            .map(
+              (p) =>
+                  p.isEmpty ? '' : '${p[0].toUpperCase()}${p.substring(1)}',
+            )
+            .join(' ');
+      }
+    }
+    return owner;
+  }
+
+  static String _inferDepartment({
+    required String rawDept,
+    required String name,
+    required String owner,
+    required String email,
+    String? existingDept,
+  }) {
+    if (rawDept.trim().isNotEmpty) return rawDept.trim();
+    if (existingDept != null && existingDept.trim().isNotEmpty) {
+      return existingDept.trim();
+    }
+
+    final comb = '$name $owner $email'.toLowerCase();
+    if (comb.contains('qc') ||
+        comb.contains('qa') ||
+        comb.contains('inspector') ||
+        comb.contains('lab')) {
+      return 'QC-QA';
+    }
+    if (comb.contains('whs') || comb.contains('warehouse')) {
+      return 'Warehouse';
+    }
+    if (comb.contains('fin') ||
+        comb.contains('acct') ||
+        comb.contains('accounting') ||
+        comb.contains('ayman') ||
+        comb.contains('essam')) {
+      return 'Accounting';
+    }
+    if (comb.contains('hr') || comb.contains('personnel')) {
+      return 'HR';
+    }
+    if (comb.contains('pur') || comb.contains('purchas')) {
+      return 'Purchasing';
+    }
+    if (comb.contains('ppic')) {
+      return 'P.P.I.C';
+    }
+    if (comb.contains('prod') || comb.contains('forman')) {
+      return 'Production';
+    }
+    if (comb.contains('maint') ||
+        comb.contains('tech') ||
+        comb.contains('repair')) {
+      return 'Maintenance';
+    }
+    if (comb.contains('safety')) {
+      return 'Safety';
+    }
+    if (comb.contains('logistic')) {
+      return 'Logistics';
+    }
+    return 'General';
+  }
+
+  static String _composeHardwareNotes(
+    Map<String, String> row, {
+    String? existingNotes,
+  }) {
+    final parts = <String>[];
+    final sn = row['serial']?.trim() ?? '';
+    if (sn.isNotEmpty) parts.add('SN: $sn');
+
+    final cpu = row['cpu']?.trim() ?? '';
+    final cores = row['cpu_cores']?.trim() ?? '';
+    final threads = row['cpu_threads']?.trim() ?? '';
+    if (cpu.isNotEmpty) {
+      var cpuClean = cpu
+          .replaceAll('Intel(R) Core(TM) ', '')
+          .replaceAll('CPU @ ', '@ ');
+      if (cores.isNotEmpty) {
+        cpuClean += threads.isNotEmpty
+            ? ' ($cores C / $threads T)'
+            : ' ($cores C)';
+      }
+      parts.add('CPU: $cpuClean');
+    }
+
+    final ramMod = row['ram_modules']?.trim() ?? '';
+    final ramGb = row['ram_gb']?.trim() ?? '';
+    if (ramMod.isNotEmpty) {
+      parts.add('RAM: $ramMod');
+    } else if (ramGb.isNotEmpty) {
+      parts.add('RAM: ${ramGb}GB');
+    }
+
+    final storage = row['storage']?.trim() ?? '';
+    if (storage.isNotEmpty) parts.add('Storage: $storage');
+
+    final gpu = row['gpu']?.trim() ?? '';
+    if (gpu.isNotEmpty) parts.add('GPU: $gpu');
+
+    final bios = row['bios']?.trim() ?? '';
+    if (bios.isNotEmpty) parts.add('BIOS: $bios');
+
+    final email = row['email']?.trim() ?? '';
+    if (email.isNotEmpty) parts.add('Email: $email');
+
+    final hardwareSummary = parts.join(' | ');
+    final explicitNotes = row['notes']?.trim() ?? '';
+
+    if (hardwareSummary.isEmpty) {
+      return explicitNotes.isNotEmpty ? explicitNotes : (existingNotes ?? '');
+    }
+
+    if (explicitNotes.isNotEmpty && explicitNotes != hardwareSummary) {
+      return '$explicitNotes | $hardwareSummary';
+    }
+    return hardwareSummary;
+  }
+
+  static String _composeOsString(
+    Map<String, String> row, {
+    String? existingOs,
+  }) {
+    final os = row['os']?.trim() ?? '';
+    final osArch = row['os_arch']?.trim() ?? '';
+    final osVer = row['os_version']?.trim() ?? '';
+    if (os.isEmpty) return existingOs ?? '';
+
+    final segments = <String>[os];
+    if (osArch.isNotEmpty && !os.toLowerCase().contains(osArch.toLowerCase())) {
+      segments.add(osArch);
+    }
+    if (osVer.isNotEmpty && !os.contains(osVer)) {
+      segments.add('($osVer)');
+    }
+    return segments.join(' ');
   }
 
   @override
@@ -479,6 +711,18 @@ class ExcelInventoryServiceImpl implements ExcelInventoryService {
         'monitored': getCol('monitored'),
         'enabled': getCol('enabled'),
         'notes': getCol('notes'),
+        'email': getCol('email'),
+        'serial': getCol('serial'),
+        'cpu': getCol('cpu'),
+        'cpu_cores': getCol('cpu_cores'),
+        'cpu_threads': getCol('cpu_threads'),
+        'ram_gb': getCol('ram_gb'),
+        'ram_modules': getCol('ram_modules'),
+        'storage': getCol('storage'),
+        'gpu': getCol('gpu'),
+        'os_version': getCol('os_version'),
+        'os_arch': getCol('os_arch'),
+        'bios': getCol('bios'),
       });
     }
 
@@ -564,6 +808,18 @@ class ExcelInventoryServiceImpl implements ExcelInventoryService {
           'monitored': getCol('monitored'),
           'enabled': getCol('enabled'),
           'notes': getCol('notes'),
+          'email': getCol('email'),
+          'serial': getCol('serial'),
+          'cpu': getCol('cpu'),
+          'cpu_cores': getCol('cpu_cores'),
+          'cpu_threads': getCol('cpu_threads'),
+          'ram_gb': getCol('ram_gb'),
+          'ram_modules': getCol('ram_modules'),
+          'storage': getCol('storage'),
+          'gpu': getCol('gpu'),
+          'os_version': getCol('os_version'),
+          'os_arch': getCol('os_arch'),
+          'bios': getCol('bios'),
         });
       }
     }
@@ -644,6 +900,18 @@ class ExcelInventoryServiceImpl implements ExcelInventoryService {
         'monitored': getByIndexOrHeader('monitored', 12),
         'enabled': getByIndexOrHeader('enabled', 13),
         'notes': getByIndexOrHeader('notes', 14),
+        'email': getByIndexOrHeader('email', 90),
+        'serial': getByIndexOrHeader('serial', 91),
+        'cpu': getByIndexOrHeader('cpu', 92),
+        'cpu_cores': getByIndexOrHeader('cpu_cores', 93),
+        'cpu_threads': getByIndexOrHeader('cpu_threads', 94),
+        'ram_gb': getByIndexOrHeader('ram_gb', 95),
+        'ram_modules': getByIndexOrHeader('ram_modules', 96),
+        'storage': getByIndexOrHeader('storage', 97),
+        'gpu': getByIndexOrHeader('gpu', 89),
+        'os_version': getByIndexOrHeader('os_version', 88),
+        'os_arch': getByIndexOrHeader('os_arch', 87),
+        'bios': getByIndexOrHeader('bios', 86),
       });
     }
 
@@ -695,13 +963,21 @@ class ExcelInventoryServiceImpl implements ExcelInventoryService {
     int invalidCount = 0;
     int skippedCount = 0;
 
-    // Existing factory indexes: IP -> DeviceEntity, ID -> DeviceEntity
+    // Existing factory indexes: IP -> DeviceEntity, ID -> DeviceEntity, Name -> DeviceEntity, Hostname -> DeviceEntity
     final existingIpMap = <String, DeviceEntity>{};
     final existingIdMap = <int, DeviceEntity>{};
+    final existingNameMap = <String, DeviceEntity>{};
+    final existingHostnameMap = <String, DeviceEntity>{};
     for (final d in existingFactoryDevices) {
       final canon = Ipv4Utils.canonicalizeIpv4(d.ip);
       if (canon != null) existingIpMap[canon] = d;
       existingIdMap[d.id] = d;
+      if (d.name.trim().isNotEmpty) {
+        existingNameMap[d.name.trim().toLowerCase()] = d;
+      }
+      if (d.hostname != null && d.hostname!.trim().isNotEmpty) {
+        existingHostnameMap[d.hostname!.trim().toLowerCase()] = d;
+      }
     }
 
     // Detect duplicate IPs within the import batch itself
@@ -795,7 +1071,26 @@ class ExcelInventoryServiceImpl implements ExcelInventoryService {
         continue;
       }
 
-      if (rawOwner.isEmpty) {
+      // Check if updating existing device in this factory
+      final rawHostname = r['hostname']?.trim() ?? '';
+      DeviceEntity? match;
+      if (rawId != null && existingIdMap.containsKey(rawId)) {
+        match = existingIdMap[rawId];
+      } else if (existingIpMap.containsKey(canonicalIp)) {
+        match = existingIpMap[canonicalIp];
+      } else if (existingNameMap.containsKey(rawName.toLowerCase())) {
+        match = existingNameMap[rawName.toLowerCase()];
+      } else if (rawHostname.isNotEmpty &&
+          existingHostnameMap.containsKey(rawHostname.toLowerCase())) {
+        match = existingHostnameMap[rawHostname.toLowerCase()];
+      }
+
+      final cleanOwner = _cleanOwnerName(rawOwner);
+      final effectiveOwner = cleanOwner.isNotEmpty
+          ? cleanOwner
+          : (match?.ownerName ?? '');
+
+      if (effectiveOwner.isEmpty) {
         invalidCount++;
         results.add(
           ExcelImportRowResult(
@@ -811,14 +1106,23 @@ class ExcelInventoryServiceImpl implements ExcelInventoryService {
         continue;
       }
 
-      if (rawDept.isEmpty) {
+      final rawEmail = r['email']?.trim() ?? '';
+      final effectiveDept = _inferDepartment(
+        rawDept: rawDept,
+        name: rawName,
+        owner: effectiveOwner,
+        email: rawEmail,
+        existingDept: match?.department,
+      );
+
+      if (effectiveDept.isEmpty) {
         invalidCount++;
         results.add(
           ExcelImportRowResult(
             rowIndex: rIndex,
             rawName: rawName,
             rawIp: rawIp,
-            rawOwner: rawOwner,
+            rawOwner: effectiveOwner,
             rawDepartment: rawDept,
             action: 'invalid',
             rejectionReason: 'Missing required department.',
@@ -835,22 +1139,14 @@ class ExcelInventoryServiceImpl implements ExcelInventoryService {
             rowIndex: rIndex,
             rawName: rawName,
             rawIp: rawIp,
-            rawOwner: rawOwner,
-            rawDepartment: rawDept,
+            rawOwner: effectiveOwner,
+            rawDepartment: effectiveDept,
             action: 'invalid',
             rejectionReason:
                 'Duplicate IP $canonicalIp occurs multiple times in imported spreadsheet.',
           ),
         );
         continue;
-      }
-
-      // Check if updating existing device in this factory
-      DeviceEntity? match;
-      if (rawId != null && existingIdMap.containsKey(rawId)) {
-        match = existingIdMap[rawId];
-      } else if (existingIpMap.containsKey(canonicalIp)) {
-        match = existingIpMap[canonicalIp];
       }
 
       final parsedMonitored = _parseNullableBool(r['monitored']);
@@ -861,6 +1157,15 @@ class ExcelInventoryServiceImpl implements ExcelInventoryService {
           ? DeviceType.fromString(rawTypeStr)
           : (match?.type ?? DeviceType.pc);
 
+      final hardwareNotes = _composeHardwareNotes(
+        r,
+        existingNotes: match?.notes,
+      );
+      final osString = _composeOsString(
+        r,
+        existingOs: match?.operatingSystem,
+      );
+
       if (match != null) {
         // Update row: unspecified/blank booleans preserve existing DB state
         final isMonitored = parsedMonitored ?? match.isMonitored;
@@ -868,27 +1173,27 @@ class ExcelInventoryServiceImpl implements ExcelInventoryService {
 
         final updated = match.copyWith(
           factoryId: targetFactoryId,
-          name: rawName,
+          name: rawName.isNotEmpty ? rawName : match.name,
           type: type,
           ip: canonicalIp,
-          ownerName: rawOwner,
-          department: rawDept,
+          ownerName: effectiveOwner,
+          department: effectiveDept,
           officeLocation: r['office']?.isNotEmpty == true
               ? r['office']
               : match.officeLocation,
           mac: r['mac']?.isNotEmpty == true ? r['mac'] : match.mac,
           hostname: r['hostname']?.isNotEmpty == true
               ? r['hostname']
-              : match.hostname,
+              : (match.hostname ?? (rawName.isNotEmpty ? rawName : null)),
           vendor: r['vendor']?.isNotEmpty == true ? r['vendor'] : match.vendor,
           model: r['model']?.isNotEmpty == true ? r['model'] : match.model,
-          operatingSystem: r['os']?.isNotEmpty == true
-              ? r['os']
+          operatingSystem: osString.isNotEmpty
+              ? osString
               : match.operatingSystem,
           parentSwitchName: r['switch']?.isNotEmpty == true
               ? r['switch']
               : match.parentSwitchName,
-          notes: r['notes']?.isNotEmpty == true ? r['notes'] : match.notes,
+          notes: hardwareNotes.isNotEmpty ? hardwareNotes : match.notes,
           isMonitored: isMonitored,
           isEnabled: isEnabled,
           updatedAt: DateTime.now(),
@@ -901,8 +1206,8 @@ class ExcelInventoryServiceImpl implements ExcelInventoryService {
             device: updated,
             rawName: rawName,
             rawIp: rawIp,
-            rawOwner: rawOwner,
-            rawDepartment: rawDept,
+            rawOwner: effectiveOwner,
+            rawDepartment: effectiveDept,
             action: 'update',
           ),
         );
@@ -917,16 +1222,16 @@ class ExcelInventoryServiceImpl implements ExcelInventoryService {
           name: rawName,
           type: type,
           ip: canonicalIp,
-          ownerName: rawOwner,
-          department: rawDept,
+          ownerName: effectiveOwner,
+          department: effectiveDept,
           officeLocation: r['office']?.isEmpty == true ? null : r['office'],
           mac: r['mac']?.isEmpty == true ? null : r['mac'],
-          hostname: r['hostname']?.isEmpty == true ? null : r['hostname'],
+          hostname: r['hostname']?.isEmpty == true ? rawName : r['hostname'],
           vendor: r['vendor']?.isEmpty == true ? null : r['vendor'],
           model: r['model']?.isEmpty == true ? null : r['model'],
-          operatingSystem: r['os']?.isEmpty == true ? null : r['os'],
+          operatingSystem: osString.isEmpty ? null : osString,
           parentSwitchName: r['switch']?.isEmpty == true ? null : r['switch'],
-          notes: r['notes']?.isEmpty == true ? null : r['notes'],
+          notes: hardwareNotes.isEmpty ? null : hardwareNotes,
           isMonitored: isMonitored,
           isEnabled: isEnabled,
           createdAt: DateTime.now(),
@@ -939,8 +1244,8 @@ class ExcelInventoryServiceImpl implements ExcelInventoryService {
             device: newDev,
             rawName: rawName,
             rawIp: rawIp,
-            rawOwner: rawOwner,
-            rawDepartment: rawDept,
+            rawOwner: effectiveOwner,
+            rawDepartment: effectiveDept,
             action: 'insert',
           ),
         );

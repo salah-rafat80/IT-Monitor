@@ -1,13 +1,48 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../features/devices/presentation/bloc/devices_cubit.dart';
+import '../../../features/factories/presentation/bloc/factory_cubit.dart';
 import '../../../features/factories/presentation/widgets/factory_header_bar.dart';
+import '../../../features/infrastructure/presentation/bloc/infrastructure_cubit.dart';
+import '../../../features/monitoring/presentation/bloc/monitoring_dashboard_cubit.dart';
+import '../../../features/network_discovery/presentation/bloc/network_discovery_cubit.dart';
+import '../../../features/topology/presentation/bloc/topology_cubit.dart';
+import '../../di/injection.dart';
 import '../../theme/app_colors.dart';
+import '../../theme/app_dimensions.dart';
+import 'enterprise_svg_icons.dart';
 
 class DesktopShell extends StatelessWidget {
-  final Widget child;
+  final Widget? child;
+  final StatefulNavigationShell? navigationShell;
 
-  const DesktopShell({super.key, required this.child});
+  const DesktopShell({
+    super.key,
+    this.child,
+    this.navigationShell,
+  });
+
+  void _navigateTo(BuildContext context, int branchIndex, String routePath) {
+    if (navigationShell != null) {
+      navigationShell!.goBranch(
+        branchIndex,
+        initialLocation: branchIndex == navigationShell!.currentIndex,
+      );
+    } else {
+      context.go(routePath);
+    }
+  }
+
+  bool _isBranchSelected(String location, int branchIndex, String routePrefix) {
+    if (navigationShell != null) {
+      return navigationShell!.currentIndex == branchIndex;
+    }
+    return routePrefix == '/dashboard'
+        ? (location == '/' || location == '/dashboard')
+        : location.startsWith(routePrefix);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -18,7 +53,7 @@ class DesktopShell extends StatelessWidget {
     final isCompact = screenWidth < 1000;
     final sidebarWidth = isCompact ? 72.0 : 240.0;
 
-    return Scaffold(
+    final shellScaffold = Scaffold(
       backgroundColor: tokens.background,
       body: Row(
         children: [
@@ -27,23 +62,15 @@ class DesktopShell extends StatelessWidget {
             duration: const Duration(milliseconds: 200),
             width: sidebarWidth,
             decoration: BoxDecoration(
-              color: tokens.surface,
+              color: tokens.sidebar,
               border: Border(right: BorderSide(color: tokens.border, width: 1)),
-              boxShadow: tokens.isDark
-                  ? [
-                      BoxShadow(
-                        color: tokens.primary.withValues(alpha: 0.05),
-                        blurRadius: 16,
-                        offset: const Offset(2, 0),
-                      ),
-                    ]
-                  : [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.03),
-                        blurRadius: 8,
-                        offset: const Offset(1, 0),
-                      ),
-                    ],
+              boxShadow: [
+                BoxShadow(
+                  color: tokens.shadow,
+                  blurRadius: 8,
+                  offset: const Offset(1, 0),
+                ),
+              ],
             ),
             child: ClipRect(
               child: LayoutBuilder(
@@ -53,61 +80,59 @@ class DesktopShell extends StatelessWidget {
                     children: [
                       Container(
                         padding: EdgeInsets.symmetric(
-                          horizontal: isSidebarCompact ? 12 : 20,
-                          vertical: 22,
+                          horizontal: isSidebarCompact ? AppSpacing.md : AppSpacing.xl,
+                          vertical: 20,
                         ),
                         alignment: isSidebarCompact
                             ? Alignment.center
                             : Alignment.centerLeft,
                         child: isSidebarCompact
                             ? Tooltip(
-                                message: 'IT Network Monitor',
+                                message: 'IT Network Monitor - Indomie',
                                 child: Container(
-                                  padding: const EdgeInsets.all(8),
+                                  padding: const EdgeInsets.all(AppSpacing.xs),
                                   decoration: BoxDecoration(
-                                    color: tokens.primary.withValues(
-                                      alpha: 0.12,
-                                    ),
-                                    borderRadius: BorderRadius.circular(10),
-                                    border: Border.all(
-                                      color: tokens.primary.withValues(
-                                        alpha: 0.3,
-                                      ),
-                                    ),
+                                    color: tokens.surface,
+                                    borderRadius: BorderRadius.circular(AppRadius.md),
+                                    border: Border.all(color: tokens.border),
                                   ),
-                                  child: Icon(
-                                    Icons.monitor_heart_rounded,
-                                    color: tokens.primary,
-                                    size: 24,
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(AppRadius.sm),
+                                    child: Image.asset(
+                                      'assets/images/app_logo.png',
+                                      width: 32,
+                                      height: 32,
+                                      fit: BoxFit.contain,
+                                    ),
                                   ),
                                 ),
                               )
                             : Row(
                                 children: [
                                   Container(
-                                    padding: const EdgeInsets.all(8),
-                                    decoration: BoxDecoration(
-                                      color: tokens.primary.withValues(
-                                        alpha: 0.12,
-                                      ),
-                                      borderRadius: BorderRadius.circular(10),
-                                      border: Border.all(
-                                        color: tokens.primary.withValues(
-                                          alpha: 0.3,
-                                        ),
-                                      ),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 6,
+                                      vertical: 4,
                                     ),
-                                    child: Icon(
-                                      Icons.monitor_heart_rounded,
-                                      color: tokens.primary,
-                                      size: 24,
+                                    decoration: BoxDecoration(
+                                      color: tokens.surface,
+                                      borderRadius: BorderRadius.circular(AppRadius.md),
+                                      border: Border.all(color: tokens.border),
+                                    ),
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(AppRadius.sm),
+                                      child: Image.asset(
+                                        'assets/images/app_logo.png',
+                                        width: 44,
+                                        height: 30,
+                                        fit: BoxFit.contain,
+                                      ),
                                     ),
                                   ),
-                                  const SizedBox(width: 12),
+                                  const SizedBox(width: AppSpacing.md),
                                   Expanded(
                                     child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
+                                      crossAxisAlignment: CrossAxisAlignment.start,
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
                                         Text(
@@ -115,20 +140,18 @@ class DesktopShell extends StatelessWidget {
                                           style: TextStyle(
                                             fontWeight: FontWeight.bold,
                                             fontSize: 17,
-                                            color: tokens.textPrimary,
+                                            color: tokens.onSidebar,
                                             letterSpacing: -0.3,
                                           ),
                                           overflow: TextOverflow.ellipsis,
                                         ),
                                         Text(
-                                          tokens.isDark
-                                              ? 'CYBER OPS'
-                                              : 'ENTERPRISE',
+                                          'INDOMIE ENTERPRISE',
                                           style: TextStyle(
-                                            fontSize: 9,
+                                            fontSize: 8.5,
                                             fontWeight: FontWeight.bold,
-                                            letterSpacing: 1.5,
-                                            color: tokens.primary,
+                                            letterSpacing: 1.2,
+                                            color: tokens.accent,
                                           ),
                                         ),
                                       ],
@@ -137,135 +160,133 @@ class DesktopShell extends StatelessWidget {
                                 ],
                               ),
                       ),
-                      Divider(height: 1, color: tokens.border),
+                      Divider(height: 1, color: tokens.divider),
                       Expanded(
                         child: ListView(
                           padding: const EdgeInsets.symmetric(
-                            vertical: 8,
-                            horizontal: 8,
+                            vertical: AppSpacing.sm,
+                            horizontal: AppSpacing.sm,
                           ),
                           children: [
                             _NavTile(
-                              icon: Icons.dashboard_outlined,
-                              selectedIcon: Icons.dashboard,
+                              svgIcon: EnterpriseSvgIcons.dashboard,
                               label: 'Dashboard',
-                              isSelected:
-                                  location == '/' || location == '/dashboard',
+                              isSelected: _isBranchSelected(location, 0, '/dashboard'),
                               isCompact: isSidebarCompact,
-                              onTap: () => context.go('/dashboard'),
+                              onTap: () => _navigateTo(context, 0, '/dashboard'),
                             ),
                             _NavTile(
-                              icon: Icons.devices_outlined,
-                              selectedIcon: Icons.devices,
+                              svgIcon: EnterpriseSvgIcons.devices,
                               label: 'Devices',
-                              isSelected: location.startsWith('/devices'),
+                              isSelected: _isBranchSelected(location, 1, '/devices'),
                               isCompact: isSidebarCompact,
-                              onTap: () => context.go('/devices'),
+                              onTap: () => _navigateTo(context, 1, '/devices'),
                             ),
                             _NavTile(
-                              icon: Icons.table_chart_outlined,
-                              selectedIcon: Icons.table_chart,
+                              svgIcon: EnterpriseSvgIcons.inventory,
                               label: 'Inventory',
-                              isSelected: location.startsWith('/inventory'),
+                              isSelected: _isBranchSelected(location, 2, '/inventory'),
                               isCompact: isSidebarCompact,
-                              onTap: () => context.go('/inventory'),
+                              onTap: () => _navigateTo(context, 2, '/inventory'),
                             ),
                             _NavTile(
-                              icon: Icons.hub_outlined,
-                              selectedIcon: Icons.hub,
+                              svgIcon: EnterpriseSvgIcons.infrastructure,
                               label: 'Infrastructure',
-                              isSelected: location.startsWith(
-                                '/infrastructure',
-                              ),
+                              isSelected: _isBranchSelected(location, 3, '/infrastructure'),
                               isCompact: isSidebarCompact,
-                              onTap: () => context.go('/infrastructure'),
+                              onTap: () => _navigateTo(context, 3, '/infrastructure'),
                             ),
                             _NavTile(
-                              icon: Icons.account_tree_outlined,
-                              selectedIcon: Icons.account_tree,
+                              svgIcon: EnterpriseSvgIcons.topology,
                               label: 'Topology',
-                              isSelected: location.startsWith('/topology'),
+                              isSelected: _isBranchSelected(location, 4, '/topology'),
                               isCompact: isSidebarCompact,
-                              onTap: () => context.go('/topology'),
+                              onTap: () => _navigateTo(context, 4, '/topology'),
                             ),
                             _NavTile(
-                              icon: Icons.radar_outlined,
-                              selectedIcon: Icons.radar,
+                              svgIcon: EnterpriseSvgIcons.blueprint,
+                              label: 'Network Blueprint',
+                              isSelected: _isBranchSelected(location, 5, '/network-blueprint'),
+                              isCompact: isSidebarCompact,
+                              onTap: () => _navigateTo(context, 5, '/network-blueprint'),
+                            ),
+                            _NavTile(
+                              svgIcon: EnterpriseSvgIcons.discovery,
                               label: 'Discovery',
-                              isSelected: location.startsWith('/discovery'),
+                              isSelected: _isBranchSelected(location, 6, '/discovery'),
                               isCompact: isSidebarCompact,
-                              onTap: () => context.go('/discovery'),
+                              onTap: () => _navigateTo(context, 6, '/discovery'),
                             ),
                             _NavTile(
-                              icon: Icons.settings_outlined,
-                              selectedIcon: Icons.settings,
+                              svgIcon: EnterpriseSvgIcons.settings,
                               label: 'Settings',
-                              isSelected: location.startsWith('/settings'),
+                              isSelected: _isBranchSelected(location, 7, '/settings'),
                               isCompact: isSidebarCompact,
-                              onTap: () => context.go('/settings'),
+                              onTap: () => _navigateTo(context, 7, '/settings'),
                             ),
                           ],
                         ),
                       ),
-                      const Divider(height: 1),
+                      Divider(height: 1, color: tokens.divider),
                       Padding(
-                        padding: EdgeInsets.all(isSidebarCompact ? 12 : 16),
+                        padding: EdgeInsets.all(isSidebarCompact ? AppSpacing.md : AppSpacing.lg),
                         child: isSidebarCompact
-                            ? const Tooltip(
+                            ? Tooltip(
                                 message: 'Local Administrator (ADMINISTRATOR)',
                                 child: CircleAvatar(
                                   radius: 16,
-                                  backgroundColor: Color(0xFF0F62FE),
+                                  backgroundColor: tokens.primary.withValues(alpha: 0.15),
                                   child: Icon(
                                     Icons.admin_panel_settings,
                                     size: 18,
-                                    color: Colors.white,
+                                    color: tokens.primary,
                                   ),
                                 ),
                               )
                             : Row(
                                 children: [
-                                  const CircleAvatar(
+                                  CircleAvatar(
                                     radius: 16,
-                                    backgroundColor: Color(0xFF0F62FE),
+                                    backgroundColor: tokens.primary.withValues(alpha: 0.15),
                                     child: Icon(
                                       Icons.admin_panel_settings,
                                       size: 18,
-                                      color: Colors.white,
+                                      color: tokens.primary,
                                     ),
                                   ),
-                                  const SizedBox(width: 12),
+                                  const SizedBox(width: AppSpacing.md),
                                   Expanded(
                                     child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
+                                      crossAxisAlignment: CrossAxisAlignment.start,
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
                                         Text(
                                           'Local Administrator',
-                                          style: Theme.of(
-                                            context,
-                                          ).textTheme.titleSmall,
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.w600,
+                                            fontSize: 13,
+                                            color: tokens.onSidebar,
+                                          ),
                                           overflow: TextOverflow.ellipsis,
                                         ),
-                                        const Text(
+                                        Text(
                                           'ADMINISTRATOR',
                                           style: TextStyle(
-                                            fontSize: 11,
+                                            fontSize: 10,
                                             fontWeight: FontWeight.bold,
-                                            color: Color(0xFF10B981),
+                                            color: tokens.onStatusOnline,
                                           ),
                                         ),
                                       ],
                                     ),
                                   ),
-                                  const Tooltip(
+                                  Tooltip(
                                     message:
-                                        'Administrator Mode (No Interactive Login Required)',
+                                        'Administrator Mode (Verified Active Session)',
                                     child: Icon(
                                       Icons.verified_user_rounded,
-                                      size: 20,
-                                      color: Color(0xFF10B981),
+                                      size: 18,
+                                      color: tokens.statusOnline,
                                     ),
                                   ),
                                 ],
@@ -277,33 +298,85 @@ class DesktopShell extends StatelessWidget {
               ),
             ),
           ),
-          const VerticalDivider(width: 1),
+          VerticalDivider(width: 1, color: tokens.divider),
           // Main Body
           Expanded(
             child: Column(
               children: [
                 const FactoryHeaderBar(),
-                Expanded(child: child),
+                Expanded(
+                  child: navigationShell ?? child ?? const SizedBox.shrink(),
+                ),
               ],
             ),
           ),
         ],
       ),
     );
+
+    if (!getIt.isRegistered<FactoryCubit>()) {
+      return shellScaffold;
+    }
+
+    final factoryCubit = getIt<FactoryCubit>();
+    return MultiBlocListener(
+      listeners: [
+        BlocListener<FactoryCubit, FactoryState>(
+          bloc: factoryCubit,
+          listenWhen: (prev, curr) =>
+              prev.selectedFactoryId != curr.selectedFactoryId,
+          listener: (context, state) {
+            final factoryId = state.selectedFactoryId;
+            final futures = <Future<void>>[];
+
+            try {
+              futures.add(context.read<DevicesCubit>().setFactory(factoryId));
+            } catch (_) {}
+
+            try {
+              futures.add(
+                context.read<InfrastructureCubit>().setFactory(factoryId),
+              );
+            } catch (_) {}
+
+            try {
+              futures.add(
+                context
+                    .read<MonitoringDashboardCubit>()
+                    .setFactoryFilter(factoryId),
+              );
+            } catch (_) {}
+
+            try {
+              futures.add(
+                context.read<NetworkDiscoveryCubit>().setFactory(factoryId),
+              );
+            } catch (_) {}
+
+            if (futures.isNotEmpty) {
+              Future.wait(futures);
+            }
+
+            try {
+              context.read<TopologyCubit>().setFactory(factoryId);
+            } catch (_) {}
+          },
+        ),
+      ],
+      child: shellScaffold,
+    );
   }
 }
 
 class _NavTile extends StatefulWidget {
-  final IconData icon;
-  final IconData selectedIcon;
+  final String svgIcon;
   final String label;
   final bool isSelected;
   final bool isCompact;
   final VoidCallback onTap;
 
   const _NavTile({
-    required this.icon,
-    required this.selectedIcon,
+    required this.svgIcon,
     required this.label,
     required this.isSelected,
     required this.onTap,
@@ -320,31 +393,28 @@ class _NavTileState extends State<_NavTile> {
   @override
   Widget build(BuildContext context) {
     final tokens = context.appTokens;
-    final activeColor = tokens.primary;
 
     final bgColor = widget.isSelected
-        ? activeColor.withValues(alpha: tokens.isDark ? 0.16 : 0.12)
+        ? tokens.primary.withValues(alpha: tokens.isDark ? 0.20 : 0.12)
         : (_isHovered
-              ? tokens.surfaceSecondary.withValues(alpha: 0.6)
-              : Colors.transparent);
+            ? tokens.surfaceVariant.withValues(alpha: 0.6)
+            : Colors.transparent);
 
     final borderColor = widget.isSelected
-        ? (tokens.isDark
-              ? tokens.borderGlow
-              : activeColor.withValues(alpha: 0.4))
+        ? tokens.accent
         : (_isHovered ? tokens.border : Colors.transparent);
 
     final iconColor = widget.isSelected
-        ? activeColor
-        : (_isHovered ? tokens.textPrimary : tokens.textSecondary);
+        ? tokens.accent
+        : (_isHovered ? tokens.onSidebar : tokens.onSurfaceVariant);
 
     final textColor = widget.isSelected
-        ? (tokens.isDark ? tokens.primary : activeColor)
-        : (_isHovered ? tokens.textPrimary : tokens.textSecondary);
+        ? tokens.onSidebar
+        : (_isHovered ? tokens.onSidebar : tokens.onSurfaceVariant);
 
     if (widget.isCompact) {
       return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4),
+        padding: const EdgeInsets.symmetric(vertical: AppSpacing.xxs),
         child: Tooltip(
           message: widget.label,
           child: MouseRegion(
@@ -353,29 +423,22 @@ class _NavTileState extends State<_NavTile> {
             child: Material(
               color: Colors.transparent,
               child: InkWell(
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(AppRadius.md),
                 onTap: widget.onTap,
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 180),
-                  padding: const EdgeInsets.all(10),
+                  padding: const EdgeInsets.all(AppSpacing.md),
                   decoration: BoxDecoration(
                     color: bgColor,
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(AppRadius.md),
                     border: Border.all(color: borderColor, width: 1),
-                    boxShadow: widget.isSelected && tokens.isDark
-                        ? [
-                            BoxShadow(
-                              color: activeColor.withValues(alpha: 0.25),
-                              blurRadius: 8,
-                              spreadRadius: -1,
-                            ),
-                          ]
-                        : null,
                   ),
-                  child: Icon(
-                    widget.isSelected ? widget.selectedIcon : widget.icon,
-                    color: iconColor,
-                    size: 22,
+                  child: Center(
+                    child: EnterpriseSvgIcon(
+                      svgString: widget.svgIcon,
+                      color: iconColor,
+                      size: 20,
+                    ),
                   ),
                 ),
               ),
@@ -386,40 +449,31 @@ class _NavTileState extends State<_NavTile> {
     }
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3),
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.xxs),
       child: MouseRegion(
         onEnter: (_) => setState(() => _isHovered = true),
         onExit: (_) => setState(() => _isHovered = false),
         child: Material(
           color: Colors.transparent,
           child: InkWell(
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(AppRadius.md),
             onTap: widget.onTap,
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 180),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: 10),
               decoration: BoxDecoration(
                 color: bgColor,
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(AppRadius.md),
                 border: Border.all(color: borderColor, width: 1),
-                boxShadow: widget.isSelected && tokens.isDark
-                    ? [
-                        BoxShadow(
-                          color: activeColor.withValues(alpha: 0.15),
-                          blurRadius: 10,
-                          offset: const Offset(0, 1),
-                        ),
-                      ]
-                    : null,
               ),
               child: Row(
                 children: [
-                  Icon(
-                    widget.isSelected ? widget.selectedIcon : widget.icon,
+                  EnterpriseSvgIcon(
+                    svgString: widget.svgIcon,
                     color: iconColor,
-                    size: 22,
+                    size: 20,
                   ),
-                  const SizedBox(width: 14),
+                  const SizedBox(width: AppSpacing.md),
                   Expanded(
                     child: Text(
                       widget.label,
@@ -439,17 +493,8 @@ class _NavTileState extends State<_NavTile> {
                       width: 6,
                       height: 6,
                       decoration: BoxDecoration(
-                        color: activeColor,
+                        color: tokens.accent,
                         shape: BoxShape.circle,
-                        boxShadow: tokens.isDark
-                            ? [
-                                BoxShadow(
-                                  color: activeColor,
-                                  blurRadius: 6,
-                                  spreadRadius: 1,
-                                ),
-                              ]
-                            : null,
                       ),
                     ),
                 ],

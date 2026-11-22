@@ -5,6 +5,11 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../../../../core/presentation/widgets/app_empty_state.dart';
+import '../../../../core/presentation/widgets/app_error_card.dart';
+import '../../../../core/presentation/widgets/app_skeleton.dart';
+import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_dimensions.dart';
 import '../../../monitoring/domain/entities/device_status_entity.dart';
 import '../../../monitoring/presentation/bloc/monitoring_cubit.dart';
 import '../../../monitoring/presentation/widgets/device_status_chip.dart';
@@ -33,7 +38,10 @@ class _DevicesPageState extends State<DevicesPage> {
         .read<FactoryCubit>()
         .state
         .selectedFactoryId;
-    context.read<DevicesCubit>().setFactory(initialFactoryId);
+    final devicesCubit = context.read<DevicesCubit>();
+    if (devicesCubit.activeFactoryId != initialFactoryId || devicesCubit.state is DevicesInitial) {
+      devicesCubit.setFactory(initialFactoryId);
+    }
   }
 
   @override
@@ -956,6 +964,7 @@ class _DevicesPageState extends State<DevicesPage> {
   @override
   Widget build(BuildContext context) {
     final isAdmin = true;
+    final tokens = context.appTokens;
 
     final infraState = context.watch<InfrastructureCubit>().state;
     final devicesState = context.watch<DevicesCubit>().state;
@@ -1056,7 +1065,98 @@ class _DevicesPageState extends State<DevicesPage> {
                 },
                 builder: (context, state) {
                   if (state is DevicesLoading) {
-                    return const Center(child: CircularProgressIndicator());
+                    return Padding(
+                      padding: const EdgeInsets.all(AppSpacing.lg),
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          final isCompact = constraints.maxWidth < 980;
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (isCompact) ...[
+                                const AppSkeleton(
+                                  height: 44,
+                                  borderRadius: AppRadius.sm,
+                                ),
+                                const SizedBox(height: 10),
+                                Wrap(
+                                  spacing: 12,
+                                  runSpacing: 8,
+                                  children: const [
+                                    AppSkeleton(
+                                      width: 120,
+                                      height: 36,
+                                      borderRadius: AppRadius.sm,
+                                    ),
+                                    AppSkeleton(
+                                      width: 120,
+                                      height: 36,
+                                      borderRadius: AppRadius.sm,
+                                    ),
+                                    AppSkeleton(
+                                      width: 120,
+                                      height: 36,
+                                      borderRadius: AppRadius.sm,
+                                    ),
+                                  ],
+                                ),
+                              ] else ...[
+                                Row(
+                                  children: const [
+                                    Expanded(
+                                      flex: 3,
+                                      child: AppSkeleton(
+                                        height: 44,
+                                        borderRadius: AppRadius.sm,
+                                      ),
+                                    ),
+                                    SizedBox(width: 12),
+                                    AppSkeleton(
+                                      width: 130,
+                                      height: 44,
+                                      borderRadius: AppRadius.sm,
+                                    ),
+                                    SizedBox(width: 12),
+                                    AppSkeleton(
+                                      width: 130,
+                                      height: 44,
+                                      borderRadius: AppRadius.sm,
+                                    ),
+                                    SizedBox(width: 12),
+                                    AppSkeleton(
+                                      width: 130,
+                                      height: 44,
+                                      borderRadius: AppRadius.sm,
+                                    ),
+                                  ],
+                                ),
+                              ],
+                              const SizedBox(height: AppSpacing.lg),
+                              Expanded(
+                                child: AppSkeleton.table(
+                                  rowCount: 6,
+                                  columnCount: 9,
+                                ),
+                              ),
+                            ],
+                          );
+                        },
+                      ),
+                    );
+                  }
+
+                  if (state is DevicesError) {
+                    return Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(AppSpacing.xxl),
+                        child: AppErrorCard(
+                          title: 'Inventory Synchronization Error',
+                          message: state.message,
+                          onRetry: () =>
+                              context.read<DevicesCubit>().loadDevices(),
+                        ),
+                      ),
+                    );
                   }
 
                   if (state is DevicesLoaded) {
@@ -1215,15 +1315,22 @@ class _DevicesPageState extends State<DevicesPage> {
                         // Devices Table
                         Expanded(
                           child: state.filteredDevices.isEmpty
-                              ? const Center(
-                                  child: Text(
-                                    'No persistent assets found matching filter.',
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      color: Colors.grey,
-                                    ),
-                                  ),
-                                )
+                              ? (state.allDevices.isEmpty
+                                  ? AppEmptyState.firstUse(
+                                      entityName: 'Device Assets',
+                                      actionLabel: 'Add Device Asset',
+                                      onAction: () =>
+                                          _showAddDeviceDialog(context),
+                                    )
+                                  : AppEmptyState.noFilterResults(
+                                      query: _searchController.text,
+                                      onClearFilters: () {
+                                        _searchController.clear();
+                                        context
+                                            .read<DevicesCubit>()
+                                            .resetFilters();
+                                      },
+                                    ))
                               : SingleChildScrollView(
                                   scrollDirection: Axis.vertical,
                                   child: SingleChildScrollView(
@@ -1296,26 +1403,18 @@ class _DevicesPageState extends State<DevicesPage> {
                                                         mainAxisSize:
                                                             MainAxisSize.min,
                                                         children: [
-                                                          Text(
-                                                            device.displayOwner,
-                                                            style: TextStyle(
-                                                              fontWeight:
-                                                                  FontWeight
-                                                                      .bold,
-                                                              fontSize: 14,
-                                                              color:
-                                                                  device
-                                                                      .isOwnerAssigned
-                                                                  ? null
-                                                                  : Colors
-                                                                        .orangeAccent,
-                                                              fontStyle:
-                                                                  device
-                                                                      .isOwnerAssigned
-                                                                  ? FontStyle
-                                                                        .normal
-                                                                  : FontStyle
-                                                                        .italic,
+                                                          ConstrainedBox(
+                                                            constraints: const BoxConstraints(maxWidth: 150),
+                                                            child: Text(
+                                                              device.displayOwner,
+                                                              maxLines: 1,
+                                                              overflow: TextOverflow.ellipsis,
+                                                              style: TextStyle(
+                                                                fontWeight: FontWeight.bold,
+                                                                fontSize: 14,
+                                                                color: device.isOwnerAssigned ? tokens.onTableRow : tokens.onStatusDegraded,
+                                                                fontStyle: device.isOwnerAssigned ? FontStyle.normal : FontStyle.italic,
+                                                              ),
                                                             ),
                                                           ),
                                                           if (isAdmin) ...[
@@ -1342,7 +1441,16 @@ class _DevicesPageState extends State<DevicesPage> {
                                                 DataCell(
                                                   Text(device.department),
                                                 ),
-                                                DataCell(Text(device.name)),
+                                                DataCell(
+                                                ConstrainedBox(
+                                                  constraints: const BoxConstraints(maxWidth: 140),
+                                                  child: Text(
+                                                    device.name,
+                                                    maxLines: 1,
+                                                    overflow: TextOverflow.ellipsis,
+                                                  ),
+                                                ),
+                                              ),
                                                 DataCell(
                                                   Text(
                                                     device.ip,
@@ -1363,7 +1471,7 @@ class _DevicesPageState extends State<DevicesPage> {
                                                           device.type,
                                                         ),
                                                         size: 16,
-                                                        color: Colors.blueGrey,
+                                                        color: tokens.onSurfaceVariant,
                                                       ),
                                                       const SizedBox(width: 6),
                                                       Text(

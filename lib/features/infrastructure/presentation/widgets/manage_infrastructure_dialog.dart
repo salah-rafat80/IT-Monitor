@@ -141,7 +141,7 @@ class _ManageInfrastructureDialogState
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.statusDown,
+              backgroundColor: context.appTokens.statusDown,
             ),
             onPressed: () => Navigator.of(ctx).pop(true),
             child: const Text('Delete'),
@@ -167,7 +167,7 @@ class _ManageInfrastructureDialogState
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final tokens = context.appTokens;
     final isEdit = widget.initialDevice != null;
 
     return Dialog(
@@ -188,12 +188,12 @@ class _ManageInfrastructureDialogState
                     Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        color: AppColors.primary.withValues(alpha: 0.12),
+                        color: tokens.primary.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: const Icon(
+                      child: Icon(
                         Icons.router,
-                        color: AppColors.primary,
+                        color: tokens.primary,
                         size: 24,
                       ),
                     ),
@@ -213,9 +213,7 @@ class _ManageInfrastructureDialogState
                           Text(
                             'Authoritative management IP monitoring & read-only integration',
                             style: theme.textTheme.bodySmall?.copyWith(
-                              color: isDark
-                                  ? AppColors.textSecondaryDark
-                                  : AppColors.textSecondaryLight,
+                              color: tokens.textSecondary,
                             ),
                           ),
                         ],
@@ -352,7 +350,7 @@ class _ManageInfrastructureDialogState
                               'When Down, raises a deduplicated Critical Incident and evaluates cross-segment routing impact.',
                             ),
                             value: _isCritical,
-                            activeThumbColor: AppColors.primary,
+                            activeThumbColor: tokens.primary,
                             onChanged: (val) =>
                                 setState(() => _isCritical = val),
                           ),
@@ -366,7 +364,7 @@ class _ManageInfrastructureDialogState
                             'Keep checked if device role or downstream network dependencies are still unconfirmed.',
                           ),
                           value: _requiresConfirmation,
-                          activeThumbColor: AppColors.statusDegraded,
+                          activeThumbColor: tokens.statusDegraded,
                           onChanged: (val) =>
                               setState(() => _requiresConfirmation = val),
                         ),
@@ -401,7 +399,7 @@ class _ManageInfrastructureDialogState
                           contentPadding: EdgeInsets.zero,
                           title: const Text('Active Monitoring Enabled'),
                           value: _isEnabled,
-                          activeThumbColor: AppColors.statusUp,
+                          activeThumbColor: tokens.statusUp,
                           onChanged: (val) => setState(() => _isEnabled = val),
                         ),
                       ],
@@ -416,7 +414,7 @@ class _ManageInfrastructureDialogState
                     if (isEdit)
                       TextButton.icon(
                         style: TextButton.styleFrom(
-                          foregroundColor: AppColors.statusDown,
+                          foregroundColor: tokens.statusDown,
                         ),
                         icon: const Icon(Icons.delete_outline, size: 20),
                         label: const Text('Delete'),

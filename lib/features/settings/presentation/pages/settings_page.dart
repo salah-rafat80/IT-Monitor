@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../../core/config/factory_network_config.dart';
 import '../../../../core/di/injection.dart';
@@ -282,6 +283,12 @@ class _SettingsPageState extends State<SettingsPage> {
                               ],
                             );
                           },
+                        ),
+                        const SizedBox(height: 16),
+                        OutlinedButton.icon(
+                          icon: const Icon(Icons.tune_rounded, size: 18),
+                          label: const Text('Open 60-30-10 Dynamic Palette & Token Editor'),
+                          onPressed: () => context.push('/palette-editor'),
                         ),
                       ],
                     ),

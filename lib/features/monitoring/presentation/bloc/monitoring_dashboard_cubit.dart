@@ -162,6 +162,21 @@ class MonitoringDashboardCubit extends Cubit<MonitoringDashboardState> {
     }
   }
 
+  void clearAllFilters() {
+    final current = state;
+    if (current is MonitoringDashboardLoaded) {
+      final updated = current.copyWith(
+        searchQuery: '',
+        clearStatusFilter: true,
+        clearDepartmentFilter: true,
+        clearLocationFilter: true,
+        clearTypeFilter: true,
+        clearEnabledFilter: true,
+      );
+      emit(_applyFilterAndSort(updated));
+    }
+  }
+
   void setStatusFilter(String? status) {
     final current = state;
     if (current is MonitoringDashboardLoaded) {

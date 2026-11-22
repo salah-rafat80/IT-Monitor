@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../../core/presentation/widgets/app_empty_state.dart';
 
 import '../../domain/entities/classification_confidence.dart';
 import '../../domain/entities/device_category.dart';
@@ -33,45 +34,18 @@ class DiscoveredDevicesTable extends StatelessWidget {
     if (devices.isEmpty) {
       return Container(
         width: double.infinity,
-        padding: const EdgeInsets.all(48),
         decoration: BoxDecoration(
           color: theme.cardColor,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: theme.dividerColor.withValues(alpha: 0.1)),
         ),
-        child: Column(
-          children: [
-            Icon(Icons.radar_rounded, size: 48, color: theme.disabledColor),
-            const SizedBox(height: 16),
-            const Text(
-              'No Discovered Assets Found',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            Text(
+        child: AppEmptyState(
+          icon: Icons.radar_rounded,
+          title: 'No Discovered Assets Found',
+          message:
               'Run a discovery scan over the authorized scopes or adjust your filter query.',
-              style: TextStyle(
-                fontSize: 13,
-                color: theme.textTheme.bodyMedium?.color?.withValues(
-                  alpha: 0.6,
-                ),
-              ),
-            ),
-            if (onLaunchScan != null) ...[
-              const SizedBox(height: 24),
-              ElevatedButton.icon(
-                onPressed: onLaunchScan,
-                icon: const Icon(Icons.play_arrow_rounded),
-                label: const Text('Launch Discovery Scan'),
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 24,
-                    vertical: 14,
-                  ),
-                ),
-              ),
-            ],
-          ],
+          actionLabel: onLaunchScan != null ? 'Launch Discovery Scan' : null,
+          onAction: onLaunchScan,
         ),
       );
     }
@@ -162,9 +136,14 @@ class DiscoveredDevicesTable extends StatelessWidget {
                   ),
                   // 2. Hostname
                   DataCell(
-                    Text(
-                      d.hostname ?? '-',
-                      style: const TextStyle(fontSize: 13),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 140),
+                      child: Text(
+                        d.hostname ?? '-',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 13),
+                      ),
                     ),
                   ),
                   // 3. MAC
@@ -180,10 +159,14 @@ class DiscoveredDevicesTable extends StatelessWidget {
                   ),
                   // 4. Vendor
                   DataCell(
-                    Text(
-                      d.vendor ?? '-',
-                      style: const TextStyle(fontSize: 12),
-                      overflow: TextOverflow.ellipsis,
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 130),
+                      child: Text(
+                        d.vendor ?? '-',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 12),
+                      ),
                     ),
                   ),
                   // 5. Category (Icon + Label + Override menu)

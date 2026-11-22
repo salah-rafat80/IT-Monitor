@@ -59,7 +59,7 @@ class _InfrastructureDeviceDetailsModalState
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final tokens = context.appTokens;
 
     return BlocBuilder<InfrastructureCubit, InfrastructureState>(
       builder: (context, state) {
@@ -71,9 +71,7 @@ class _InfrastructureDeviceDetailsModalState
         final statusEnum = status?.status ?? DeviceStatusEnum.unknown;
 
         return Dialog(
-          backgroundColor: isDark
-              ? AppColors.darkSurface
-              : AppColors.lightSurface,
+          backgroundColor: tokens.surface,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),
@@ -95,12 +93,12 @@ class _InfrastructureDeviceDetailsModalState
                             Container(
                               padding: const EdgeInsets.all(10),
                               decoration: BoxDecoration(
-                                color: AppColors.primary.withValues(alpha: 0.1),
+                                color: tokens.primary.withValues(alpha: 0.1),
                                 borderRadius: BorderRadius.circular(10),
                               ),
                               child: Icon(
                                 _getRoleIcon(currentDevice.role),
-                                color: AppColors.primary,
+                                color: tokens.primary,
                                 size: 24,
                               ),
                             ),
@@ -119,9 +117,7 @@ class _InfrastructureDeviceDetailsModalState
                                   Text(
                                     '${currentDevice.role.displayName} • ${currentDevice.ip}',
                                     style: theme.textTheme.bodySmall?.copyWith(
-                                      color: isDark
-                                          ? AppColors.textSecondaryDark
-                                          : AppColors.textSecondaryLight,
+                                      color: tokens.textSecondary,
                                       fontFamily: 'monospace',
                                     ),
                                   ),
@@ -158,14 +154,10 @@ class _InfrastructureDeviceDetailsModalState
                           Container(
                             padding: const EdgeInsets.all(14),
                             decoration: BoxDecoration(
-                              color: isDark
-                                  ? AppColors.darkCard
-                                  : AppColors.lightCard,
+                              color: tokens.surfaceContainerLow,
                               borderRadius: BorderRadius.circular(10),
                               border: Border.all(
-                                color: isDark
-                                    ? AppColors.darkBorder
-                                    : AppColors.lightBorder,
+                                color: tokens.cardBorder,
                               ),
                             ),
                             child: Column(
@@ -227,14 +219,10 @@ class _InfrastructureDeviceDetailsModalState
                           Container(
                             padding: const EdgeInsets.all(14),
                             decoration: BoxDecoration(
-                              color: isDark
-                                  ? AppColors.darkCard
-                                  : AppColors.lightCard,
+                              color: tokens.surfaceContainerLow,
                               borderRadius: BorderRadius.circular(10),
                               border: Border.all(
-                                color: isDark
-                                    ? AppColors.darkBorder
-                                    : AppColors.lightBorder,
+                                color: tokens.cardBorder,
                               ),
                             ),
                             child: Column(
@@ -243,7 +231,7 @@ class _InfrastructureDeviceDetailsModalState
                                   context,
                                   'Current Status',
                                   statusEnum.name.toUpperCase(),
-                                  valueColor: _getStatusColor(statusEnum),
+                                  valueColor: _getStatusColor(statusEnum, tokens),
                                 ),
                                 _buildDetailRow(
                                   context,
@@ -253,7 +241,7 @@ class _InfrastructureDeviceDetailsModalState
                                       : '--',
                                   valueColor:
                                       status?.status == DeviceStatusEnum.up
-                                      ? AppColors.statusUp
+                                      ? tokens.statusUp
                                       : null,
                                 ),
                                 _buildDetailRow(
@@ -286,14 +274,10 @@ class _InfrastructureDeviceDetailsModalState
                           Container(
                             padding: const EdgeInsets.all(14),
                             decoration: BoxDecoration(
-                              color: isDark
-                                  ? AppColors.darkCard
-                                  : AppColors.lightCard,
+                              color: tokens.surfaceContainerLow,
                               borderRadius: BorderRadius.circular(10),
                               border: Border.all(
-                                color: isDark
-                                    ? AppColors.darkBorder
-                                    : AppColors.lightBorder,
+                                color: tokens.cardBorder,
                               ),
                             ),
                             child: Column(
@@ -423,9 +407,6 @@ class _InfrastructureDeviceDetailsModalState
     String value, {
     Color? valueColor,
   }) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
@@ -435,9 +416,7 @@ class _InfrastructureDeviceDetailsModalState
             label,
             style: TextStyle(
               fontSize: 12.5,
-              color: isDark
-                  ? AppColors.textSecondaryDark
-                  : AppColors.textSecondaryLight,
+              color: context.appTokens.textSecondary,
             ),
           ),
           Text(
@@ -445,11 +424,7 @@ class _InfrastructureDeviceDetailsModalState
             style: TextStyle(
               fontSize: 12.5,
               fontWeight: FontWeight.w600,
-              color:
-                  valueColor ??
-                  (isDark
-                      ? AppColors.textPrimaryDark
-                      : AppColors.textPrimaryLight),
+              color: valueColor ?? context.appTokens.textPrimary,
             ),
           ),
         ],
@@ -472,21 +447,21 @@ class _InfrastructureDeviceDetailsModalState
     }
   }
 
-  Color _getStatusColor(DeviceStatusEnum status) {
+  Color _getStatusColor(DeviceStatusEnum status, AppColors tokens) {
     switch (status) {
       case DeviceStatusEnum.up:
-        return AppColors.statusUp;
+        return tokens.statusUp;
       case DeviceStatusEnum.degraded:
-        return AppColors.statusDegraded;
+        return tokens.statusDegraded;
       case DeviceStatusEnum.down:
       case DeviceStatusEnum.unreachable:
-        return AppColors.statusDown;
+        return tokens.statusDown;
       case DeviceStatusEnum.unknown:
-        return AppColors.statusUnknown;
+        return tokens.statusUnknown;
       case DeviceStatusEnum.stale:
-        return AppColors.statusDegraded;
+        return tokens.statusDegraded;
       case DeviceStatusEnum.maintenance:
-        return AppColors.statusMaintenance;
+        return tokens.statusMaintenance;
     }
   }
 }

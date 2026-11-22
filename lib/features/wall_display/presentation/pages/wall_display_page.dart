@@ -14,28 +14,42 @@ import '../widgets/wall_display_summary_bar.dart';
 import '../../../infrastructure/presentation/bloc/infrastructure_cubit.dart';
 import '../../../infrastructure/presentation/bloc/infrastructure_state.dart';
 import '../../../monitoring/domain/entities/device_status_entity.dart';
+import '../../../factories/presentation/bloc/factory_cubit.dart';
 
 class WallDisplayPage extends StatelessWidget {
   const WallDisplayPage({super.key});
 
   @override
   Widget build(BuildContext context) {
+    String? initialFactoryId;
+    try {
+      initialFactoryId = context.read<FactoryCubit>().state.selectedFactoryId;
+    } catch (_) {}
+
     return MultiBlocProvider(
       providers: [
         BlocProvider<MonitoringDashboardCubit>(
-          create: (_) => getIt<MonitoringDashboardCubit>()..initDashboard(),
+          create: (_) {
+            final cubit = getIt<MonitoringDashboardCubit>();
+            if (initialFactoryId != null) {
+              cubit.setFactoryFilter(initialFactoryId);
+            }
+            return cubit..initDashboard(factoryId: initialFactoryId);
+          },
         ),
         BlocProvider<InfrastructureCubit>.value(
-          value: getIt<InfrastructureCubit>()..loadInfrastructure(),
+          value: getIt<InfrastructureCubit>()
+            ..loadInfrastructure(factoryId: initialFactoryId),
         ),
       ],
-      child: const _WallDisplayView(),
+      child: _WallDisplayView(initialFactoryId: initialFactoryId),
     );
   }
 }
 
 class _WallDisplayView extends StatefulWidget {
-  const _WallDisplayView();
+  final String? initialFactoryId;
+  const _WallDisplayView({this.initialFactoryId});
 
   @override
   State<_WallDisplayView> createState() => _WallDisplayViewState();
@@ -43,10 +57,12 @@ class _WallDisplayView extends StatefulWidget {
 
 class _WallDisplayViewState extends State<_WallDisplayView> {
   final FocusNode _focusNode = FocusNode();
+  String? _currentFactoryId;
 
   @override
   void initState() {
     super.initState();
+    _currentFactoryId = widget.initialFactoryId;
     // Default to severity sorting for Wall Display Mode and clear all filters to guarantee all approved devices are visible
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final cubit = context.read<MonitoringDashboardCubit>();
@@ -57,6 +73,9 @@ class _WallDisplayViewState extends State<_WallDisplayView> {
       cubit.setTypeFilter(null);
       cubit.setEnabledFilter(null);
       cubit.setSorting('severity');
+      if (_currentFactoryId != null) {
+        cubit.setFactoryFilter(_currentFactoryId);
+      }
     });
   }
 
@@ -152,6 +171,23 @@ class _WallDisplayViewState extends State<_WallDisplayView> {
                       isConnected: isConnected,
                       lastUpdatedAt: lastUpdated,
                       currentSortBy: state.sortBy,
+                      activeFactoryId: _currentFactoryId,
+                      onFactoryChanged: (factoryId) {
+                        setState(() {
+                          _currentFactoryId = factoryId;
+                        });
+                        try {
+                          context
+                              .read<FactoryCubit>()
+                              .selectFactoryById(factoryId);
+                        } catch (_) {}
+                        context
+                            .read<MonitoringDashboardCubit>()
+                            .setFactoryFilter(factoryId);
+                        context
+                            .read<InfrastructureCubit>()
+                            .setFactory(factoryId);
+                      },
                       onSortChanged: (sortBy) {
                         context.read<MonitoringDashboardCubit>().setSorting(
                           sortBy,
@@ -167,20 +203,20 @@ class _WallDisplayViewState extends State<_WallDisplayView> {
                           vertical: 4,
                           horizontal: 16,
                         ),
-                        color: AppColors.statusDown.withValues(alpha: 0.9),
-                        child: const Row(
+                        color: tokens.statusOfflineSurface,
+                        child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             Icon(
                               Icons.wifi_off_rounded,
-                              color: Colors.white,
+                              color: tokens.onStatusOffline,
                               size: 16,
                             ),
-                            SizedBox(width: 8),
+                            const SizedBox(width: 8),
                             Text(
                               'SERVICE DISCONNECTED — DISPLAYING LAST KNOWN MONITORING STATE',
                               style: TextStyle(
-                                color: Colors.white,
+                                color: tokens.onStatusOffline,
                                 fontWeight: FontWeight.bold,
                                 fontSize: 11,
                                 letterSpacing: 0.5,

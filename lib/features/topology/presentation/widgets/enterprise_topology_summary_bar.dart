@@ -1,19 +1,10 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_dimensions.dart';
 import '../../domain/entities/enterprise_topology_models.dart';
 
-/// Top Summary Bar matching enterprise network management layout diagrams.
-///
-/// Displays category icons and live online/total ratios:
-/// - Gateway: X/Y
-/// - Switch: X/Y
-/// - AP: X/Y
-/// - Server: X/Y
-/// - PC: X/Y
-/// - Laptop: X/Y
-///
-/// Numerator = verified online devices in that category.
-/// Denominator = total monitored devices in that category.
+/// Top horizontal telemetry strip above the topology canvas.
 class EnterpriseTopologySummaryBar extends StatelessWidget {
   final Map<TopologyDeviceCategory, dynamic> stats;
   final String searchQuery;
@@ -32,13 +23,15 @@ class EnterpriseTopologySummaryBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = context.appTokens;
+
     return Container(
-      height: 44,
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      decoration: const BoxDecoration(
-        color: Color(0xFF1E293B), // Dark surface
+      height: 48,
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+      decoration: BoxDecoration(
+        color: tokens.header,
         border: Border(
-          bottom: BorderSide(color: Color(0xFF334155), width: 1.0),
+          bottom: BorderSide(color: tokens.border, width: 1.0),
         ),
       ),
       child: Row(
@@ -54,85 +47,84 @@ class EnterpriseTopologySummaryBar extends StatelessWidget {
                     icon: Icons.router_rounded,
                     label: 'Gateway',
                     stats: stats[TopologyDeviceCategory.gateway] ?? (0, 0),
-                    color: const Color(0xFF38BDF8),
+                    color: tokens.primary,
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: AppSpacing.sm),
                   _CategoryStatPill(
                     icon: Icons.hub_rounded,
                     label: 'Switch',
                     stats: stats[TopologyDeviceCategory.switchDevice] ?? (0, 0),
-                    color: const Color(0xFF2DD4BF),
+                    color: tokens.accent,
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: AppSpacing.sm),
                   _CategoryStatPill(
                     icon: Icons.wifi_rounded,
                     label: 'AP',
                     stats: stats[TopologyDeviceCategory.accessPoint] ?? (0, 0),
-                    color: const Color(0xFF34D399),
+                    color: tokens.statusOnline,
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: AppSpacing.sm),
                   _CategoryStatPill(
                     icon: Icons.dns_rounded,
                     label: 'Server',
                     stats: stats[TopologyDeviceCategory.server] ?? (0, 0),
-                    color: const Color(0xFFFB923C),
+                    color: tokens.statusDegraded,
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: AppSpacing.sm),
                   _CategoryStatPill(
                     icon: Icons.desktop_windows_rounded,
                     label: 'PC',
                     stats: stats[TopologyDeviceCategory.pc] ?? (0, 0),
-                    color: const Color(0xFF60A5FA),
+                    color: tokens.primary,
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: AppSpacing.sm),
                   _CategoryStatPill(
                     icon: Icons.laptop_rounded,
                     label: 'Laptop',
                     stats: stats[TopologyDeviceCategory.laptop] ?? (0, 0),
-                    color: const Color(0xFF818CF8),
+                    color: tokens.statusMaintenance,
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: AppSpacing.sm),
                   _CategoryStatPill(
                     icon: Icons.print_rounded,
                     label: 'Printer',
                     stats: stats[TopologyDeviceCategory.printer] ?? (0, 0),
-                    color: const Color(0xFF94A3B8),
+                    color: tokens.onSurfaceVariant,
                   ),
                 ],
               ),
             ),
           ),
+          const SizedBox(width: AppSpacing.md),
 
-          const SizedBox(width: 14),
-
-          // ── Search Field in Summary Row ────────────────────────────────────
+          // ── Fast Topology Node Locator Input ──────────────────────────────
           SizedBox(
             width: 220,
-            height: 30,
+            height: 32,
             child: TextField(
               controller: TextEditingController(text: searchQuery)
                 ..selection = TextSelection.fromPosition(
                   TextPosition(offset: searchQuery.length),
                 ),
               onChanged: onSearchChanged,
-              style: const TextStyle(fontSize: 12.0, color: Color(0xFFF8FAFC)),
+              style: TextStyle(fontSize: 12.0, color: tokens.onInput),
               decoration: InputDecoration(
                 hintText: 'Locate device or IP…',
-                hintStyle: const TextStyle(
+                hintStyle: TextStyle(
                   fontSize: 11.5,
-                  color: Color(0xFF64748B),
+                  color: tokens.inputHint,
                 ),
-                prefixIcon: const Icon(
+                prefixIcon: Icon(
                   Icons.search_rounded,
                   size: 15,
-                  color: Color(0xFF94A3B8),
+                  color: tokens.onSurfaceVariant,
                 ),
                 suffixIcon: searchQuery.isNotEmpty
                     ? IconButton(
-                        icon: const Icon(
+                        icon: Icon(
                           Icons.close_rounded,
                           size: 13,
-                          color: Color(0xFF94A3B8),
+                          color: tokens.onSurfaceVariant,
                         ),
                         onPressed: onClearSearch,
                         padding: EdgeInsets.zero,
@@ -144,18 +136,18 @@ class EnterpriseTopologySummaryBar extends StatelessWidget {
                   vertical: 0,
                 ),
                 filled: true,
-                fillColor: const Color(0xFF0F172A),
+                fillColor: tokens.input,
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(6),
-                  borderSide: const BorderSide(color: Color(0xFF334155)),
+                  borderRadius: BorderRadius.circular(AppRadius.sm),
+                  borderSide: BorderSide(color: tokens.border),
                 ),
                 enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(6),
-                  borderSide: const BorderSide(color: Color(0xFF334155)),
+                  borderRadius: BorderRadius.circular(AppRadius.sm),
+                  borderSide: BorderSide(color: tokens.border),
                 ),
                 focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(6),
-                  borderSide: const BorderSide(color: Color(0xFF38BDF8)),
+                  borderRadius: BorderRadius.circular(AppRadius.sm),
+                  borderSide: BorderSide(color: tokens.accent, width: 1.5),
                 ),
               ),
             ),
@@ -164,10 +156,10 @@ class EnterpriseTopologySummaryBar extends StatelessWidget {
           if (onRefresh != null) ...[
             const SizedBox(width: 6),
             IconButton(
-              icon: const Icon(
+              icon: Icon(
                 Icons.refresh_rounded,
                 size: 17,
-                color: Color(0xFF94A3B8),
+                color: tokens.onSurfaceVariant,
               ),
               tooltip: 'Refresh Topology Data',
               onPressed: onRefresh,
@@ -195,6 +187,7 @@ class _CategoryStatPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = context.appTokens;
     int online = 0;
     int offline = 0;
     int degraded = 0;
@@ -231,20 +224,28 @@ class _CategoryStatPill extends StatelessWidget {
         '• Unknown: $unknown\n'
         '• Total Registered: $total';
 
+    final Color statusTextColor = hasDown
+        ? tokens.statusOffline
+        : hasWarning
+            ? tokens.statusDegraded
+            : allOnline
+                ? tokens.statusOnline
+                : tokens.onSurfaceVariant;
+
     return Tooltip(
       message: tooltipMsg,
       preferBelow: false,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm, vertical: AppSpacing.xs),
         decoration: BoxDecoration(
-          color: const Color(0xFF0F172A),
-          borderRadius: BorderRadius.circular(5),
+          color: tokens.card,
+          borderRadius: BorderRadius.circular(AppRadius.xs),
           border: Border.all(
             color: hasDown
-                ? const Color(0xFFEF4444).withValues(alpha: 0.6)
+                ? tokens.statusOffline.withValues(alpha: 0.6)
                 : hasWarning
-                ? const Color(0xFFF59E0B).withValues(alpha: 0.6)
-                : const Color(0xFF334155),
+                    ? tokens.statusDegraded.withValues(alpha: 0.6)
+                    : tokens.border,
           ),
         ),
         child: Row(
@@ -254,10 +255,10 @@ class _CategoryStatPill extends StatelessWidget {
             const SizedBox(width: 5),
             Text(
               '$label: ',
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 11.5,
                 fontWeight: FontWeight.w600,
-                color: Color(0xFF94A3B8),
+                color: tokens.onSurfaceVariant,
               ),
             ),
             Text(
@@ -265,14 +266,8 @@ class _CategoryStatPill extends StatelessWidget {
               style: TextStyle(
                 fontSize: 11.5,
                 fontWeight: FontWeight.w700,
-                fontFamily: 'Consolas',
-                color: hasDown
-                    ? const Color(0xFFEF4444)
-                    : hasWarning
-                    ? const Color(0xFFF59E0B)
-                    : allOnline
-                    ? const Color(0xFF10B981)
-                    : const Color(0xFF94A3B8),
+                fontFamily: 'monospace',
+                color: statusTextColor,
               ),
             ),
           ],

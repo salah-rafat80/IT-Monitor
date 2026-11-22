@@ -5,8 +5,10 @@ import '../../features/dashboard/presentation/pages/dashboard_page.dart';
 import '../../features/devices/presentation/pages/devices_page.dart';
 import '../../features/infrastructure/presentation/pages/infrastructure_page.dart';
 import '../../features/inventory/presentation/pages/inventory_page.dart';
+import '../../features/network_blueprint/presentation/pages/network_blueprint_page.dart';
 import '../../features/network_discovery/presentation/pages/network_discovery_page.dart';
 import '../../features/settings/presentation/pages/settings_page.dart';
+import '../../features/theme/presentation/pages/palette_editor_page.dart';
 import '../../features/topology/presentation/pages/topology_page.dart';
 import '../../features/wall_display/presentation/pages/wall_display_page.dart';
 import '../presentation/widgets/desktop_shell.dart';
@@ -58,12 +60,20 @@ class AppRouter {
             builder: (context, state) => const TopologyPage(),
           ),
           GoRoute(
+            path: '/network-blueprint',
+            builder: (context, state) => const NetworkBlueprintPage(),
+          ),
+          GoRoute(
             path: '/discovery',
             builder: (context, state) => const NetworkDiscoveryPage(),
           ),
           GoRoute(
             path: '/settings',
             builder: (context, state) => const SettingsPage(),
+          ),
+          GoRoute(
+            path: '/palette-editor',
+            builder: (context, state) => const PaletteEditorPage(),
           ),
         ],
       ),

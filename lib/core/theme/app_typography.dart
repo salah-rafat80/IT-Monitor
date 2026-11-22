@@ -1,114 +1,139 @@
 import 'package:flutter/material.dart';
-import 'app_colors.dart';
 
+/// Material Design 3 Typography System for IT Network Monitor 2.0.
+///
+/// Implements the full 15-scale semantic M3 typography:
+/// - Display (Large, Medium, Small)
+/// - Headline (Large, Medium, Small)
+/// - Title (Large, Medium, Small)
+/// - Body (Large, Medium, Small)
+/// - Label (Large, Medium, Small)
 class AppTypography {
-  static const TextTheme darkTextTheme = TextTheme(
-    displayLarge: TextStyle(
-      fontSize: 32,
-      fontWeight: FontWeight.bold,
-      color: AppColors.darkTextPrimary,
-      letterSpacing: -0.5,
-    ),
-    displayMedium: TextStyle(
-      fontSize: 28,
-      fontWeight: FontWeight.bold,
-      color: AppColors.darkTextPrimary,
-      letterSpacing: -0.5,
-    ),
-    headlineLarge: TextStyle(
-      fontSize: 24,
-      fontWeight: FontWeight.bold,
-      color: AppColors.darkTextPrimary,
-    ),
-    headlineMedium: TextStyle(
-      fontSize: 20,
-      fontWeight: FontWeight.w600,
-      color: AppColors.darkTextPrimary,
-    ),
-    titleLarge: TextStyle(
-      fontSize: 18,
-      fontWeight: FontWeight.w600,
-      color: AppColors.darkTextPrimary,
-    ),
-    titleMedium: TextStyle(
-      fontSize: 16,
-      fontWeight: FontWeight.w600,
-      color: AppColors.darkTextPrimary,
-    ),
-    titleSmall: TextStyle(
-      fontSize: 14,
-      fontWeight: FontWeight.w500,
-      color: AppColors.darkTextPrimary,
-    ),
-    bodyLarge: TextStyle(
-      fontSize: 15,
-      fontWeight: FontWeight.normal,
-      color: AppColors.darkTextPrimary,
-    ),
-    bodyMedium: TextStyle(
-      fontSize: 14,
-      fontWeight: FontWeight.normal,
-      color: AppColors.darkTextSecondary,
-    ),
-    bodySmall: TextStyle(
-      fontSize: 12,
-      fontWeight: FontWeight.normal,
-      color: AppColors.darkTextSecondary,
-    ),
+  AppTypography._();
+
+  /// Builds a fully dynamic Material 3 [TextTheme] bound to the active surface text colors.
+  static TextTheme buildTextTheme({
+    required Color onSurface,
+    required Color onSurfaceVariant,
+  }) {
+    return TextTheme(
+      displayLarge: TextStyle(
+        fontSize: 57,
+        fontWeight: FontWeight.w400,
+        letterSpacing: -0.25,
+        height: 1.12,
+        color: onSurface,
+      ),
+      displayMedium: TextStyle(
+        fontSize: 45,
+        fontWeight: FontWeight.w400,
+        letterSpacing: 0,
+        height: 1.15,
+        color: onSurface,
+      ),
+      displaySmall: TextStyle(
+        fontSize: 36,
+        fontWeight: FontWeight.w400,
+        letterSpacing: 0,
+        height: 1.22,
+        color: onSurface,
+      ),
+      headlineLarge: TextStyle(
+        fontSize: 32,
+        fontWeight: FontWeight.w600,
+        letterSpacing: 0,
+        height: 1.25,
+        color: onSurface,
+      ),
+      headlineMedium: TextStyle(
+        fontSize: 28,
+        fontWeight: FontWeight.w600,
+        letterSpacing: 0,
+        height: 1.28,
+        color: onSurface,
+      ),
+      headlineSmall: TextStyle(
+        fontSize: 24,
+        fontWeight: FontWeight.w600,
+        letterSpacing: 0,
+        height: 1.33,
+        color: onSurface,
+      ),
+      titleLarge: TextStyle(
+        fontSize: 22,
+        fontWeight: FontWeight.w600,
+        letterSpacing: 0,
+        height: 1.27,
+        color: onSurface,
+      ),
+      titleMedium: TextStyle(
+        fontSize: 16,
+        fontWeight: FontWeight.w600,
+        letterSpacing: 0.15,
+        height: 1.5,
+        color: onSurface,
+      ),
+      titleSmall: TextStyle(
+        fontSize: 14,
+        fontWeight: FontWeight.w500,
+        letterSpacing: 0.1,
+        height: 1.43,
+        color: onSurface,
+      ),
+      bodyLarge: TextStyle(
+        fontSize: 16,
+        fontWeight: FontWeight.w400,
+        letterSpacing: 0.5,
+        height: 1.5,
+        color: onSurface,
+      ),
+      bodyMedium: TextStyle(
+        fontSize: 14,
+        fontWeight: FontWeight.w400,
+        letterSpacing: 0.25,
+        height: 1.43,
+        color: onSurfaceVariant,
+      ),
+      bodySmall: TextStyle(
+        fontSize: 12,
+        fontWeight: FontWeight.w400,
+        letterSpacing: 0.4,
+        height: 1.33,
+        color: onSurfaceVariant,
+      ),
+      labelLarge: TextStyle(
+        fontSize: 14,
+        fontWeight: FontWeight.w600,
+        letterSpacing: 0.1,
+        height: 1.43,
+        color: onSurface,
+      ),
+      labelMedium: TextStyle(
+        fontSize: 12,
+        fontWeight: FontWeight.w600,
+        letterSpacing: 0.5,
+        height: 1.33,
+        color: onSurfaceVariant,
+      ),
+      labelSmall: TextStyle(
+        fontSize: 11,
+        fontWeight: FontWeight.w500,
+        letterSpacing: 0.5,
+        height: 1.45,
+        color: onSurfaceVariant,
+      ),
+    );
+  }
+
+  /// Dark fallback TextTheme
+  static final TextTheme darkTextTheme = buildTextTheme(
+    onSurface: const Color(0xFFF8FAFC),
+    onSurfaceVariant: const Color(0xFF94A3C4),
   );
 
-  static const TextTheme lightTextTheme = TextTheme(
-    displayLarge: TextStyle(
-      fontSize: 32,
-      fontWeight: FontWeight.bold,
-      color: AppColors.lightTextPrimary,
-      letterSpacing: -0.5,
-    ),
-    displayMedium: TextStyle(
-      fontSize: 28,
-      fontWeight: FontWeight.bold,
-      color: AppColors.lightTextPrimary,
-      letterSpacing: -0.5,
-    ),
-    headlineLarge: TextStyle(
-      fontSize: 24,
-      fontWeight: FontWeight.bold,
-      color: AppColors.lightTextPrimary,
-    ),
-    headlineMedium: TextStyle(
-      fontSize: 20,
-      fontWeight: FontWeight.w600,
-      color: AppColors.lightTextPrimary,
-    ),
-    titleLarge: TextStyle(
-      fontSize: 18,
-      fontWeight: FontWeight.w600,
-      color: AppColors.lightTextPrimary,
-    ),
-    titleMedium: TextStyle(
-      fontSize: 16,
-      fontWeight: FontWeight.w600,
-      color: AppColors.lightTextPrimary,
-    ),
-    titleSmall: TextStyle(
-      fontSize: 14,
-      fontWeight: FontWeight.w500,
-      color: AppColors.lightTextPrimary,
-    ),
-    bodyLarge: TextStyle(
-      fontSize: 15,
-      fontWeight: FontWeight.normal,
-      color: AppColors.lightTextPrimary,
-    ),
-    bodyMedium: TextStyle(
-      fontSize: 14,
-      fontWeight: FontWeight.normal,
-      color: AppColors.lightTextSecondary,
-    ),
-    bodySmall: TextStyle(
-      fontSize: 12,
-      fontWeight: FontWeight.normal,
-      color: AppColors.lightTextSecondary,
-    ),
+  /// Light fallback TextTheme
+  static final TextTheme lightTextTheme = buildTextTheme(
+    onSurface: const Color(0xFF0F172A),
+    onSurfaceVariant: const Color(0xFF475569),
   );
 }

@@ -1,20 +1,14 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
+import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_dimensions.dart';
 import '../../../monitoring/domain/entities/device_status_entity.dart';
 import '../../domain/entities/enterprise_topology_models.dart';
 import 'enterprise_device_card.dart';
 import 'enterprise_topology_controls.dart';
 
 /// Interactive Enterprise Topology Canvas.
-///
-/// Features:
-/// - Light canvas with subtle square grid.
-/// - Deterministic left-to-right layout.
-/// - Smooth bezier connection lines with interface port labels (e.g. Gi0/1, Port 1).
-/// - White rectangular device cards with status borders.
-/// - Floating vertical controls (Fit-to-view, Zoom in/out, Zoom %).
-/// - Mouse pan & zoom with interactive bounds.
 class EnterpriseTopologyCanvas extends StatefulWidget {
   final EnterpriseTopologyGraph graph;
   final String searchQuery;
@@ -49,20 +43,18 @@ class _EnterpriseTopologyCanvasState extends State<EnterpriseTopologyCanvas>
     _transformationController = TransformationController();
     _transformationController.addListener(_onTransformationChanged);
 
-    _animController =
-        AnimationController(
-          vsync: this,
-          duration: const Duration(milliseconds: 350),
-        )..addListener(() {
-          if (_animation != null) {
-            _transformationController.value = _animation!.value;
-          }
-        });
+    _animController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+    )..addListener(() {
+      if (_animation != null) {
+        _transformationController.value = _animation!.value;
+      }
+    });
 
-    // Auto fit-to-view initially after layout is available
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
-        fitToView();
+        _fitToView();
       }
     });
   }
@@ -84,126 +76,70 @@ class _EnterpriseTopologyCanvasState extends State<EnterpriseTopologyCanvas>
     }
   }
 
-  void _animateToMatrix(Matrix4 targetMatrix) {
-    _animation =
-        Matrix4Tween(
-          begin: _transformationController.value,
-          end: targetMatrix,
-        ).animate(
-          CurvedAnimation(parent: _animController, curve: Curves.easeOutCubic),
-        );
-    _animController.forward(from: 0);
+  void _zoomIn() {
+    final matrix = _transformationController.value.clone();
+    matrix.scaleByDouble(1.25, 1.25, 1.0, 1.0);
+    _animateToMatrix(matrix);
   }
 
-  static const double canvasPadding = 1200.0;
+  void _zoomOut() {
+    final matrix = _transformationController.value.clone();
+    matrix.scaleByDouble(0.8, 0.8, 1.0, 1.0);
+    _animateToMatrix(matrix);
+  }
 
-  /// Fit the entire topology graph into the current viewport based on actual node bounds.
-  void fitToView() {
+  void _resetZoom() {
+    _animateToMatrix(Matrix4.identity());
+  }
+
+  void _fitToView() {
     final renderBox = context.findRenderObject() as RenderBox?;
     if (renderBox == null || !renderBox.hasSize) return;
 
     final viewportSize = renderBox.size;
-    final allNodes = widget.graph.nodes.values;
-    if (allNodes.isEmpty) return;
+    final contentSize = widget.graph.canvasSize;
 
-    double minX = double.infinity;
-    double minY = double.infinity;
-    double maxX = double.negativeInfinity;
-    double maxY = double.negativeInfinity;
+    if (contentSize.width <= 0 || contentSize.height <= 0) return;
 
-    for (final node in allNodes) {
-      final nx = node.position.dx + canvasPadding;
-      final ny = node.position.dy + canvasPadding;
-      if (nx < minX) minX = nx;
-      if (ny < minY) minY = ny;
-      final r = nx + node.size.width;
-      final b = ny + node.size.height;
-      if (r > maxX) maxX = r;
-      if (b > maxY) maxY = b;
-    }
+    final padding = 48.0;
+    final scaleX = (viewportSize.width - padding * 2) / contentSize.width;
+    final scaleY = (viewportSize.height - padding * 2) / contentSize.height;
+    final scale = math.min(scaleX, scaleY).clamp(0.25, 1.2);
 
-    final boundsW = maxX - minX;
-    final boundsH = maxY - minY;
-    if (boundsW <= 0 || boundsH <= 0) return;
+    final dx = (viewportSize.width - contentSize.width * scale) / 2;
+    final dy = (viewportSize.height - contentSize.height * scale) / 2;
 
-    const double padH = 48.0;
-    const double padV = 36.0;
-
-    final double scaleX = (viewportSize.width - padH * 2) / boundsW;
-    final double scaleY = (viewportSize.height - padV * 2) / boundsH;
-    double scale = math.min(scaleX, scaleY).clamp(0.40, 1.15);
-
-    // Center the diagram bounds inside the viewport
-    final double tx = (viewportSize.width - boundsW * scale) / 2 - minX * scale;
-    final double ty =
-        (viewportSize.height - boundsH * scale) / 2 - minY * scale;
-
-    final matrix = Matrix4.diagonal3Values(scale, scale, 1.0)
-      ..setTranslationRaw(tx, ty, 0.0);
+    // ignore: deprecated_member_use
+    final matrix = Matrix4.identity()
+      // ignore: deprecated_member_use
+      ..translate(dx, dy)
+      // ignore: deprecated_member_use
+      ..scale(scale);
 
     _animateToMatrix(matrix);
   }
 
-  void zoomIn() {
-    final renderBox = context.findRenderObject() as RenderBox?;
-    final size = renderBox?.size ?? const Size(800, 600);
-    final center = Offset(size.width / 2, size.height / 2);
+  void _animateToMatrix(Matrix4 target) {
+    _animation = Matrix4Tween(
+      begin: _transformationController.value,
+      end: target,
+    ).animate(CurvedAnimation(parent: _animController, curve: Curves.easeOutCubic));
 
-    _zoom(1.25, center);
-  }
-
-  void zoomOut() {
-    final renderBox = context.findRenderObject() as RenderBox?;
-    final size = renderBox?.size ?? const Size(800, 600);
-    final center = Offset(size.width / 2, size.height / 2);
-
-    _zoom(0.8, center);
-  }
-
-  void resetZoom() {
-    double minX = double.infinity;
-    double minY = double.infinity;
-    for (final node in widget.graph.nodes.values) {
-      if (node.position.dx < minX) minX = node.position.dx;
-      if (node.position.dy < minY) minY = node.position.dy;
-    }
-    if (minX.isInfinite) {
-      minX = 0;
-      minY = 0;
-    }
-    final tx = 40.0 - (minX + canvasPadding);
-    final ty = 40.0 - (minY + canvasPadding);
-    final matrix = Matrix4.identity()..setTranslationRaw(tx, ty, 0.0);
-    _animateToMatrix(matrix);
-  }
-
-  void _zoom(double factor, Offset focalPoint) {
-    final currentMatrix = _transformationController.value;
-    final currentScale = currentMatrix.getMaxScaleOnAxis();
-    final newScale = (currentScale * factor).clamp(0.2, 2.5);
-    final actualFactor = newScale / currentScale;
-
-    final oldTx = currentMatrix.storage[12];
-    final oldTy = currentMatrix.storage[13];
-    final newTx = focalPoint.dx - actualFactor * (focalPoint.dx - oldTx);
-    final newTy = focalPoint.dy - actualFactor * (focalPoint.dy - oldTy);
-
-    final targetMatrix = Matrix4.diagonal3Values(newScale, newScale, 1.0)
-      ..setTranslationRaw(newTx, newTy, 0.0);
-
-    _animateToMatrix(targetMatrix);
+    _animController.forward(from: 0);
   }
 
   @override
   Widget build(BuildContext context) {
+    final tokens = context.appTokens;
     final allNodes = widget.graph.nodes;
     final links = widget.graph.links;
     final search = widget.searchQuery.trim().toLowerCase();
 
     return ColoredBox(
-      color: const Color(0xFF0F172A),
+      color: tokens.background,
       child: LayoutBuilder(
         builder: (context, constraints) {
+          const canvasPadding = 32.0;
           final double canvasW = math.max(
             widget.graph.canvasSize.width + canvasPadding * 2,
             constraints.maxWidth,
@@ -228,20 +164,16 @@ class _EnterpriseTopologyCanvasState extends State<EnterpriseTopologyCanvas>
                     child: Container(
                       width: effectiveCanvasSize.width,
                       height: effectiveCanvasSize.height,
-                      color: const Color(
-                        0xFF0F172A,
-                      ), // Unified enterprise dark canvas
+                      color: tokens.background,
                       child: Stack(
                         children: [
-                          // Layer 1: Background Square Grid across entire viewport
+                          // Layer 1: Background Square Grid
                           Positioned.fill(
                             child: CustomPaint(
                               size: effectiveCanvasSize,
                               painter: _EnterpriseGridPainter(
                                 gridSpacing: 24.0,
-                                gridColor: const Color(
-                                  0xFF1E293B,
-                                ).withValues(alpha: 0.6),
+                                gridColor: tokens.border.withValues(alpha: 0.3),
                               ),
                             ),
                           ),
@@ -251,42 +183,40 @@ class _EnterpriseTopologyCanvasState extends State<EnterpriseTopologyCanvas>
                             child: CustomPaint(
                               size: effectiveCanvasSize,
                               painter: EnterpriseLinksPainter(
-                                nodes: allNodes,
+                                nodes: allNodes.values.toList(),
                                 links: links,
                                 selectedLinkId: _selectedLinkId,
                                 canvasPadding: canvasPadding,
+                                tokens: tokens,
                               ),
                             ),
                           ),
 
-                          // Layer 3: Interactive Device Cards
+                          // Layer 3: Interactive Rectangular Device Cards
                           ...allNodes.values.map((node) {
-                            final isSelected = node.id == _selectedNodeId;
-                            final isHighlighted =
-                                search.isNotEmpty &&
+                            final isMatch = search.isNotEmpty &&
                                 (node.title.toLowerCase().contains(search) ||
-                                    (node.subtitle?.toLowerCase().contains(
-                                          search,
-                                        ) ??
-                                        false) ||
-                                    (node.location?.toLowerCase().contains(
-                                          search,
-                                        ) ??
-                                        false));
+                                    (node.subtitle?.toLowerCase().contains(search) ?? false) ||
+                                    node.category.displayName.toLowerCase().contains(search));
+
+                            final isDimmed = search.isNotEmpty && !isMatch;
 
                             return Positioned(
                               left: node.position.dx + canvasPadding,
                               top: node.position.dy + canvasPadding,
-                              child: EnterpriseDeviceCard(
-                                node: node,
-                                isSelected: isSelected,
-                                isHighlighted: isHighlighted,
-                                onTap: () {
-                                  setState(() {
-                                    _selectedNodeId = node.id;
-                                  });
-                                  widget.onNodeSelected?.call(node);
-                                },
+                              child: Opacity(
+                                opacity: isDimmed ? 0.25 : 1.0,
+                                child: EnterpriseDeviceCard(
+                                  node: node,
+                                  isSelected: node.id == _selectedNodeId,
+                                  isHighlighted: isMatch,
+                                  onTap: () {
+                                    setState(() {
+                                      _selectedNodeId = node.id;
+                                    });
+                                    widget.onNodeSelected?.call(node);
+                                  },
+                                ),
                               ),
                             );
                           }),
@@ -297,17 +227,17 @@ class _EnterpriseTopologyCanvasState extends State<EnterpriseTopologyCanvas>
                 ),
               ),
 
-              // ── Floating Left-Side Canvas Controls ──────────────────────────
+              // ── Floating Zoom & View Controls (Left Center) ──────────────────
               Positioned(
-                left: 20,
-                top: 20,
+                left: 16,
+                top: 16,
                 child: EnterpriseTopologyControls(
-                  currentZoom: _currentScale,
-                  onFitToView: fitToView,
-                  onZoomIn: zoomIn,
-                  onZoomOut: zoomOut,
-                  onResetZoom: resetZoom,
-                  onHelp: () => _showTopologyLegend(context),
+                  zoomPercent: (_currentScale * 100).round(),
+                  onZoomIn: _zoomIn,
+                  onZoomOut: _zoomOut,
+                  onResetZoom: _resetZoom,
+                  onFitToView: _fitToView,
+                  onLegendTap: () => _showTopologyLegend(context, tokens),
                 ),
               ),
             ],
@@ -317,22 +247,22 @@ class _EnterpriseTopologyCanvasState extends State<EnterpriseTopologyCanvas>
     );
   }
 
-  void _showTopologyLegend(BuildContext context) {
+  void _showTopologyLegend(BuildContext context, AppColors tokens) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1E293B),
+        backgroundColor: tokens.card,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
-          side: const BorderSide(color: Color(0xFF334155)),
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+          side: BorderSide(color: tokens.border),
         ),
-        title: const Row(
+        title: Row(
           children: [
-            Icon(Icons.hub_rounded, color: Color(0xFF38BDF8)),
-            SizedBox(width: 10),
+            Icon(Icons.hub_rounded, color: tokens.primary),
+            const SizedBox(width: 10),
             Text(
               'Network Topology Legend & Guide',
-              style: TextStyle(color: Color(0xFFF8FAFC)),
+              style: TextStyle(color: tokens.onCard, fontSize: 16, fontWeight: FontWeight.bold),
             ),
           ],
         ),
@@ -342,16 +272,16 @@ class _EnterpriseTopologyCanvasState extends State<EnterpriseTopologyCanvas>
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
+              Text(
                 'Layout Hierarchy (Left to Right):',
                 style: TextStyle(
                   fontWeight: FontWeight.w700,
                   fontSize: 13,
-                  color: Color(0xFFF8FAFC),
+                  color: tokens.onCard,
                 ),
               ),
               const SizedBox(height: 6),
-              const Text(
+              Text(
                 '• Level 0: External WAN / Internet\n'
                 '• Level 1: Enterprise Gateway / Core Routers\n'
                 '• Level 2: Distribution & Location Switches\n'
@@ -359,51 +289,55 @@ class _EnterpriseTopologyCanvasState extends State<EnterpriseTopologyCanvas>
                 '• Level 4: Monitored Endpoints (Workstations, Laptops, Servers, Printers)',
                 style: TextStyle(
                   fontSize: 12,
-                  color: Color(0xFF94A3B8),
+                  color: tokens.onSurfaceVariant,
                   height: 1.4,
                 ),
               ),
               const SizedBox(height: 14),
-              const Text(
+              Text(
                 'Status Color Code:',
                 style: TextStyle(
                   fontWeight: FontWeight.w700,
                   fontSize: 13,
-                  color: Color(0xFFF8FAFC),
+                  color: tokens.onCard,
                 ),
               ),
               const SizedBox(height: 6),
               _buildLegendRow(
-                const Color(0xFF10B981),
+                tokens.statusOnline,
                 'Online / Healthy: Normal operational response',
+                tokens,
               ),
               _buildLegendRow(
-                const Color(0xFFEF4444),
+                tokens.statusOffline,
                 'Down: Consecutive ICMP/Service ping timeouts',
+                tokens,
               ),
               _buildLegendRow(
-                const Color(0xFFF59E0B),
+                tokens.statusDegraded,
                 'Degraded: Packet loss or elevated latency',
+                tokens,
               ),
               _buildLegendRow(
-                const Color(0xFF94A3B8),
+                tokens.statusUnknown,
                 'Unknown: Insufficient reachability evidence',
+                tokens,
               ),
               const SizedBox(height: 14),
-              const Text(
+              Text(
                 'Navigation Controls:',
                 style: TextStyle(
                   fontWeight: FontWeight.w700,
                   fontSize: 13,
-                  color: Color(0xFFF8FAFC),
+                  color: tokens.onCard,
                 ),
               ),
               const SizedBox(height: 6),
-              const Text(
+              Text(
                 '• Pan: Click and drag anywhere on the canvas\n'
                 '• Zoom: Scroll wheel or use the floating left toolbar\n'
                 '• Inspect: Click any card to view detailed interface, IP, and location metrics',
-                style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
+                style: TextStyle(fontSize: 12, color: tokens.onSurfaceVariant),
               ),
             ],
           ),
@@ -411,9 +345,9 @@ class _EnterpriseTopologyCanvasState extends State<EnterpriseTopologyCanvas>
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text(
+            child: Text(
               'Close',
-              style: TextStyle(color: Color(0xFF38BDF8)),
+              style: TextStyle(color: tokens.primary),
             ),
           ),
         ],
@@ -421,7 +355,7 @@ class _EnterpriseTopologyCanvasState extends State<EnterpriseTopologyCanvas>
     );
   }
 
-  Widget _buildLegendRow(Color color, String text) {
+  Widget _buildLegendRow(Color color, String text, AppColors tokens) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 3),
       child: Row(
@@ -435,7 +369,7 @@ class _EnterpriseTopologyCanvasState extends State<EnterpriseTopologyCanvas>
           Expanded(
             child: Text(
               text,
-              style: const TextStyle(fontSize: 12, color: Color(0xFFCBD5E1)),
+              style: TextStyle(fontSize: 12, color: tokens.onSurfaceVariant),
             ),
           ),
         ],
@@ -444,26 +378,26 @@ class _EnterpriseTopologyCanvasState extends State<EnterpriseTopologyCanvas>
   }
 }
 
-/// Custom painter for subtle square grid lines on dark canvas.
+/// Custom painter for subtle square grid lines on canvas.
 class _EnterpriseGridPainter extends CustomPainter {
   final double gridSpacing;
   final Color gridColor;
 
-  _EnterpriseGridPainter({required this.gridSpacing, required this.gridColor});
+  _EnterpriseGridPainter({
+    required this.gridSpacing,
+    required this.gridColor,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
       ..color = gridColor
-      ..strokeWidth = 1.0
+      ..strokeWidth = 0.8
       ..style = PaintingStyle.stroke;
 
-    // Draw vertical lines
     for (double x = 0; x <= size.width; x += gridSpacing) {
       canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
     }
-
-    // Draw horizontal lines
     for (double y = 0; y <= size.height; y += gridSpacing) {
       canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
     }
@@ -476,36 +410,28 @@ class _EnterpriseGridPainter extends CustomPainter {
   }
 }
 
-/// Custom painter for smooth bezier connection paths and port interface badges.
-@visibleForTesting
+/// Custom Painter for bezier connection lines and port badges.
 class EnterpriseLinksPainter extends CustomPainter {
-  final Map<String, EnterpriseTopologyNode> nodes;
+  final List<EnterpriseTopologyNode> nodes;
   final List<EnterpriseTopologyLink> links;
   final String? selectedLinkId;
   final double canvasPadding;
+  final AppColors tokens;
 
   EnterpriseLinksPainter({
     required this.nodes,
     required this.links,
     this.selectedLinkId,
-    this.canvasPadding = 0.0,
+    this.canvasPadding = 32.0,
+    required this.tokens,
   });
 
-  /// Deterministically resolves link color based on strict precedence rules:
-  /// 1. Inferred links, WAN links, or links connected to inferred/WAN nodes: Always UNKNOWN gray.
-  /// 2. Verified physical links with DOWN or UNREACHABLE link/endpoints: RED (#EF4444).
-  /// 3. Verified physical links with STALE link/endpoints: YELLOW (#EAB308).
-  /// 4. Verified physical links where link status or either endpoint is UNKNOWN: GRAY (#64748B).
-  /// 5. Verified physical links with DEGRADED status or consecutive probe failures: AMBER (#F59E0B).
-  /// 6. GREEN (#10B981): Only when link and both endpoints are UP with zero probe failures.
-  /// 7. Any unclassified state: UNKNOWN gray.
   static Color resolveLinkColor({
     required EnterpriseTopologyNode fromNode,
     required EnterpriseTopologyNode toNode,
     required EnterpriseTopologyLink link,
+    AppColors? tokens,
   }) {
-    // 1. Inferred links, WAN links, or links connected to inferred/WAN nodes:
-    // Always UNKNOWN gray, regardless of endpoint status.
     final isInferredOrWan =
         link.isInferred ||
         fromNode.isInferred ||
@@ -514,11 +440,9 @@ class EnterpriseLinksPainter extends CustomPainter {
         toNode.category == TopologyDeviceCategory.wan;
 
     if (isInferredOrWan) {
-      return const Color(0xFF64748B); // Slate 500 / Unknown
+      return tokens?.statusUnknown ?? const Color(0xFF64748B);
     }
 
-    // 2. Verified physical links with DOWN or UNREACHABLE link/endpoints:
-    // RED (#EF4444). (DOWN takes precedence over UNKNOWN for verified physical links)
     final isDown =
         link.status == DeviceStatusEnum.down ||
         link.status == DeviceStatusEnum.unreachable ||
@@ -528,146 +452,143 @@ class EnterpriseLinksPainter extends CustomPainter {
         toNode.status == DeviceStatusEnum.unreachable;
 
     if (isDown) {
-      return const Color(0xFFEF4444); // Alert red
+      return tokens?.statusOffline ?? const Color(0xFFEF4444);
     }
 
-    // 3. Verified physical links with STALE link/endpoints:
-    // YELLOW (#EAB308).
     final isStale =
         link.status == DeviceStatusEnum.stale ||
         fromNode.status == DeviceStatusEnum.stale ||
         toNode.status == DeviceStatusEnum.stale;
 
     if (isStale) {
-      return const Color(0xFFEAB308); // Stale Amber/Yellow
+      return tokens?.statusDegraded ?? const Color(0xFFEAB308);
     }
 
-    // 4. Verified physical links where link status or either endpoint is UNKNOWN:
-    // GRAY (#64748B).
     final isUnknown =
         link.status == DeviceStatusEnum.unknown ||
         fromNode.status == DeviceStatusEnum.unknown ||
         toNode.status == DeviceStatusEnum.unknown;
 
     if (isUnknown) {
-      return const Color(0xFF64748B); // Slate 500 / Unknown
+      return tokens?.statusUnknown ?? const Color(0xFF64748B);
     }
 
-    // 5. Verified physical links with DEGRADED status or consecutive probe failures:
-    // AMBER (#F59E0B).
-    final isAmber =
+    final isDegraded =
         link.status == DeviceStatusEnum.degraded ||
         fromNode.status == DeviceStatusEnum.degraded ||
         toNode.status == DeviceStatusEnum.degraded ||
         fromNode.consecutiveFailures > 0 ||
         toNode.consecutiveFailures > 0;
 
-    if (isAmber) {
-      return const Color(0xFFF59E0B); // Amber warning
+    if (isDegraded) {
+      return tokens?.statusDegraded ?? const Color(0xFFF59E0B);
     }
 
-    // 6. GREEN (#10B981):
-    // Only when:
-    // - Link status is UP.
-    // - From endpoint status is UP.
-    // - To endpoint status is UP.
-    // - Both endpoints have zero consecutive failures.
-    // - Link is verified physical, not inferred, and not WAN.
-    final isGreen =
+    final isUp =
         link.status == DeviceStatusEnum.up &&
         fromNode.status == DeviceStatusEnum.up &&
-        toNode.status == DeviceStatusEnum.up &&
-        fromNode.consecutiveFailures == 0 &&
-        toNode.consecutiveFailures == 0;
+        toNode.status == DeviceStatusEnum.up;
 
-    if (isGreen) {
-      return const Color(0xFF10B981); // Enterprise Emerald green
+    if (isUp) {
+      return tokens?.statusOnline ?? const Color(0xFF10B981);
     }
 
-    // 7. Any unclassified state:
-    return const Color(0xFF64748B); // Slate 500 / Unknown
+    return tokens?.statusUnknown ?? const Color(0xFF64748B);
   }
 
   @override
   void paint(Canvas canvas, Size size) {
-    final linePaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round;
+    final nodeMap = {for (final n in nodes) n.id: n};
 
     for (final link in links) {
-      final fromNode = nodes[link.fromNodeId];
-      final toNode = nodes[link.toNodeId];
+      final fromNode = nodeMap[link.fromNodeId];
+      final toNode = nodeMap[link.toNodeId];
+
       if (fromNode == null || toNode == null) continue;
 
-      final start = fromNode.rightAnchor + Offset(canvasPadding, canvasPadding);
-      final end = toNode.leftAnchor + Offset(canvasPadding, canvasPadding);
-
+      final isSelected = link.id == selectedLinkId;
       final linkColor = resolveLinkColor(
         fromNode: fromNode,
         toNode: toNode,
         link: link,
+        tokens: tokens,
       );
 
-      linePaint
-        ..color = linkColor.withValues(
-          alpha: link.id == selectedLinkId ? 1.0 : 0.9,
-        )
-        ..strokeWidth = link.id == selectedLinkId ? 2.5 : 1.8;
+      Offset p1;
+      Offset p2;
+      Offset cp1;
+      Offset cp2;
 
-      final path = Path();
-      path.moveTo(start.dx, start.dy);
+      final isSameColumn =
+          (fromNode.position.dx - toNode.position.dx).abs() < 50;
 
-      final double dx = (end.dx - start.dx).abs();
-
-      // Check if this is a Col B endpoint link that needs corridor routing
-      if (toNode.level == 4 && toNode.position.dx > 1000.0) {
-        final double channelX = end.dx - 16.0;
-        final bool isAbove = end.dy < start.dy;
-        final double detourY = isAbove
-            ? math.min(
-                    fromNode.position.dy + canvasPadding,
-                    toNode.position.dy + canvasPadding,
-                  ) -
-                  10.0
-            : math.max(
-                    fromNode.position.dy + canvasPadding + fromNode.size.height,
-                    toNode.position.dy + canvasPadding + toNode.size.height,
-                  ) +
-                  10.0;
-
-        path.cubicTo(
-          start.dx + 40,
-          start.dy,
-          channelX - 30,
-          detourY,
-          channelX,
-          detourY,
+      if (isSameColumn) {
+        // Intra-column vertical link (e.g. between switches in the same tier)
+        final p1IsAbove = fromNode.position.dy < toNode.position.dy;
+        p1 = Offset(
+          fromNode.position.dx + fromNode.size.width + canvasPadding,
+          fromNode.position.dy + fromNode.size.height / 2 + canvasPadding,
         );
-        path.cubicTo(
-          channelX + 8,
-          detourY,
-          end.dx - 10,
-          end.dy,
-          end.dx,
-          end.dy,
+        p2 = Offset(
+          toNode.position.dx + toNode.size.width + canvasPadding,
+          toNode.position.dy + toNode.size.height / 2 + canvasPadding,
+        );
+        final dy = (p2.dy - p1.dy).abs();
+        const curveOffset = 36.0;
+        cp1 = Offset(
+          p1.dx + curveOffset,
+          p1.dy + (p1IsAbove ? dy * 0.25 : -dy * 0.25),
+        );
+        cp2 = Offset(
+          p2.dx + curveOffset,
+          p2.dy + (p1IsAbove ? -dy * 0.25 : dy * 0.25),
         );
       } else {
-        // Draw smooth S-curve cubic bezier path
-        final double cp1x = start.dx + dx * 0.45;
-        final double cp1y = start.dy;
-        final double cp2x = end.dx - dx * 0.45;
-        final double cp2y = end.dy;
-        path.cubicTo(cp1x, cp1y, cp2x, cp2y, end.dx, end.dy);
+        // Inter-column left-to-right link
+        p1 = Offset(
+          fromNode.position.dx + fromNode.size.width + canvasPadding,
+          fromNode.position.dy + fromNode.size.height / 2 + canvasPadding,
+        );
+        p2 = Offset(
+          toNode.position.dx + canvasPadding,
+          toNode.position.dy + toNode.size.height / 2 + canvasPadding,
+        );
+        final dx = (p2.dx - p1.dx).abs();
+        cp1 = Offset(p1.dx + dx * 0.45, p1.dy);
+        cp2 = Offset(p2.dx - dx * 0.45, p2.dy);
       }
+
+      final path = Path()
+        ..moveTo(p1.dx, p1.dy)
+        ..cubicTo(cp1.dx, cp1.dy, cp2.dx, cp2.dy, p2.dx, p2.dy);
+
+      final strokeWidth = isSelected
+          ? 2.8
+          : (link.status == DeviceStatusEnum.up ? 1.6 : 1.2);
+
+      final strokeAlpha = isSelected
+          ? 1.0
+          : (link.status == DeviceStatusEnum.up ? 0.75 : 0.45);
+
+      final linePaint = Paint()
+        ..color = linkColor.withValues(alpha: strokeAlpha)
+        ..strokeWidth = strokeWidth
+        ..style = PaintingStyle.stroke
+        ..strokeCap = StrokeCap.round;
 
       canvas.drawPath(path, linePaint);
 
-      // Draw port labels if available (e.g. Gi0/1 on source, Port 1 or ETH on dest)
       if (link.fromPort != null && link.fromPort!.isNotEmpty) {
-        _drawPortPill(canvas, link.fromPort!, Offset(start.dx + 26, start.dy));
+        final pillCenter = isSameColumn
+            ? Offset(p1.dx + 28, p1.dy)
+            : Offset(p1.dx + 22, p1.dy - 10);
+        _drawPortPill(canvas, link.fromPort!, pillCenter);
       }
       if (link.toPort != null && link.toPort!.isNotEmpty) {
-        _drawPortPill(canvas, link.toPort!, Offset(end.dx - 26, end.dy));
+        final pillCenter = isSameColumn
+            ? Offset(p2.dx + 28, p2.dy)
+            : Offset(p2.dx - 22, p2.dy - 10);
+        _drawPortPill(canvas, link.toPort!, pillCenter);
       }
     }
   }
@@ -675,11 +596,11 @@ class EnterpriseLinksPainter extends CustomPainter {
   void _drawPortPill(Canvas canvas, String label, Offset center) {
     final textSpan = TextSpan(
       text: label,
-      style: const TextStyle(
-        fontFamily: 'Consolas',
+      style: TextStyle(
+        fontFamily: 'monospace',
         fontSize: 9.0,
         fontWeight: FontWeight.w700,
-        color: Color(0xFFCBD5E1), // Slate 300
+        color: tokens.onSurfaceVariant,
       ),
     );
 
@@ -696,23 +617,19 @@ class EnterpriseLinksPainter extends CustomPainter {
       height: pillHeight,
     );
 
-    // Pill background
     final bgPaint = Paint()
-      ..color =
-          const Color(0xFF1E293B) // Slate 800
+      ..color = tokens.surfaceVariant
       ..style = PaintingStyle.fill;
 
     final borderPaint = Paint()
-      ..color =
-          const Color(0xFF334155) // Slate 700 border
+      ..color = tokens.border
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.0;
 
-    final rrect = RRect.fromRectAndRadius(pillRect, const Radius.circular(4));
+    final rrect = RRect.fromRectAndRadius(pillRect, const Radius.circular(AppRadius.xs));
     canvas.drawRRect(rrect, bgPaint);
     canvas.drawRRect(rrect, borderPaint);
 
-    // Paint text centered inside pill
     textPainter.paint(canvas, Offset(pillRect.left + 5.0, pillRect.top + 2.0));
   }
 
@@ -720,6 +637,7 @@ class EnterpriseLinksPainter extends CustomPainter {
   bool shouldRepaint(covariant EnterpriseLinksPainter oldDelegate) {
     return oldDelegate.links != links ||
         oldDelegate.nodes != nodes ||
-        oldDelegate.selectedLinkId != selectedLinkId;
+        oldDelegate.selectedLinkId != selectedLinkId ||
+        oldDelegate.tokens != tokens;
   }
 }

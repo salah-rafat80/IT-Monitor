@@ -32,7 +32,7 @@ class _InfrastructurePageState extends State<InfrastructurePage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final tokens = context.appTokens;
 
     return BlocListener<FactoryCubit, FactoryState>(
       listener: (context, fState) {
@@ -52,12 +52,12 @@ class _InfrastructurePageState extends State<InfrastructurePage> {
                   Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: AppColors.primary.withValues(alpha: 0.12),
+                      color: tokens.primary.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: const Icon(
+                    child: Icon(
                       Icons.hub_outlined,
-                      color: AppColors.primary,
+                      color: tokens.primary,
                       size: 26,
                     ),
                   ),
@@ -75,9 +75,7 @@ class _InfrastructurePageState extends State<InfrastructurePage> {
                       Text(
                         'Live reachability monitoring, latency diagnostics, and coverage tracking for UniFi APs and Gateways',
                         style: theme.textTheme.bodySmall?.copyWith(
-                          color: isDark
-                              ? AppColors.textSecondaryDark
-                              : AppColors.textSecondaryLight,
+                          color: tokens.textSecondary,
                         ),
                       ),
                     ],

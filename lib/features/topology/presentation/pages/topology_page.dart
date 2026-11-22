@@ -3,6 +3,10 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/di/injection.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/presentation/widgets/app_empty_state.dart';
+import '../../../../core/presentation/widgets/app_error_card.dart';
+import '../../../../core/presentation/widgets/app_skeleton.dart';
+import '../../../../core/theme/app_dimensions.dart';
 import '../../../factories/presentation/bloc/factory_cubit.dart';
 import '../bloc/topology_cubit.dart';
 import '../bloc/topology_state.dart';
@@ -16,19 +20,19 @@ class TopologyPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final initialFactoryId = context
-        .read<FactoryCubit>()
-        .state
-        .selectedFactoryId;
-    return BlocProvider<TopologyCubit>(
-      create: (_) => getIt<TopologyCubit>()..init(initialFactoryId),
-      child: BlocListener<FactoryCubit, FactoryState>(
-        listener: (context, state) {
-          context.read<TopologyCubit>().setFactory(state.selectedFactoryId);
-        },
+    try {
+      context.read<TopologyCubit>();
+      return const _TopologyView();
+    } catch (_) {
+      final initialFactoryId = context
+          .read<FactoryCubit>()
+          .state
+          .selectedFactoryId;
+      return BlocProvider<TopologyCubit>(
+        create: (_) => getIt<TopologyCubit>()..init(initialFactoryId),
         child: const _TopologyView(),
-      ),
-    );
+      );
+    }
   }
 }
 
@@ -44,14 +48,12 @@ class _TopologyViewState extends State<_TopologyView> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final tokens = context.appTokens;
 
     return BlocBuilder<TopologyCubit, TopologyState>(
       builder: (context, state) {
         return Scaffold(
-          backgroundColor: isDark
-              ? AppColors.darkBackground
-              : const Color(0xFFF1F5F9),
+          backgroundColor: tokens.background,
           body: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -70,17 +72,13 @@ class _TopologyViewState extends State<_TopologyView> {
               // ── 2. Subheader Bar (Title, Legend & View Mode Toggle) ───────
               Container(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
+                  horizontal: AppSpacing.xl,
                   vertical: 10,
                 ),
                 decoration: BoxDecoration(
-                  color: isDark ? AppColors.darkSurface : Colors.white,
+                  color: tokens.card,
                   border: Border(
-                    bottom: BorderSide(
-                      color: isDark
-                          ? AppColors.darkBorder
-                          : const Color(0xFFE2E8F0),
-                    ),
+                    bottom: BorderSide(color: tokens.border),
                   ),
                 ),
                 child: Row(
@@ -92,20 +90,18 @@ class _TopologyViewState extends State<_TopologyView> {
                         children: [
                           Row(
                             children: [
-                              const Icon(
+                              Icon(
                                 Icons.account_tree_rounded,
                                 size: 18,
-                                color: Color(0xFF2563EB),
+                                color: tokens.primary,
                               ),
-                              const SizedBox(width: 8),
+                              const SizedBox(width: AppSpacing.sm),
                               Text(
                                 'Network Infrastructure Topology',
                                 style: TextStyle(
                                   fontSize: 15,
                                   fontWeight: FontWeight.w800,
-                                  color: isDark
-                                      ? AppColors.textPrimaryDark
-                                      : const Color(0xFF0F172A),
+                                  color: tokens.onCard,
                                 ),
                               ),
                             ],
@@ -115,9 +111,7 @@ class _TopologyViewState extends State<_TopologyView> {
                             'Deterministic Layout Diagram: WAN (L0) → Gateways (L1) → Switches (L2) → UniFi APs (L3) → Endpoints (L4)',
                             style: TextStyle(
                               fontSize: 11.5,
-                              color: isDark
-                                  ? AppColors.textSecondaryDark
-                                  : const Color(0xFF64748B),
+                              color: tokens.onSurfaceVariant,
                             ),
                           ),
                         ],
@@ -157,7 +151,7 @@ class _TopologyViewState extends State<_TopologyView> {
               ),
 
               // ── 3. Main Topology Viewport / Tree ──────────────────────────
-              Expanded(child: _buildBody(context, state, isDark)),
+              Expanded(child: _buildBody(context, state)),
             ],
           ),
         );
@@ -165,18 +159,23 @@ class _TopologyViewState extends State<_TopologyView> {
     );
   }
 
-  Widget _buildBody(BuildContext context, TopologyState state, bool isDark) {
+  Widget _buildBody(BuildContext context, TopologyState state) {
+    final tokens = context.appTokens;
     switch (state) {
       case TopologyLoading():
-        return const Center(
+        return Padding(
+          padding: const EdgeInsets.all(AppSpacing.xxl),
           child: Column(
-            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              CircularProgressIndicator(color: Color(0xFF2563EB)),
-              SizedBox(height: 12),
-              Text(
-                'Constructing deterministic topology graph…',
-                style: TextStyle(fontSize: 13, color: Color(0xFF64748B)),
+              AppSkeleton.summaryCards(count: 4),
+              const SizedBox(height: AppSpacing.xl),
+              const Expanded(
+                child: AppSkeleton(
+                  width: double.infinity,
+                  height: double.infinity,
+                  borderRadius: AppRadius.lg,
+                ),
               ),
             ],
           ),
@@ -184,50 +183,24 @@ class _TopologyViewState extends State<_TopologyView> {
 
       case TopologyError(:final message):
         return Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(
-                Icons.error_outline_rounded,
-                color: AppColors.statusDown,
-                size: 44,
-              ),
-              const SizedBox(height: 10),
-              Text(
-                'Failed to construct topology',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: isDark
-                      ? AppColors.textPrimaryDark
-                      : const Color(0xFF0F172A),
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                message,
-                style: const TextStyle(
-                  color: AppColors.statusDown,
-                  fontSize: 12,
-                ),
-              ),
-              const SizedBox(height: 16),
-              ElevatedButton.icon(
-                onPressed: () => context.read<TopologyCubit>().init(),
-                icon: const Icon(Icons.refresh_rounded),
-                label: const Text('Retry'),
-              ),
-            ],
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpacing.xxl),
+            child: AppErrorCard(
+              title: 'Topology Graph Construction Fault',
+              message: message,
+              onRetry: () => context.read<TopologyCubit>().init(),
+            ),
           ),
         );
 
       case TopologyLoaded():
         if (state.enterpriseGraph == null ||
             state.enterpriseGraph!.nodes.isEmpty) {
-          return const Center(
-            child: Text(
-              'No infrastructure or endpoints discovered.',
-              style: TextStyle(fontSize: 14, color: Color(0xFF64748B)),
+          return Center(
+            child: AppEmptyState.firstUse(
+              entityName: 'Infrastructure Topology Nodes',
+              actionLabel: 'Refresh Topology Discovery',
+              onAction: () => context.read<TopologyCubit>().init(),
             ),
           );
         }
@@ -267,16 +240,16 @@ class _TopologyViewState extends State<_TopologyView> {
         // Alternative Tree List View
         final nodes = state.filtered;
         if (nodes.isEmpty) {
-          return const Center(
+          return Center(
             child: Text(
               'No devices match the active filter or search query.',
-              style: TextStyle(fontSize: 14, color: Color(0xFF64748B)),
+              style: TextStyle(fontSize: 14, color: tokens.onSurfaceVariant),
             ),
           );
         }
 
         return ListView.builder(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.all(AppSpacing.xl),
           itemCount: nodes.length,
           itemBuilder: (context, i) =>
               LocationGroupCard(location: nodes[i], initiallyExpanded: true),

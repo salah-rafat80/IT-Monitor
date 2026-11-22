@@ -18,17 +18,20 @@ class EnterpriseTopologyControls extends StatelessWidget {
   final VoidCallback onResetZoom;
   final VoidCallback? onOptions;
   final VoidCallback? onHelp;
+  final VoidCallback? onLegendTap;
 
   const EnterpriseTopologyControls({
     super.key,
-    required this.currentZoom,
+    double? currentZoom,
+    int? zoomPercent,
     required this.onFitToView,
     required this.onZoomIn,
     required this.onZoomOut,
     required this.onResetZoom,
     this.onOptions,
     this.onHelp,
-  });
+    this.onLegendTap,
+  }) : currentZoom = currentZoom ?? ((zoomPercent ?? 100) / 100.0);
 
   @override
   Widget build(BuildContext context) {
@@ -106,11 +109,11 @@ class EnterpriseTopologyControls extends StatelessWidget {
           ],
 
           // Help / Legend
-          if (onHelp != null)
+          if (onHelp != null || onLegendTap != null)
             _ControlButton(
               icon: Icons.help_outline_rounded,
               tooltip: 'Topology Legend & Hotkeys',
-              onPressed: onHelp,
+              onPressed: onHelp ?? onLegendTap,
             ),
         ],
       ),

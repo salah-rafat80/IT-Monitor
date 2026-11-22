@@ -4,6 +4,8 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/presentation/widgets/app_empty_state.dart';
+import '../../../../core/presentation/widgets/app_skeleton.dart';
 import '../../../monitoring/domain/entities/device_status_entity.dart';
 import '../../../monitoring/presentation/widgets/device_status_chip.dart';
 import '../../domain/entities/unifi_device_entity.dart';
@@ -37,6 +39,7 @@ class _InfrastructureDevicesTableState
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final tokens = context.appTokens;
     final isDark = theme.brightness == Brightness.dark;
     final isAdmin = true;
 
@@ -46,7 +49,7 @@ class _InfrastructureDevicesTableState
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(state.errorMessage!),
-              backgroundColor: AppColors.statusDown,
+              backgroundColor: tokens.statusDown,
             ),
           );
         } else if (state.successMessage != null) {
@@ -56,8 +59,8 @@ class _InfrastructureDevicesTableState
               backgroundColor:
                   state.successMessage!.contains('UP') ||
                       state.successMessage!.contains('succeeded')
-                  ? AppColors.statusUp
-                  : AppColors.statusDown,
+                  ? tokens.statusUp
+                  : tokens.statusDown,
               duration: const Duration(seconds: 3),
             ),
           );
@@ -111,22 +114,22 @@ class _InfrastructureDevicesTableState
                     children: [
                       _buildSummaryBadge(
                         'Total Assets: ${state.totalCount}',
-                        AppColors.primary,
+                        tokens.primary,
                         isDark,
                       ),
                       _buildSummaryBadge(
                         'Up: ${state.upCount}',
-                        AppColors.statusUp,
+                        tokens.statusUp,
                         isDark,
                       ),
                       _buildSummaryBadge(
                         'Down: ${state.downCount}',
-                        AppColors.statusDown,
+                        tokens.statusDown,
                         isDark,
                       ),
                       _buildSummaryBadge(
                         'Unknown: ${state.unknownCount}',
-                        AppColors.statusUnknown,
+                        tokens.statusUnknown,
                         isDark,
                       ),
                     ],
@@ -157,7 +160,7 @@ class _InfrastructureDevicesTableState
                               : 'Ping All Assets',
                         ),
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.primary,
+                          backgroundColor: tokens.primary,
                           foregroundColor: Colors.white,
                         ),
                       ),
@@ -329,54 +332,43 @@ class _InfrastructureDevicesTableState
             const SizedBox(height: 16),
 
             // ── Table Content ──
-            if (filteredDevices.isEmpty)
+            if (state.isLoading && state.devices.isEmpty)
+              AppSkeleton.table(rowCount: 6, columnCount: 8)
+            else if (filteredDevices.isEmpty)
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.all(40),
-                alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: isDark ? AppColors.darkCard : AppColors.lightCard,
+                  color: tokens.surfaceContainerLow,
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: isDark
-                        ? AppColors.darkBorder
-                        : AppColors.lightBorder,
+                    color: tokens.cardBorder,
                   ),
                 ),
-                child: Column(
-                  children: [
-                    const Icon(
-                      Icons.wifi_off_rounded,
-                      size: 40,
-                      color: Colors.grey,
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      state.devices.isEmpty
-                          ? 'No UniFi infrastructure devices registered yet.'
-                          : 'No devices matched your search filter.',
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 4),
-                    const Text(
-                      'Use "Ping All Assets" to verify connectivity or "Manage Assets" to add new infrastructure.',
-                      style: TextStyle(color: Colors.grey, fontSize: 12),
-                    ),
-                  ],
-                ),
+                child: state.devices.isEmpty
+                    ? AppEmptyState.firstUse(
+                        entityName: 'Infrastructure Assets',
+                        actionLabel: 'Manage Assets',
+                        onAction: () => ManageInfrastructureDialog.show(context),
+                      )
+                    : AppEmptyState.noFilterResults(
+                        query: _searchController.text,
+                        onClearFilters: () {
+                          setState(() {
+                            _searchController.clear();
+                            _roleFilter = null;
+                            _statusFilter = null;
+                          });
+                        },
+                      ),
               )
             else
               Container(
                 width: double.infinity,
                 decoration: BoxDecoration(
-                  color: isDark
-                      ? AppColors.darkSurface
-                      : AppColors.lightSurface,
+                  color: tokens.surface,
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: isDark
-                        ? AppColors.darkBorder
-                        : AppColors.lightBorder,
+                    color: tokens.cardBorder,
                   ),
                 ),
                 child: ClipRRect(
@@ -385,7 +377,7 @@ class _InfrastructureDevicesTableState
                     scrollDirection: Axis.horizontal,
                     child: DataTable(
                       headingRowColor: WidgetStateProperty.all(
-                        isDark ? AppColors.darkCard : AppColors.lightCard,
+                        tokens.surfaceContainerLow,
                       ),
                       dataRowMinHeight: 52,
                       dataRowMaxHeight: 56,
@@ -464,10 +456,15 @@ class _InfrastructureDevicesTableState
                                       context,
                                       dev,
                                     ),
-                                child: Text(
-                                  dev.name,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
+                                child: ConstrainedBox(
+                                  constraints: const BoxConstraints(maxWidth: 150),
+                                  child: Text(
+                                    dev.name,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                    ),
                                   ),
                                 ),
                               ),
@@ -519,11 +516,13 @@ class _InfrastructureDevicesTableState
                                 decoration: BoxDecoration(
                                   color: _getRoleBadgeColor(
                                     dev.role,
+                                    tokens,
                                   ).withValues(alpha: 0.12),
                                   borderRadius: BorderRadius.circular(6),
                                   border: Border.all(
                                     color: _getRoleBadgeColor(
                                       dev.role,
+                                      tokens,
                                     ).withValues(alpha: 0.3),
                                   ),
                                 ),
@@ -532,7 +531,7 @@ class _InfrastructureDevicesTableState
                                   style: TextStyle(
                                     fontSize: 11,
                                     fontWeight: FontWeight.w600,
-                                    color: _getRoleBadgeColor(dev.role),
+                                    color: _getRoleBadgeColor(dev.role, tokens),
                                   ),
                                 ),
                               ),
@@ -544,9 +543,7 @@ class _InfrastructureDevicesTableState
                                     : 'Not specified',
                                 style: TextStyle(
                                   fontSize: 12,
-                                  color: isDark
-                                      ? AppColors.textSecondaryDark
-                                      : AppColors.textSecondaryLight,
+                                  color: tokens.textSecondary,
                                 ),
                               ),
                             ),
@@ -559,7 +556,7 @@ class _InfrastructureDevicesTableState
                                 style: TextStyle(
                                   fontWeight: FontWeight.bold,
                                   color: status?.status == DeviceStatusEnum.up
-                                      ? AppColors.statusUp
+                                      ? tokens.statusUp
                                       : null,
                                   fontFamily: 'monospace',
                                 ),
@@ -574,9 +571,7 @@ class _InfrastructureDevicesTableState
                                     : 'Never',
                                 style: TextStyle(
                                   fontSize: 12,
-                                  color: isDark
-                                      ? AppColors.textSecondaryDark
-                                      : AppColors.textSecondaryLight,
+                                  color: tokens.textSecondary,
                                 ),
                               ),
                             ),
@@ -653,18 +648,18 @@ class _InfrastructureDevicesTableState
     );
   }
 
-  Color _getRoleBadgeColor(UniFiDeviceRole role) {
+  Color _getRoleBadgeColor(UniFiDeviceRole role, AppColors tokens) {
     switch (role) {
       case UniFiDeviceRole.gateway:
-        return AppColors.primary;
+        return tokens.primary;
       case UniFiDeviceRole.controller:
-        return AppColors.statusUnreachable;
+        return tokens.statusUnreachable;
       case UniFiDeviceRole.switchDevice:
-        return Colors.indigo;
+        return tokens.second;
       case UniFiDeviceRole.accessPoint:
-        return Colors.teal;
+        return tokens.accent;
       case UniFiDeviceRole.otherUnknown:
-        return Colors.blueGrey;
+        return tokens.statusUnknown;
     }
   }
 }

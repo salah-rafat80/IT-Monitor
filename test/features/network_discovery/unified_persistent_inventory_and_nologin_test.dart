@@ -85,15 +85,15 @@ void main() {
 
   group('Unified Persistent Inventory & No-Login Mode Tests', () {
     test(
-      '1. Baseline inventory: Preserves 37 approved devices and 4 UniFi access points',
+      '1. Baseline inventory: Preserves 28 approved devices and 4 UniFi access points',
       () async {
         // Bootstrap approved PC/Laptop inventory
         final bootstrapRes = await deviceRepo.bootstrapApprovedInventory();
         expect(bootstrapRes.isSuccess, isTrue);
-        expect(bootstrapRes.dataOrNull, equals(37));
+        expect(bootstrapRes.dataOrNull, equals(28));
 
         final devices = (await deviceRepo.getDevices()).dataOrNull ?? [];
-        expect(devices.length, equals(37));
+        expect(devices.length, equals(28));
 
         // Bootstrap verified UniFi infrastructure APs
         final infraRes = await infraRepo.bootstrapVerifiedAccessPoints();

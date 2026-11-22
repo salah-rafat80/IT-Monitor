@@ -503,38 +503,6 @@ class InfrastructureRepositoryImpl implements InfrastructureRepository {
           factoryId: 'rnf',
           isCritical: false,
         ),
-        (
-          name: 'BNF Core Switch',
-          ip: '192.168.21.2',
-          role: 'switch',
-          location: 'BNF Server Room',
-          factoryId: 'bnf',
-          isCritical: true,
-        ),
-        (
-          name: 'BNF Production Switch',
-          ip: '192.168.21.3',
-          role: 'switch',
-          location: 'BNF Production Floor',
-          factoryId: 'bnf',
-          isCritical: true,
-        ),
-        (
-          name: 'BNF Administration Switch',
-          ip: '192.168.21.4',
-          role: 'switch',
-          location: 'BNF Admin Building',
-          factoryId: 'bnf',
-          isCritical: false,
-        ),
-        (
-          name: 'BNF Warehouse Switch',
-          ip: '192.168.21.5',
-          role: 'switch',
-          location: 'BNF Warehouse & Logistics',
-          factoryId: 'bnf',
-          isCritical: false,
-        ),
       ];
 
       bool anyAdded = false;

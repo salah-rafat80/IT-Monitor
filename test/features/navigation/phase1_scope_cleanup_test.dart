@@ -136,7 +136,7 @@ void main() {
         // Seed approved inventory
         final bootstrapRes = await deviceRepo.bootstrapApprovedInventory();
         expect(bootstrapRes.isSuccess, isTrue);
-        expect(bootstrapRes.dataOrNull, equals(37));
+        expect(bootstrapRes.dataOrNull, equals(28));
 
         final mockPing = MockPingChecker();
         final scheduler = MonitoringScheduler(
@@ -154,7 +154,7 @@ void main() {
         await cubit.initDashboard();
         expect(cubit.state, isA<MonitoringDashboardLoaded>());
         final loaded = cubit.state as MonitoringDashboardLoaded;
-        expect(loaded.totalCount, equals(37));
+        expect(loaded.totalCount, equals(28));
 
         await cubit.close();
         scheduler.dispose();

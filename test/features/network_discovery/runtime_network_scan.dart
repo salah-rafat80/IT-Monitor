@@ -28,17 +28,17 @@ void main() {
     final db = AppDatabase.forTesting(NativeDatabase.memory());
     final discoveryRepo = DiscoveryRepositoryImpl(db);
 
-    // Bootstrap approved 37 devices so duplicate & alreadyKnown logic is active
+    // Bootstrap approved 28 devices so duplicate & alreadyKnown logic is active
     final approvedRows = ApprovedInventorySeed.getApprovedRawRows();
     final preview = InventoryValidator.validateRows(rows: approvedRows);
-    final approved37Devices = preview.validDevices;
-    final deviceRepo = FakeDeviceRepository(approved37Devices);
+    final approved28Devices = preview.validDevices;
+    final deviceRepo = FakeDeviceRepository(approved28Devices);
     final existingMonitoredRes = await deviceRepo.getDevices();
     final existingCount = existingMonitoredRes.dataOrNull?.length ?? 0;
     print(
-      'Initial Monitored Production Devices in DB: $existingCount (Expected 37)',
+      'Initial Monitored Production Devices in DB: $existingCount (Expected 28)',
     );
-    expect(existingCount, equals(37));
+    expect(existingCount, equals(28));
 
     final vendorLookup = MacVendorLookup();
     final classifier = DeviceClassificationEngine(vendorLookup);

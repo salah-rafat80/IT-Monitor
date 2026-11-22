@@ -26,11 +26,11 @@ void main() {
   });
 
   group('Phase 6 — Inventory Bootstrap & Integration Unit Tests', () {
-    test('1. Approved inventory seed dataset contains 37 valid devices', () {
+    test('1. Approved inventory seed dataset contains 28 valid devices', () {
       final rawRows = ApprovedInventorySeed.getApprovedRawRows();
       final preview = InventoryValidator.validateRows(rows: rawRows);
 
-      expect(preview.validDevices.length, equals(37));
+      expect(preview.validDevices.length, equals(28));
       expect(preview.totalRowsProcessed, equals(rawRows.length));
       expect(preview.excludedDuplicateIps, contains('192.168.22.250'));
       expect(
@@ -44,28 +44,28 @@ void main() {
     });
 
     test(
-      '2. First-run bootstrap populates empty database with 37 approved devices',
+      '2. First-run bootstrap populates empty database with 28 approved devices',
       () async {
         final bootstrapRes = await deviceRepo.bootstrapApprovedInventory();
 
         expect(bootstrapRes.isSuccess, isTrue);
-        expect(bootstrapRes.dataOrNull, equals(37));
+        expect(bootstrapRes.dataOrNull, equals(28));
 
         final devicesRes = await deviceRepo.getDevices();
         expect(devicesRes.isSuccess, isTrue);
         final devices = devicesRes.dataOrNull!;
-        expect(devices.length, equals(37));
+        expect(devices.length, equals(28));
 
         // Verify sample devices identity
-        final amr = devices.firstWhere((d) => d.ownerName == 'amr rafaat');
-        expect(amr.department, equals('Accounting'));
-        expect(amr.type, equals(DeviceType.laptop));
-        expect(amr.ip, equals('192.168.27.25'));
+        final inspector = devices.firstWhere((d) => d.ownerName == 'rm.inspector');
+        expect(inspector.department, equals('QC-QA'));
+        expect(inspector.type, equals(DeviceType.pc));
+        expect(inspector.ip, equals('192.168.22.67'));
 
-        final hisham = devices.firstWhere((d) => d.ownerName == 'Hisham Essam');
-        expect(hisham.department, equals('Accounting'));
-        expect(hisham.type, equals(DeviceType.pc));
-        expect(hisham.ip, equals('192.168.22.117'));
+        final hamdy = devices.firstWhere((d) => d.ownerName == 'Hamdy.Ahmed');
+        expect(hamdy.department, equals('Warehouse'));
+        expect(hamdy.type, equals(DeviceType.pc));
+        expect(hamdy.ip, equals('192.168.22.72'));
       },
     );
 
@@ -74,14 +74,14 @@ void main() {
       () async {
         // First bootstrap
         final firstRes = await deviceRepo.bootstrapApprovedInventory();
-        expect(firstRes.dataOrNull, equals(37));
+        expect(firstRes.dataOrNull, equals(28));
 
         // Second bootstrap (should skip)
         final secondRes = await deviceRepo.bootstrapApprovedInventory();
         expect(secondRes.dataOrNull, equals(0));
 
         final devicesRes = await deviceRepo.getDevices();
-        expect(devicesRes.dataOrNull!.length, equals(37));
+        expect(devicesRes.dataOrNull!.length, equals(28));
       },
     );
 

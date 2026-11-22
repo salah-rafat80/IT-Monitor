@@ -23,20 +23,20 @@ void main() {
 
   group('Verified UniFi Access Points Integration Tests', () {
     test(
-      '1. bootstrapVerifiedAccessPoints registers 5 APs in RNF and preserves approved inventory',
+      '1. bootstrapVerifiedAccessPoints registers 4 APs in RNF and preserves approved inventory',
       () async {
-        // Seed 37 approved inventory
+        // Seed 28 approved inventory
         final seedRes = await deviceRepo.bootstrapApprovedInventory();
         expect(seedRes.isSuccess, isTrue);
-        expect(seedRes.dataOrNull, equals(37));
+        expect(seedRes.dataOrNull, equals(28));
 
         // Bootstrap APs
         final apRes = await infraRepo.bootstrapVerifiedAccessPoints();
         expect(apRes.isSuccess, isTrue);
 
-        // Verify total 4 APs exist in RNF
-        final allInfra = await infraRepo.getInfrastructureDevices();
-        final aps = allInfra.dataOrNull!
+        // Verify total 4 APs exist when RNF is selected
+        final rnfInfra = await infraRepo.getInfrastructureDevices(factoryId: 'rnf');
+        final aps = rnfInfra.dataOrNull!
             .where((d) => d.role == UniFiDeviceRole.accessPoint)
             .toList();
         expect(aps.length, equals(4));
@@ -56,12 +56,16 @@ void main() {
           expect(ap.factoryId, equals('rnf'));
         }
 
-        final rnfInfra = await infraRepo.getInfrastructureDevices(factoryId: 'rnf');
-        expect(rnfInfra.dataOrNull!.length, equals(4));
+        // Verify UniFis are NOT displayed when BNF is selected
+        final bnfInfra = await infraRepo.getInfrastructureDevices(factoryId: 'bnf');
+        expect(bnfInfra.dataOrNull!.any((d) => d.role == UniFiDeviceRole.accessPoint), isFalse);
 
-        // Verify 37 PC/laptop inventory is 100% intact
+        final allInfra = await infraRepo.getInfrastructureDevices();
+        expect(allInfra.dataOrNull!.any((d) => d.role == UniFiDeviceRole.accessPoint), isTrue);
+
+        // Verify 28 PC/laptop inventory is 100% intact
         final allEndpoints = await deviceRepo.getDevices();
-        expect(allEndpoints.dataOrNull!.length, equals(37));
+        expect(allEndpoints.dataOrNull!.length, equals(28));
       },
     );
 
@@ -71,8 +75,8 @@ void main() {
 
       expect(secondRun.isSuccess, isTrue);
 
-      final allInfra = await infraRepo.getInfrastructureDevices();
-      final aps = allInfra.dataOrNull!
+      final rnfInfra = await infraRepo.getInfrastructureDevices(factoryId: 'rnf');
+      final aps = rnfInfra.dataOrNull!
           .where((d) => d.role == UniFiDeviceRole.accessPoint)
           .toList();
       expect(aps.length, equals(4));

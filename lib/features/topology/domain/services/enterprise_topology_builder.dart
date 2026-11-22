@@ -271,13 +271,7 @@ class EnterpriseTopologyBuilder {
       final swSpareparts = verifiedSwitches.where((s) => s.name.contains('Spare Parts')).firstOrNull;
       final swSecurity = verifiedSwitches.where((s) => s.name.contains('Security')).firstOrNull;
 
-      final swBnfCore = verifiedSwitches.where((s) => s.name.contains('BNF Core')).firstOrNull;
-      final swBnfProd = verifiedSwitches.where((s) => s.name.contains('Production')).firstOrNull;
-      final swBnfAdmin = verifiedSwitches.where((s) => s.name.contains('Administration')).firstOrNull;
-      final swBnfWh = verifiedSwitches.where((s) => s.name.contains('BNF Warehouse')).firstOrNull;
-
       const rnfGwId = 'gw_rnf_22';
-      const bnfGwId = 'gw_bnf_21';
 
       // RNF Blueprint Links
       if (swWest != null) {
@@ -378,70 +372,6 @@ class EnterpriseTopologyBuilder {
               toPort: 'Gigabit0/1',
               speed: '1 Gbps (Perimeter Trunk)',
               status: computeLinkStatus(nodes[rnfGwId], nodes[secId]),
-              isInferred: false,
-            ),
-          );
-        }
-      }
-
-      // BNF Blueprint Links
-      if (swBnfCore != null) {
-        final coreId = 'sw_${swBnfCore.id}';
-        if (nodes.containsKey(bnfGwId)) {
-          links.add(
-            EnterpriseTopologyLink(
-              id: 'link_${bnfGwId}_$coreId',
-              fromNodeId: bnfGwId,
-              toNodeId: coreId,
-              fromPort: 'LAN 1',
-              toPort: 'Trunk',
-              speed: '1 Gbps',
-              status: computeLinkStatus(nodes[bnfGwId], nodes[coreId]),
-              isInferred: false,
-            ),
-          );
-        }
-        if (swBnfProd != null) {
-          final prodId = 'sw_${swBnfProd.id}';
-          links.add(
-            EnterpriseTopologyLink(
-              id: 'link_${coreId}_$prodId',
-              fromNodeId: coreId,
-              toNodeId: prodId,
-              fromPort: 'Port 1',
-              toPort: 'Uplink',
-              speed: '1 Gbps',
-              status: computeLinkStatus(nodes[coreId], nodes[prodId]),
-              isInferred: false,
-            ),
-          );
-        }
-        if (swBnfAdmin != null) {
-          final adminId = 'sw_${swBnfAdmin.id}';
-          links.add(
-            EnterpriseTopologyLink(
-              id: 'link_${coreId}_$adminId',
-              fromNodeId: coreId,
-              toNodeId: adminId,
-              fromPort: 'Port 2',
-              toPort: 'Uplink',
-              speed: '1 Gbps',
-              status: computeLinkStatus(nodes[coreId], nodes[adminId]),
-              isInferred: false,
-            ),
-          );
-        }
-        if (swBnfWh != null) {
-          final whId = 'sw_${swBnfWh.id}';
-          links.add(
-            EnterpriseTopologyLink(
-              id: 'link_${coreId}_$whId',
-              fromNodeId: coreId,
-              toNodeId: whId,
-              fromPort: 'Port 3',
-              toPort: 'Uplink',
-              speed: '1 Gbps',
-              status: computeLinkStatus(nodes[coreId], nodes[whId]),
               isInferred: false,
             ),
           );
@@ -564,27 +494,19 @@ class EnterpriseTopologyBuilder {
           if (swWest != null) return swWest;
         }
 
-        // 3. BNF Blueprint routing rules
-        if (ip.contains('.21.') || md.device.factoryId == 'bnf') {
-          if (dept.contains('prod') || loc.contains('prod')) {
-            if (swBnfProd != null) return swBnfProd;
-          }
-          if (dept.contains('ware') || loc.contains('ware') || dept.contains('logis')) {
-            if (swBnfWh != null) return swBnfWh;
-          }
-          if (dept.contains('admin') || dept.contains('fin') || dept.contains('acc') || dept.contains('hr')) {
-            if (swBnfAdmin != null) return swBnfAdmin;
-          }
-          if (swBnfCore != null) return swBnfCore;
-        }
-
         return verifiedSwitches.first;
       }
 
-      // LEVEL 3: UniFi APs
-      final unifiAps = infraDevices
-          .where((d) => d.role == UniFiDeviceRole.accessPoint)
-          .toList();
+      // LEVEL 3: UniFi APs (Strictly scoped by factoryId)
+      final unifiAps = infraDevices.where((d) {
+        if (d.role != UniFiDeviceRole.accessPoint) return false;
+        if (factoryId == null || factoryId.isEmpty) return true;
+        final devFact = d.factoryId.toLowerCase();
+        if (factoryId.toLowerCase() == 'rnf') {
+          return devFact == 'rnf' || devFact == 'unassigned';
+        }
+        return devFact == factoryId.toLowerCase();
+      }).toList();
       for (int i = 0; i < unifiAps.length; i++) {
         final ap = unifiAps[i];
         final apId = 'ap_${ap.id}';
@@ -972,25 +894,12 @@ class EnterpriseTopologyBuilder {
       'sw_rnf_spareparts',
       'sw_rnf_security_core',
     ];
-    const bnfOrder = [
-      'sw_bnf_core',
-      'sw_bnf_prod',
-      'sw_bnf_admin',
-      'sw_bnf_wh',
-    ];
-
     level2Switches.sort((a, b) {
       final idxARnf = rnfOrder.indexOf(a.id);
       final idxBRnf = rnfOrder.indexOf(b.id);
       if (idxARnf != -1 && idxBRnf != -1) return idxARnf.compareTo(idxBRnf);
       if (idxARnf != -1) return -1;
       if (idxBRnf != -1) return 1;
-
-      final idxABnf = bnfOrder.indexOf(a.id);
-      final idxBBnf = bnfOrder.indexOf(b.id);
-      if (idxABnf != -1 && idxBBnf != -1) return idxABnf.compareTo(idxBBnf);
-      if (idxABnf != -1) return -1;
-      if (idxBBnf != -1) return 1;
 
       return a.title.compareTo(b.title);
     });

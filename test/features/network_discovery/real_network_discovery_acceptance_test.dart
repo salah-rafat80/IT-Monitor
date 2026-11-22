@@ -381,8 +381,8 @@ void main() {
         final allDevices = (await deviceRepo.getDevices()).dataOrNull!;
         expect(
           allDevices.length,
-          equals(38),
-        ); // 37 baseline + 1 approved printer
+          equals(29),
+        ); // 28 baseline + 1 approved printer
 
         final savedDevice = allDevices.firstWhere((d) => d.id == savedId);
         expect(savedDevice.name, equals('HP LaserJet Pro M404'));
@@ -404,7 +404,7 @@ void main() {
         // 6. Simulate Desktop Client restart (re-querying database from clean repository instance)
         final reloadedRepo = DeviceRepositoryImpl(db);
         final reloadedDevices = (await reloadedRepo.getDevices()).dataOrNull!;
-        expect(reloadedDevices.length, equals(38));
+        expect(reloadedDevices.length, equals(29));
         final reloadedAsset = reloadedDevices.firstWhere(
           (d) => d.ip == '192.168.27.200',
         );
@@ -427,13 +427,13 @@ void main() {
     );
 
     test(
-      '4. Existing Data Protection: Baseline 37 Devices + 4 UniFi APs Intact',
+      '4. Existing Data Protection: Baseline 28 Devices + 4 UniFi APs Intact',
       () async {
-        // 1. Approved PCs & Laptops count is exactly 37
+        // 1. Approved PCs & Laptops count is exactly 28
         final devicesRes = await deviceRepo.getDevices();
         expect(devicesRes.isSuccess, isTrue);
         final devices = devicesRes.dataOrNull!;
-        expect(devices.length, equals(37));
+        expect(devices.length, equals(28));
 
         // 2. Verified UniFi AP count is exactly 4
         final infraRes = await infraRepo.getInfrastructureDevices();

@@ -108,13 +108,13 @@ void main() {
 
   group('Phase 6 — Real Network Validation & Runtime Hardening Suite', () {
     test(
-      '1. Inventory verification: exactly 37 approved devices imported into SQLite',
+      '1. Inventory verification: exactly 28 approved devices imported into SQLite',
       () async {
         final devicesRes = await deviceRepo.getDevices();
         expect(devicesRes.isSuccess, isTrue);
         final devices = devicesRes.dataOrNull!;
 
-        expect(devices.length, equals(37));
+        expect(devices.length, equals(28));
 
         // Verify no duplicate IPs and valid metadata
         final ipSet = <String>{};
@@ -150,7 +150,7 @@ void main() {
 
         scheduler.startMonitoring();
         await scheduler.triggerAllChecks(force: true);
-        expect(testPingChecker.checkedDeviceIds.length, equals(37));
+        expect(testPingChecker.checkedDeviceIds.length, equals(28));
       },
     );
 
@@ -166,7 +166,7 @@ void main() {
         scheduler.startMonitoring();
         await scheduler.triggerAllChecks(force: true);
 
-        expect(testPingChecker.checkedDeviceIds.length, equals(37));
+        expect(testPingChecker.checkedDeviceIds.length, equals(28));
         expect(
           testPingChecker.checkedDeviceIds,
           contains(targetFailedDevice.id),
@@ -199,10 +199,10 @@ void main() {
         // Bootstrap check again (should be idempotent)
         final count =
             (await deviceRepo.bootstrapApprovedInventory()).dataOrNull!;
-        expect(count, equals(37)); // Clean memory DB re-initializes 37 devices
+        expect(count, equals(28)); // Clean memory DB re-initializes 28 devices
 
         final reloadedDevices = (await deviceRepo.getDevices()).dataOrNull!;
-        expect(reloadedDevices.length, equals(37));
+        expect(reloadedDevices.length, equals(28));
       },
     );
 

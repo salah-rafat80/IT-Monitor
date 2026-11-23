@@ -458,6 +458,15 @@ class DiscoveryCoordinator {
 
     await _discoveryRepo.updateScanJob(completedJob);
 
+    // Clean up older scan results for this factory on completed scan
+    if (finalStatus == ScanJobStatus.completed ||
+        finalStatus == ScanJobStatus.completedWithErrors) {
+      await _discoveryRepo.deleteDiscoveredDevicesForOlderScans(
+        factoryId: job.factoryId,
+        keepScanId: job.id,
+      );
+    }
+
     if (!_progressController.isClosed) {
       _progressController.add(
         DiscoveryProgress(

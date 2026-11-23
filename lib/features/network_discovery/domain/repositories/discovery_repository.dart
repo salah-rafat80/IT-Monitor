@@ -46,6 +46,13 @@ abstract class DiscoveryRepository {
     int deviceId,
   );
 
+  /// Cleans up historical discovered device records for the given factory,
+  /// keeping only records belonging to [keepScanId].
+  Future<Result<void>> deleteDiscoveredDevicesForOlderScans({
+    required String factoryId,
+    required int keepScanId,
+  });
+
   Stream<DiscoveryScanJob?> watchLatestScanJob({String? factoryId});
   Stream<List<DiscoveredDeviceEntity>> watchDiscoveredDevices({
     int? scanId,

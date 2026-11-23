@@ -43,6 +43,8 @@ class NetworkDiscoveryCubit extends Cubit<NetworkDiscoveryState> {
 
   String? _activeFactoryId;
   String? get activeFactoryId => _activeFactoryId;
+  int? _currentSubscribedScanId;
+  int? get currentSubscribedScanId => _currentSubscribedScanId;
 
   Future<void> setFactory(String? factoryId) async {
     _activeFactoryId = factoryId;
@@ -60,16 +62,22 @@ class NetworkDiscoveryCubit extends Cubit<NetworkDiscoveryState> {
         factoryId: _activeFactoryId,
       );
       final latestScan = latestScanRes.dataOrNull;
+      final latestScanId = latestScan?.id;
+      _currentSubscribedScanId = latestScanId;
 
       final allScansRes = await _discoveryRepo.getAllScanJobs(
         factoryId: _activeFactoryId,
       );
       final allScans = allScansRes.dataOrNull ?? [];
 
-      final devicesRes = await _discoveryRepo.getDiscoveredDevices(
-        factoryId: _activeFactoryId,
-      );
-      final devices = devicesRes.dataOrNull ?? [];
+      List<DiscoveredDeviceEntity> devices = const [];
+      if (latestScanId != null) {
+        final devicesRes = await _discoveryRepo.getDiscoveredDevices(
+          scanId: latestScanId,
+          factoryId: _activeFactoryId,
+        );
+        devices = devicesRes.dataOrNull ?? [];
+      }
 
       final ranges = _evaluateRanges(config.networkRanges, devices);
 
@@ -82,9 +90,16 @@ class NetworkDiscoveryCubit extends Cubit<NetworkDiscoveryState> {
           .listen(_handleScanJobUpdate);
 
       _deviceSub?.cancel();
-      _deviceSub = _discoveryRepo
-          .watchDiscoveredDevices(factoryId: _activeFactoryId)
-          .listen(_handleDevicesUpdate);
+      if (latestScanId != null) {
+        _deviceSub = _discoveryRepo
+            .watchDiscoveredDevices(
+              scanId: latestScanId,
+              factoryId: _activeFactoryId,
+            )
+            .listen(_handleDevicesUpdate);
+      } else {
+        _deviceSub = null;
+      }
 
       _rangesSub?.cancel();
       _rangesSub = _discoveryRepo
@@ -107,6 +122,37 @@ class NetworkDiscoveryCubit extends Cubit<NetworkDiscoveryState> {
       if (isClosed) return;
       emit(NetworkDiscoveryError('Failed to initialize discovery: $e'));
     }
+  }
+
+  Future<void> _subscribeToScanDevices(int? scanId) async {
+    if (_currentSubscribedScanId == scanId && _deviceSub != null) return;
+    _currentSubscribedScanId = scanId;
+    _deviceSub?.cancel();
+
+    if (scanId == null) {
+      _deviceSub = null;
+      if (!isClosed) {
+        _handleDevicesUpdate(const []);
+      }
+      return;
+    }
+
+    // Immediately fetch latest for this scanId so old scan devices disappear at once
+    final res = await _discoveryRepo.getDiscoveredDevices(
+      scanId: scanId,
+      factoryId: _activeFactoryId,
+    );
+    final initialDevices = res.dataOrNull ?? [];
+    if (!isClosed) {
+      _handleDevicesUpdate(initialDevices);
+    }
+
+    _deviceSub = _discoveryRepo
+        .watchDiscoveredDevices(
+          scanId: scanId,
+          factoryId: _activeFactoryId,
+        )
+        .listen(_handleDevicesUpdate);
   }
 
   List<NetworkRange> _evaluateRanges(
@@ -151,6 +197,9 @@ class NetworkDiscoveryCubit extends Cubit<NetworkDiscoveryState> {
 
   void _handleProgress(DiscoveryProgress progress) {
     if (isClosed) return;
+    if (progress.scanId > 0 && progress.scanId != _currentSubscribedScanId) {
+      _subscribeToScanDevices(progress.scanId);
+    }
     final current = state;
     if (current is NetworkDiscoveryLoaded) {
       final isScanActive =
@@ -164,10 +213,26 @@ class NetworkDiscoveryCubit extends Cubit<NetworkDiscoveryState> {
   void _handleScanJobUpdate(DiscoveryScanJob? job) {
     if (isClosed) return;
     final current = state;
-    if (current is NetworkDiscoveryLoaded && job != null) {
-      final isScanActive =
-          job.status == ScanJobStatus.running ||
-          job.status == ScanJobStatus.validating;
+
+    if (job == null) {
+      if (_currentSubscribedScanId != null) {
+        _subscribeToScanDevices(null);
+      }
+      if (current is NetworkDiscoveryLoaded) {
+        emit(current.copyWith(latestScan: null, isScanning: false));
+      }
+      return;
+    }
+
+    final isScanActive =
+        job.status == ScanJobStatus.running ||
+        job.status == ScanJobStatus.validating;
+
+    if (job.id != _currentSubscribedScanId) {
+      _subscribeToScanDevices(job.id);
+    }
+
+    if (current is NetworkDiscoveryLoaded) {
       emit(current.copyWith(latestScan: job, isScanning: isScanActive));
     }
   }
@@ -216,7 +281,12 @@ class NetworkDiscoveryCubit extends Cubit<NetworkDiscoveryState> {
       maxConcurrency: maxConcurrency,
       timeoutSeconds: timeoutSeconds,
     );
-    if (res.isFailure) {
+    if (res.isSuccess && res.dataOrNull != null) {
+      final job = res.dataOrNull!;
+      if (job.id != _currentSubscribedScanId) {
+        await _subscribeToScanDevices(job.id);
+      }
+    } else if (res.isFailure) {
       // Non-fatal error display
       final current = state;
       if (current is NetworkDiscoveryLoaded) {

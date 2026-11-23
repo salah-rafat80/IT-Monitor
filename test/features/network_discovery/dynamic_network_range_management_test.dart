@@ -412,6 +412,15 @@ class FailingSaveDiscoveryRepository implements DiscoveryRepository {
   ) => _inner.getEvidenceForDevice(deviceId);
 
   @override
+  Future<Result<void>> deleteDiscoveredDevicesForOlderScans({
+    required String factoryId,
+    required int keepScanId,
+  }) => _inner.deleteDiscoveredDevicesForOlderScans(
+    factoryId: factoryId,
+    keepScanId: keepScanId,
+  );
+
+  @override
   Stream<DiscoveryScanJob?> watchLatestScanJob({String? factoryId}) =>
       _inner.watchLatestScanJob(factoryId: factoryId);
 
@@ -839,6 +848,19 @@ void main() {
         // Configure two subnets
         await cubit.addNetworkRange(cidr: '10.1.1.0/24', name: 'VLAN 1');
         await cubit.addNetworkRange(cidr: '10.1.2.0/24', name: 'VLAN 2');
+
+        // Create scan job for these devices
+        await discoveryRepo.createScanJob(
+          DiscoveryScanJob(
+            id: 1,
+            factoryId: 'unassigned',
+            status: ScanJobStatus.completed,
+            targetRanges: const ['10.1.1.0/24', '10.1.2.0/24'],
+            enabledStrategies: const ['icmp'],
+            startedAt: DateTime.now(),
+            completedAt: DateTime.now(),
+          ),
+        );
 
         // Populate two devices across subnets
         await discoveryRepo.saveDiscoveredDevice(

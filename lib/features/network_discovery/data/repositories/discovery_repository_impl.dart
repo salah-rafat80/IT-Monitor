@@ -53,15 +53,25 @@ class DiscoveryRepositoryImpl implements DiscoveryRepository {
             ev == 'discovery_scan_completed' ||
             ev == 'discovery_scan_cancelled' ||
             ev == 'discovery_scan_failed') {
-          // Refresh discovered devices in background
-          getDiscoveredDevices().then((res) {
-            if (res.isSuccess && !_discoveredDevicesController.isClosed) {
-              _discoveredDevicesController.add(res.dataOrNull ?? []);
+          // Refresh discovered devices scoped to the latest scan job
+          getLatestScanJob().then((latestRes) {
+            final latestJob = latestRes.dataOrNull;
+            if (latestRes.isSuccess && !_scanJobController.isClosed) {
+              _scanJobController.add(latestJob);
             }
-          });
-          getLatestScanJob().then((res) {
-            if (res.isSuccess && !_scanJobController.isClosed) {
-              _scanJobController.add(res.dataOrNull);
+            if (latestJob != null) {
+              getDiscoveredDevices(
+                scanId: latestJob.id,
+                factoryId: latestJob.factoryId,
+              ).then((res) {
+                if (res.isSuccess && !_discoveredDevicesController.isClosed) {
+                  _discoveredDevicesController.add(res.dataOrNull ?? []);
+                }
+              });
+            } else {
+              if (!_discoveredDevicesController.isClosed) {
+                _discoveredDevicesController.add([]);
+              }
             }
           });
         } else if (ev == 'discovery_config_updated') {
@@ -674,8 +684,20 @@ class DiscoveryRepositoryImpl implements DiscoveryRepository {
     }
 
     try {
-      // Check if IP already recorded for this factory (and scan/existing records)
+      // Check if IP already recorded for this specific scan
       final existing =
+          await (_db.select(_db.discoveredDevices)
+                ..where(
+                  (t) =>
+                      t.factoryId.equals(device.factoryId) &
+                      t.scanId.equals(device.scanId) &
+                      t.ip.equals(device.ip),
+                )
+                ..limit(1))
+              .getSingleOrNull();
+
+      // Check earlier scans to preserve original firstSeen timestamp if device was previously seen
+      final prior =
           await (_db.select(_db.discoveredDevices)
                 ..where(
                   (t) =>
@@ -684,7 +706,7 @@ class DiscoveryRepositoryImpl implements DiscoveryRepository {
                 )
                 ..orderBy([
                   (t) =>
-                      OrderingTerm(expression: t.id, mode: OrderingMode.desc),
+                      OrderingTerm(expression: t.firstSeen, mode: OrderingMode.asc),
                 ])
                 ..limit(1))
               .getSingleOrNull();
@@ -693,9 +715,9 @@ class DiscoveryRepositoryImpl implements DiscoveryRepository {
         factoryId: Value(device.factoryId),
         scanId: Value(device.scanId),
         ip: Value(device.ip),
-        mac: Value(device.mac ?? existing?.mac),
-        hostname: Value(device.hostname ?? existing?.hostname),
-        vendor: Value(device.vendor ?? existing?.vendor),
+        mac: Value(device.mac ?? existing?.mac ?? prior?.mac),
+        hostname: Value(device.hostname ?? existing?.hostname ?? prior?.hostname),
+        vendor: Value(device.vendor ?? existing?.vendor ?? prior?.vendor),
         observedServicesJson: Value(jsonEncode(device.observedServices)),
         predictedCategory: Value(device.predictedCategory.toValue()),
         confidence: Value(device.confidence.toValue()),
@@ -703,10 +725,10 @@ class DiscoveryRepositoryImpl implements DiscoveryRepository {
           jsonEncode(device.evidence.map((e) => e.toJson()).toList()),
         ),
         classificationMethod: Value(device.classificationMethod),
-        firstSeen: Value(existing?.firstSeen ?? device.firstSeen),
+        firstSeen: Value(existing?.firstSeen ?? prior?.firstSeen ?? device.firstSeen),
         lastSeen: Value(device.lastSeen),
         lastSuccessfulProbe: Value(
-          device.lastSuccessfulProbe ?? existing?.lastSuccessfulProbe,
+          device.lastSuccessfulProbe ?? existing?.lastSuccessfulProbe ?? prior?.lastSuccessfulProbe,
         ),
         lastProbeFailureReason: Value(device.lastProbeFailureReason),
         reviewState: Value(device.reviewState.toValue()),
@@ -714,7 +736,7 @@ class DiscoveryRepositoryImpl implements DiscoveryRepository {
         adminReviewerId: Value(device.adminReviewerId),
         adminReviewTimestamp: Value(device.adminReviewTimestamp),
         associatedDeviceId: Value(
-          device.associatedDeviceId ?? existing?.associatedDeviceId,
+          device.associatedDeviceId ?? existing?.associatedDeviceId ?? prior?.associatedDeviceId,
         ),
       );
 
@@ -986,7 +1008,16 @@ class DiscoveryRepositoryImpl implements DiscoveryRepository {
     String? factoryId,
   }) {
     if (AppConfig.isProductionClient) {
-      return _discoveredDevicesController.stream;
+      return _discoveredDevicesController.stream.map((list) {
+        var filtered = list;
+        if (scanId != null) {
+          filtered = filtered.where((d) => d.scanId == scanId).toList();
+        }
+        if (factoryId != null && factoryId.isNotEmpty) {
+          filtered = filtered.where((d) => d.factoryId == factoryId).toList();
+        }
+        return filtered;
+      });
     }
     var query = _db.select(_db.discoveredDevices);
     if (scanId != null) {
@@ -1000,6 +1031,39 @@ class DiscoveryRepositoryImpl implements DiscoveryRepository {
         ]))
         .watch()
         .map((rows) => rows.map(_mapDevice).toList());
+  }
+
+  @override
+  Future<Result<void>> deleteDiscoveredDevicesForOlderScans({
+    required String factoryId,
+    required int keepScanId,
+  }) async {
+    if (AppConfig.isProductionClient) {
+      return Result.success(null);
+    }
+    try {
+      final oldDevices = await (_db.select(_db.discoveredDevices)
+            ..where((t) =>
+                t.factoryId.equals(factoryId) &
+                t.scanId.isNotValue(keepScanId)))
+          .get();
+
+      final oldDeviceIds = oldDevices.map((d) => d.id).toList();
+      if (oldDeviceIds.isNotEmpty) {
+        await (_db.delete(_db.discoveryEvidences)
+              ..where((t) => t.discoveredDeviceId.isIn(oldDeviceIds)))
+            .go();
+
+        await (_db.delete(_db.discoveredDevices)
+              ..where((t) => t.id.isIn(oldDeviceIds)))
+            .go();
+      }
+      return Result.success(null);
+    } catch (e) {
+      return Result.failure(
+        DatabaseFailure('Failed to cleanup older scan devices: $e'),
+      );
+    }
   }
 
   DiscoveryScanJob _mapScanJob(DiscoveryScanData r) {

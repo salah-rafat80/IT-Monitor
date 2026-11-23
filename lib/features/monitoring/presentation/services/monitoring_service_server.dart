@@ -2813,7 +2813,23 @@ Write-Output 'OK'
         final factoryId = request.uri.queryParameters['factoryId'];
         final discoveryRepo = getIt<DiscoveryRepository>();
         final scanIdStr = request.uri.queryParameters['scanId'];
-        final scanId = scanIdStr != null ? int.tryParse(scanIdStr) : null;
+        int? scanId = scanIdStr != null ? int.tryParse(scanIdStr) : null;
+
+        // If scanId was not explicitly provided, scope to latest scan for this factory
+        if (scanId == null) {
+          final latestScanRes = await discoveryRepo.getLatestScanJob(
+            factoryId: factoryId,
+          );
+          scanId = latestScanRes.dataOrNull?.id;
+          if (scanId == null) {
+            // No scan exists yet for this factory -> honest empty list
+            await _jsonResponse(request, {
+              'success': true,
+              'devices': [],
+            });
+            return;
+          }
+        }
 
         final res = await discoveryRepo.getDiscoveredDevices(
           factoryId: factoryId,

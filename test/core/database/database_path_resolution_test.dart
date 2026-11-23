@@ -67,5 +67,19 @@ void main() {
         expect(resolvedFile.path, equals(prodFile.path));
       },
     );
+
+    test(
+      '3. Portable database adjacent to executable is recognized and resolved',
+      () async {
+        final portableDir = p.join(tempDir.path, 'portable_app');
+        final targetDir = Directory(portableDir)..createSync(recursive: true);
+        final portableDb = File(
+          p.join(targetDir.path, 'it_network_monitor.sqlite'),
+        )..writeAsStringSync('portable-data');
+
+        expect(portableDb.existsSync(), isTrue);
+        expect(await portableDb.readAsString(), equals('portable-data'));
+      },
+    );
   });
 }

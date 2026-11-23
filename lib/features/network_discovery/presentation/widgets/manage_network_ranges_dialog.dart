@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../../../core/theme/app_colors.dart';
 import '../../../factories/presentation/bloc/factory_cubit.dart';
 import '../../domain/entities/network_range.dart';
 import '../bloc/network_discovery_cubit.dart';
@@ -135,11 +136,11 @@ class _ManageNetworkRangesDialogState extends State<ManageNetworkRangesDialog> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Row(
+        title: Row(
           children: [
-            Icon(Icons.warning_amber_rounded, color: Colors.orange),
-            SizedBox(width: 8),
-            Text('Remove Network Range'),
+            Icon(Icons.warning_amber_rounded, color: ctx.appTokens.statusDegraded),
+            const SizedBox(width: 8),
+            const Text('Remove Network Range'),
           ],
         ),
         content: Text(
@@ -152,7 +153,10 @@ class _ManageNetworkRangesDialogState extends State<ManageNetworkRangesDialog> {
             child: const Text('Cancel'),
           ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: ctx.appTokens.statusOffline,
+              foregroundColor: ctx.appTokens.onStatusOffline,
+            ),
             onPressed: () => Navigator.of(ctx).pop(true),
             child: const Text('Remove Range'),
           ),
@@ -239,6 +243,7 @@ class _ManageNetworkRangesDialogState extends State<ManageNetworkRangesDialog> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final tokens = context.appTokens;
 
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -275,7 +280,7 @@ class _ManageNetworkRangesDialogState extends State<ManageNetworkRangesDialog> {
                   // Dialog Header
                   Row(
                     children: [
-                      const Icon(Icons.tune_rounded, color: Color(0xFF0F62FE)),
+                      Icon(Icons.tune_rounded, color: tokens.primary),
                       const SizedBox(width: 10),
                       Expanded(
                         child: Column(
@@ -319,13 +324,13 @@ class _ManageNetworkRangesDialogState extends State<ManageNetworkRangesDialog> {
                       margin: const EdgeInsets.only(bottom: 12),
                       decoration: BoxDecoration(
                         color: currentFactoryId == null
-                            ? Colors.orange.withValues(alpha: 0.1)
-                            : const Color(0xFF0F62FE).withValues(alpha: 0.08),
+                            ? tokens.statusDegradedSurface
+                            : tokens.primary.withValues(alpha: 0.08),
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(
                           color: currentFactoryId == null
-                              ? Colors.orange.withValues(alpha: 0.3)
-                              : const Color(0xFF0F62FE).withValues(alpha: 0.25),
+                              ? tokens.statusDegraded.withValues(alpha: 0.3)
+                              : tokens.primary.withValues(alpha: 0.25),
                         ),
                       ),
                       child: Row(
@@ -333,8 +338,8 @@ class _ManageNetworkRangesDialogState extends State<ManageNetworkRangesDialog> {
                           Icon(
                             Icons.factory_rounded,
                             color: currentFactoryId == null
-                                ? Colors.orange
-                                : const Color(0xFF0F62FE),
+                                ? tokens.statusDegraded
+                                : tokens.primary,
                             size: 20,
                           ),
                           const SizedBox(width: 10),
@@ -351,11 +356,11 @@ class _ManageNetworkRangesDialogState extends State<ManageNetworkRangesDialog> {
                               child: DropdownButton<String>(
                                 value: currentFactoryId,
                                 isDense: true,
-                                hint: const Text(
+                                hint: Text(
                                   'Select Factory to Manage Ranges (Required)',
                                   style: TextStyle(
                                     fontSize: 13,
-                                    color: Colors.orange,
+                                    color: tokens.statusDegraded,
                                   ),
                                 ),
                                 items: factoryCubit.state.factories
@@ -392,25 +397,25 @@ class _ManageNetworkRangesDialogState extends State<ManageNetworkRangesDialog> {
                         vertical: 10,
                       ),
                       decoration: BoxDecoration(
-                        color: Colors.red.withValues(alpha: 0.1),
+                        color: tokens.statusOfflineSurface,
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(
-                          color: Colors.red.withValues(alpha: 0.3),
+                          color: tokens.statusOffline.withValues(alpha: 0.3),
                         ),
                       ),
                       child: Row(
                         children: [
-                          const Icon(
+                          Icon(
                             Icons.error_outline,
-                            color: Colors.red,
+                            color: tokens.statusOffline,
                             size: 18,
                           ),
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
                               _errorMessage!,
-                              style: const TextStyle(
-                                color: Colors.red,
+                              style: TextStyle(
+                                color: tokens.statusOffline,
                                 fontSize: 13,
                               ),
                             ),
@@ -504,17 +509,17 @@ class _ManageNetworkRangesDialogState extends State<ManageNetworkRangesDialog> {
                               const SizedBox(height: 8),
                               Row(
                                 children: [
-                                  const Icon(
+                                  Icon(
                                     Icons.check_circle_outline,
-                                    color: Colors.green,
+                                    color: tokens.statusOnline,
                                     size: 16,
                                   ),
                                   const SizedBox(width: 6),
                                   Text(
                                     'Normalized: ${_livePreviewRange!.cidr} (${_livePreviewRange!.usableHostsCount} usable hosts: ${_livePreviewRange!.baseIp.substring(0, _livePreviewRange!.baseIp.lastIndexOf('.'))}.1 – .${_livePreviewRange!.usableHostsCount})',
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontSize: 12,
-                                      color: Colors.green,
+                                      color: tokens.statusOnline,
                                       fontWeight: FontWeight.w500,
                                     ),
                                   ),
@@ -548,8 +553,8 @@ class _ManageNetworkRangesDialogState extends State<ManageNetworkRangesDialog> {
                                 const SizedBox(width: 10),
                                 ElevatedButton.icon(
                                   style: ElevatedButton.styleFrom(
-                                    backgroundColor: const Color(0xFF0F62FE),
-                                    foregroundColor: Colors.white,
+                                    backgroundColor: tokens.primary,
+                                    foregroundColor: tokens.onPrimary,
                                   ),
                                   onPressed:
                                       (_isSaving ||
@@ -603,10 +608,10 @@ class _ManageNetworkRangesDialogState extends State<ManageNetworkRangesDialog> {
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                const Icon(
+                                Icon(
                                   Icons.factory_outlined,
                                   size: 48,
-                                  color: Colors.orange,
+                                  color: tokens.statusDegraded,
                                 ),
                                 const SizedBox(height: 12),
                                 const Text(
@@ -634,10 +639,10 @@ class _ManageNetworkRangesDialogState extends State<ManageNetworkRangesDialog> {
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                const Icon(
+                                Icon(
                                   Icons.radar_outlined,
                                   size: 48,
-                                  color: Colors.grey,
+                                  color: tokens.disabled,
                                 ),
                                 const SizedBox(height: 12),
                                 const Text(
@@ -682,7 +687,7 @@ class _ManageNetworkRangesDialogState extends State<ManageNetworkRangesDialog> {
                                         ? theme.dividerColor.withValues(
                                             alpha: 0.3,
                                           )
-                                        : Colors.grey.withValues(alpha: 0.2),
+                                        : tokens.disabled.withValues(alpha: 0.2),
                                   ),
                                 ),
                                 child: Row(
@@ -692,8 +697,8 @@ class _ManageNetworkRangesDialogState extends State<ManageNetworkRangesDialog> {
                                           ? Icons.lan_rounded
                                           : Icons.lan_outlined,
                                       color: range.isEnabled
-                                          ? const Color(0xFF0F62FE)
-                                          : Colors.grey,
+                                          ? tokens.primary
+                                          : tokens.disabled,
                                       size: 20,
                                     ),
                                     const SizedBox(width: 12),
@@ -711,7 +716,7 @@ class _ManageNetworkRangesDialogState extends State<ManageNetworkRangesDialog> {
                                                   fontSize: 14,
                                                   color: range.isEnabled
                                                       ? null
-                                                      : Colors.grey,
+                                                      : tokens.disabled,
                                                 ),
                                               ),
                                               if (range.name != null) ...[
@@ -739,10 +744,8 @@ class _ManageNetworkRangesDialogState extends State<ManageNetworkRangesDialog> {
                                                     ),
                                                 decoration: BoxDecoration(
                                                   color: range.isEnabled
-                                                      ? Colors.green.withValues(
-                                                          alpha: 0.12,
-                                                        )
-                                                      : Colors.grey.withValues(
+                                                      ? tokens.statusOnlineSurface
+                                                      : tokens.disabled.withValues(
                                                           alpha: 0.15,
                                                         ),
                                                   borderRadius:
@@ -756,8 +759,8 @@ class _ManageNetworkRangesDialogState extends State<ManageNetworkRangesDialog> {
                                                     fontSize: 10,
                                                     fontWeight: FontWeight.w600,
                                                     color: range.isEnabled
-                                                        ? Colors.green
-                                                        : Colors.grey,
+                                                        ? tokens.statusOnline
+                                                        : tokens.disabled,
                                                   ),
                                                 ),
                                               ),
@@ -825,10 +828,10 @@ class _ManageNetworkRangesDialogState extends State<ManageNetworkRangesDialog> {
                                       ),
                                       // Delete
                                       IconButton(
-                                        icon: const Icon(
+                                        icon: Icon(
                                           Icons.delete_outline,
                                           size: 18,
-                                          color: Colors.red,
+                                          color: tokens.statusOffline,
                                         ),
                                         tooltip: 'Remove Scope',
                                         onPressed: () => _confirmDeleteRange(

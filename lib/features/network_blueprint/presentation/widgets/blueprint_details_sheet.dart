@@ -32,7 +32,7 @@ class BlueprintDetailsSheet extends StatelessWidget {
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.08),
+            color: tokens.shadow.withValues(alpha: isDark ? 0.35 : 0.08),
             blurRadius: 12,
             offset: const Offset(-2, 0),
           ),
@@ -282,7 +282,7 @@ class BlueprintDetailsSheet extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: isDark ? Colors.white.withValues(alpha: 0.03) : Colors.black.withValues(alpha: 0.02),
+        color: tokens.surfaceContainerHighest.withValues(alpha: 0.3),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
           color: tokens.cardBorder,
@@ -389,40 +389,40 @@ class BlueprintDetailsSheet extends StatelessWidget {
     switch (cat) {
       case BlueprintElementCategory.switchDevice:
         icon = Icons.hub;
-        color = const Color(0xFF00E5FF);
+        color = tokens.accent;
         break;
       case BlueprintElementCategory.server:
         icon = Icons.dns;
-        color = const Color(0xFFA78BFA);
+        color = tokens.primary;
         break;
       case BlueprintElementCategory.workstation:
         icon = Icons.computer;
-        color = const Color(0xFF10B981);
+        color = tokens.statusOnline;
         break;
       case BlueprintElementCategory.laptop:
         icon = Icons.laptop;
-        color = const Color(0xFF38BDF8);
+        color = tokens.primary;
         break;
       case BlueprintElementCategory.wallDrop:
         icon = Icons.settings_ethernet;
-        color = const Color(0xFFF59E0B);
+        color = tokens.statusDegraded;
         break;
       case BlueprintElementCategory.telephony:
         icon = Icons.phone_in_talk;
-        color = const Color(0xFFEC4899);
+        color = tokens.secondary;
         break;
       case BlueprintElementCategory.security:
         icon = Icons.videocam;
-        color = const Color(0xFFEF4444);
+        color = tokens.statusOffline;
         break;
       case BlueprintElementCategory.room:
       case BlueprintElementCategory.office:
         icon = Icons.meeting_room;
-        color = const Color(0xFF94A3B8);
+        color = tokens.onSurfaceVariant;
         break;
       case BlueprintElementCategory.generic:
         icon = Icons.crop_square;
-        color = const Color(0xFF94A3B8);
+        color = tokens.onSurfaceVariant;
         break;
     }
 

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../../../../core/theme/app_colors.dart';
 import '../../domain/entities/discovered_device_entity.dart';
 
 class DiscoveryEvidenceDialog extends StatelessWidget {
@@ -11,12 +12,13 @@ class DiscoveryEvidenceDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final tokens = context.appTokens;
     final dateFormat = DateFormat('yyyy-MM-dd HH:mm:ss');
 
     return AlertDialog(
       title: Row(
         children: [
-          const Icon(Icons.fingerprint_rounded, color: Color(0xFF0F62FE)),
+          Icon(Icons.fingerprint_rounded, color: tokens.primary),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
@@ -96,13 +98,13 @@ class DiscoveryEvidenceDialog extends StatelessWidget {
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
                       color: ev.isSuccess
-                          ? const Color(0xFF10B981).withValues(alpha: 0.08)
-                          : Colors.red.withValues(alpha: 0.08),
+                          ? tokens.statusOnlineSurface
+                          : tokens.statusOfflineSurface,
                       borderRadius: BorderRadius.circular(6),
                       border: Border.all(
                         color: ev.isSuccess
-                            ? const Color(0xFF10B981).withValues(alpha: 0.2)
-                            : Colors.red.withValues(alpha: 0.2),
+                            ? tokens.statusOnline.withValues(alpha: 0.2)
+                            : tokens.statusOffline.withValues(alpha: 0.2),
                       ),
                     ),
                     child: Row(
@@ -114,8 +116,8 @@ class DiscoveryEvidenceDialog extends StatelessWidget {
                               : Icons.cancel_rounded,
                           size: 18,
                           color: ev.isSuccess
-                              ? const Color(0xFF10B981)
-                              : Colors.red,
+                              ? tokens.statusOnline
+                              : tokens.statusOffline,
                         ),
                         const SizedBox(width: 8),
                         Expanded(
@@ -135,9 +137,9 @@ class DiscoveryEvidenceDialog extends StatelessWidget {
                                   ),
                                   Text(
                                     dateFormat.format(ev.timestamp),
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontSize: 10,
-                                      color: Colors.grey,
+                                      color: tokens.textSecondary,
                                     ),
                                   ),
                                 ],
@@ -181,7 +183,13 @@ class _InfoRow extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              color: context.appTokens.textSecondary,
+            ),
+          ),
           Text(
             value,
             style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/theme/app_colors.dart';
 import '../bloc/network_discovery_state.dart';
 
 class DiscoverySummaryCards extends StatelessWidget {
@@ -9,6 +10,7 @@ class DiscoverySummaryCards extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = context.appTokens;
     return LayoutBuilder(
       builder: (context, constraints) {
         final crossAxisCount = constraints.maxWidth > 1100
@@ -29,28 +31,28 @@ class DiscoverySummaryCards extends StatelessWidget {
               subtitle:
                   '${state.classifiedCount} Classified / ${state.unknownCount} Unknown',
               icon: Icons.radar_rounded,
-              color: const Color(0xFF0F62FE),
+              color: tokens.primary,
             ),
             _Card(
               title: 'Pending Review',
               value: '${state.pendingReviewCount}',
               subtitle: 'Awaiting Admin evaluation',
               icon: Icons.pending_actions_rounded,
-              color: Colors.orange,
+              color: tokens.statusDegraded,
             ),
             _Card(
               title: 'Already in Inventory',
               value: '${state.alreadyKnownCount}',
               subtitle: 'Protected production assets',
               icon: Icons.verified_user_rounded,
-              color: const Color(0xFF10B981),
+              color: tokens.statusOnline,
             ),
             _Card(
               title: 'Approved Assets',
               value: '${state.approvedCount}',
               subtitle: 'Promoted or verified assets',
               icon: Icons.check_circle_rounded,
-              color: const Color(0xFF059669),
+              color: tokens.statusOnline,
             ),
             _Card(
               title: 'Conflicts / Rejected',
@@ -58,7 +60,9 @@ class DiscoverySummaryCards extends StatelessWidget {
               subtitle:
                   '${state.conflictCount} Conflicts / ${state.rejectedCount} Rejected',
               icon: Icons.warning_amber_rounded,
-              color: state.conflictCount > 0 ? Colors.red : Colors.grey,
+              color: state.conflictCount > 0
+                  ? tokens.statusOffline
+                  : tokens.disabled,
             ),
           ],
         );

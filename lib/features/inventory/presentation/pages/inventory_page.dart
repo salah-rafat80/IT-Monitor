@@ -7,6 +7,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../../../core/di/injection.dart';
+import '../../../../core/theme/app_colors.dart';
 import '../../../../core/utils/ipv4_utils.dart';
 import '../../../devices/domain/entities/device_entity.dart';
 import '../../../devices/presentation/bloc/devices_cubit.dart';
@@ -256,7 +257,7 @@ class _InventoryPageState extends State<InventoryPage>
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Saved "${updated.name}" successfully.'),
-          backgroundColor: const Color(0xFF10B981),
+          backgroundColor: context.appTokens.statusOnline,
           duration: const Duration(seconds: 2),
         ),
       );
@@ -264,6 +265,7 @@ class _InventoryPageState extends State<InventoryPage>
   }
 
   void _showAddNewRowDialog(String activeFactoryId) {
+    final tokens = context.appTokens;
     final nameCtrl = TextEditingController();
     final ipCtrl = TextEditingController();
     final ownerCtrl = TextEditingController();
@@ -284,7 +286,7 @@ class _InventoryPageState extends State<InventoryPage>
         builder: (context, setDialogState) => AlertDialog(
           title: Row(
             children: [
-              const Icon(Icons.playlist_add_rounded, color: Color(0xFF0F62FE)),
+              Icon(Icons.playlist_add_rounded, color: tokens.primary),
               const SizedBox(width: 8),
               Text('Add New Device Row (${activeFactoryId.toUpperCase()})'),
             ],
@@ -300,25 +302,25 @@ class _InventoryPageState extends State<InventoryPage>
                     Container(
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
-                        color: Colors.red.withValues(alpha: 0.1),
+                        color: tokens.statusOfflineSurface,
                         borderRadius: BorderRadius.circular(6),
                         border: Border.all(
-                          color: Colors.red.withValues(alpha: 0.3),
+                          color: tokens.statusOffline.withValues(alpha: 0.3),
                         ),
                       ),
                       child: Row(
                         children: [
-                          const Icon(
+                          Icon(
                             Icons.error_outline,
-                            color: Colors.red,
+                            color: tokens.statusOffline,
                             size: 18,
                           ),
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
                               dialogError!,
-                              style: const TextStyle(
-                                color: Colors.red,
+                              style: TextStyle(
+                                color: tokens.statusOffline,
                                 fontSize: 12,
                               ),
                             ),
@@ -494,8 +496,8 @@ class _InventoryPageState extends State<InventoryPage>
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF0F62FE),
-                foregroundColor: Colors.white,
+                backgroundColor: tokens.primary,
+                foregroundColor: tokens.onPrimary,
               ),
               onPressed: () async {
                 final name = nameCtrl.text.trim();
@@ -584,12 +586,13 @@ class _InventoryPageState extends State<InventoryPage>
   }
 
   void _showDeleteConfirmation(List<DeviceEntity> devicesToDelete) {
+    final tokens = context.appTokens;
     showDialog(
       context: context,
       builder: (dialogCtx) => AlertDialog(
         title: Row(
           children: [
-            const Icon(Icons.delete_forever_rounded, color: Colors.redAccent),
+            Icon(Icons.delete_forever_rounded, color: tokens.statusOffline),
             const SizedBox(width: 8),
             Text('Delete ${devicesToDelete.length} Device(s)?'),
           ],
@@ -606,8 +609,8 @@ class _InventoryPageState extends State<InventoryPage>
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.redAccent,
-              foregroundColor: Colors.white,
+              backgroundColor: tokens.statusOffline,
+              foregroundColor: tokens.onStatusOffline,
             ),
             onPressed: () async {
               Navigator.of(dialogCtx).pop();
@@ -633,6 +636,7 @@ class _InventoryPageState extends State<InventoryPage>
   }
 
   void _showBulkEditDialog(List<DeviceEntity> selectedDevices) {
+    final tokens = context.appTokens;
     String? newDept;
     String? newLoc;
     String? newVendor;
@@ -649,7 +653,7 @@ class _InventoryPageState extends State<InventoryPage>
         builder: (context, setDialogState) => AlertDialog(
           title: Row(
             children: [
-              const Icon(Icons.edit_note_rounded, color: Color(0xFF0F62FE)),
+              Icon(Icons.edit_note_rounded, color: tokens.primary),
               const SizedBox(width: 8),
               Text('Bulk Edit ${selectedDevices.length} Devices'),
             ],
@@ -660,9 +664,9 @@ class _InventoryPageState extends State<InventoryPage>
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   'Only fields with entered values will be updated across all selected records. Leave blank to keep existing values.',
-                  style: TextStyle(fontSize: 13, color: Colors.grey),
+                  style: TextStyle(fontSize: 13, color: tokens.textSecondary),
                 ),
                 const SizedBox(height: 16),
                 TextField(
@@ -751,8 +755,8 @@ class _InventoryPageState extends State<InventoryPage>
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF0F62FE),
-                foregroundColor: Colors.white,
+                backgroundColor: tokens.primary,
+                foregroundColor: tokens.onPrimary,
               ),
               onPressed: () async {
                 Navigator.of(dialogCtx).pop();
@@ -795,7 +799,7 @@ class _InventoryPageState extends State<InventoryPage>
           content: Text(
             'Exported ${devices.length} records to "${file.path}".',
           ),
-          backgroundColor: const Color(0xFF10B981),
+          backgroundColor: context.appTokens.statusOnline,
           duration: const Duration(seconds: 4),
         ),
       );
@@ -815,7 +819,7 @@ class _InventoryPageState extends State<InventoryPage>
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Downloaded Excel Template to "${file.path}".'),
-          backgroundColor: const Color(0xFF0F62FE),
+          backgroundColor: context.appTokens.primary,
           duration: const Duration(seconds: 4),
         ),
       );
@@ -874,7 +878,7 @@ class _InventoryPageState extends State<InventoryPage>
           content: Text(
             'Copied ${selectedDevices.length} tabular rows to clipboard (Excel paste ready).',
           ),
-          backgroundColor: const Color(0xFF10B981),
+          backgroundColor: context.appTokens.statusOnline,
           duration: const Duration(seconds: 2),
         ),
       );
@@ -927,6 +931,7 @@ class _InventoryPageState extends State<InventoryPage>
 
   @override
   Widget build(BuildContext context) {
+    final tokens = context.appTokens;
     final theme = Theme.of(context);
     final factoryState = context.watch<FactoryCubit>().state;
     final activeFactory = factoryState.selectedFactory;
@@ -965,7 +970,7 @@ class _InventoryPageState extends State<InventoryPage>
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
                   content: Text(state.message),
-                  backgroundColor: Colors.red,
+                  backgroundColor: tokens.statusOffline,
                 ),
               );
             }
@@ -1025,8 +1030,8 @@ class _InventoryPageState extends State<InventoryPage>
 
                       final recoveryButton = OutlinedButton.icon(
                         style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.amber,
-                          side: const BorderSide(color: Colors.amber),
+                          foregroundColor: tokens.statusDegraded,
+                          side: BorderSide(color: tokens.statusDegraded),
                         ),
                         onPressed: () =>
                             setState(() => _isShowingUnassignedRecovery = true),
@@ -1159,8 +1164,8 @@ class _InventoryPageState extends State<InventoryPage>
                           if (!isConsolidated)
                             ElevatedButton.icon(
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(0xFF0F62FE),
-                                foregroundColor: Colors.white,
+                                backgroundColor: tokens.primary,
+                                foregroundColor: tokens.onPrimary,
                                 visualDensity: VisualDensity.compact,
                               ),
                               onPressed: () =>
@@ -1173,8 +1178,8 @@ class _InventoryPageState extends State<InventoryPage>
                           if (_selectedIds.isNotEmpty && isAdmin)
                             ElevatedButton.icon(
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.redAccent,
-                                foregroundColor: Colors.white,
+                                backgroundColor: tokens.statusOffline,
+                                foregroundColor: tokens.onStatusOffline,
                                 visualDensity: VisualDensity.compact,
                               ),
                               onPressed: () =>
@@ -1287,7 +1292,7 @@ class _InventoryPageState extends State<InventoryPage>
                           'Showing ${displayDevices.length} of ${allDevices.length} records in $activeFactoryCode Inventory',
                           style: TextStyle(
                             fontSize: 12,
-                            color: Colors.grey[400],
+                            color: tokens.textSecondary,
                           ),
                         ),
                         if (isConsolidated) ...[
@@ -1298,15 +1303,15 @@ class _InventoryPageState extends State<InventoryPage>
                               vertical: 1,
                             ),
                             decoration: BoxDecoration(
-                              color: Colors.blue.withValues(alpha: 0.15),
+                              color: tokens.primary.withValues(alpha: 0.15),
                               borderRadius: BorderRadius.circular(4),
                             ),
-                            child: const Text(
+                            child: Text(
                               'CONSOLIDATED READ-ONLY',
                               style: TextStyle(
                                 fontSize: 10,
                                 fontWeight: FontWeight.bold,
-                                color: Colors.blue,
+                                color: tokens.primary,
                               ),
                             ),
                           ),
@@ -1315,10 +1320,10 @@ class _InventoryPageState extends State<InventoryPage>
                         if (_selectedIds.isNotEmpty)
                           Text(
                             '${_selectedIds.length} row(s) selected',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.bold,
-                              color: Color(0xFF0F62FE),
+                              color: tokens.primary,
                             ),
                           ),
                       ],
@@ -1336,9 +1341,9 @@ class _InventoryPageState extends State<InventoryPage>
                               allDevices.isEmpty
                                   ? 'No devices registered in $activeFactoryCode yet. Click "+ Add Row" or "Import XLSX".'
                                   : 'No devices match your filter criteria.',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 15,
-                                color: Colors.grey,
+                                color: tokens.textSecondary,
                               ),
                             ),
                           )
@@ -1444,12 +1449,10 @@ class _InventoryPageState extends State<InventoryPage>
                                             Color?
                                           >((states) {
                                             if (error != null) {
-                                              return Colors.red.withValues(
-                                                alpha: 0.1,
-                                              );
+                                              return tokens.statusOfflineSurface;
                                             }
                                             if (isSelected) {
-                                              return theme.colorScheme.primary
+                                              return tokens.primary
                                                   .withValues(alpha: 0.1);
                                             }
                                             return null;
@@ -1881,9 +1884,9 @@ class _InventoryPageState extends State<InventoryPage>
                                             children: [
                                               if (isEditing)
                                                 IconButton(
-                                                  icon: const Icon(
+                                                  icon: Icon(
                                                     Icons.check,
-                                                    color: Color(0xFF10B981),
+                                                    color: tokens.statusOnline,
                                                     size: 18,
                                                   ),
                                                   tooltip: 'Save edits',
@@ -1892,9 +1895,9 @@ class _InventoryPageState extends State<InventoryPage>
                                                 ),
                                               if (!isConsolidated && isAdmin)
                                                 IconButton(
-                                                  icon: const Icon(
+                                                  icon: Icon(
                                                     Icons.delete_outline,
-                                                    color: Colors.redAccent,
+                                                    color: tokens.statusOffline,
                                                     size: 18,
                                                   ),
                                                   tooltip: 'Delete device',
@@ -1939,11 +1942,12 @@ class _FactoryTabButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = context.appTokens;
     final activeColor = code == 'RNF'
-        ? const Color(0xFF0F62FE)
+        ? tokens.primary
         : code == 'BNF'
-        ? const Color(0xFF10B981)
-        : const Color(0xFF8A3FFC);
+        ? tokens.statusOnline
+        : tokens.secondary;
 
     return InkWell(
       onTap: onTap,
@@ -1953,12 +1957,12 @@ class _FactoryTabButton extends StatelessWidget {
         decoration: BoxDecoration(
           color: isSelected
               ? activeColor.withValues(alpha: 0.2)
-              : Colors.transparent,
+              : tokens.transparent,
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
             color: isSelected
                 ? activeColor
-                : Colors.grey.withValues(alpha: 0.3),
+                : tokens.border,
             width: isSelected ? 1.5 : 1,
           ),
         ),
@@ -1970,15 +1974,15 @@ class _FactoryTabButton extends StatelessWidget {
               decoration: BoxDecoration(
                 color: isSelected
                     ? activeColor
-                    : Colors.grey.withValues(alpha: 0.3),
+                    : tokens.border,
                 borderRadius: BorderRadius.circular(4),
               ),
               child: Text(
                 code,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.bold,
-                  color: Colors.white,
+                  color: tokens.onPrimary,
                 ),
               ),
             ),
@@ -2052,12 +2056,13 @@ class _EditableTextCellState extends State<_EditableTextCell> {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = context.appTokens;
     if (widget.isReadOnly) {
       return Text(
         widget.value.isEmpty ? '—' : widget.value,
         style: TextStyle(
           fontFamily: widget.isMonospace ? 'monospace' : null,
-          color: widget.value.isEmpty ? Colors.grey : null,
+          color: widget.value.isEmpty ? tokens.textSecondary : null,
         ),
       );
     }
@@ -2100,14 +2105,14 @@ class _EditableTextCellState extends State<_EditableTextCell> {
               widget.value.isEmpty ? '—' : widget.value,
               style: TextStyle(
                 fontFamily: widget.isMonospace ? 'monospace' : null,
-                color: widget.value.isEmpty ? Colors.grey : null,
+                color: widget.value.isEmpty ? tokens.textSecondary : null,
               ),
             ),
             const SizedBox(width: 4),
             Icon(
               Icons.edit,
               size: 11,
-              color: Colors.grey.withValues(alpha: 0.4),
+              color: tokens.textSecondary.withValues(alpha: 0.4),
             ),
           ],
         ),

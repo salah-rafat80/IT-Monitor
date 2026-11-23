@@ -9,6 +9,7 @@ import '../../domain/entities/blueprint_cable_entity.dart';
 import '../../domain/entities/blueprint_element_entity.dart';
 import '../../domain/entities/blueprint_page_entity.dart';
 import '../models/blueprint_translation_map.dart';
+import '../../../theme/presentation/theme/app_palette.dart';
 
 @lazySingleton
 class BlueprintDrawioParser {
@@ -215,7 +216,7 @@ class BlueprintDrawioParser {
           ),
         );
       } else if (cell.isEdge) {
-        final strokeColor = _parseColor(cell.styleMap['strokeColor']) ?? const Color(0xFF64748B);
+        final strokeColor = _parseColor(cell.styleMap['strokeColor']) ?? AppPalette.defaultDark.border;
         final strokeWidth = double.tryParse(cell.styleMap['strokeWidth'] ?? '1.5') ?? 1.5;
         final isDashed = cell.styleMap['dashed'] == '1';
         final edgeStyle = cell.styleMap['edgeStyle'] ?? 'orthogonal';

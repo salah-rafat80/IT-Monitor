@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../../../core/theme/app_colors.dart';
 import '../../../../core/utils/ipv4_utils.dart';
 import '../../../devices/domain/entities/device_entity.dart';
 import '../../../devices/presentation/bloc/devices_cubit.dart';
@@ -101,15 +102,16 @@ class _UnassignedRecoveryPageState extends State<UnassignedRecoveryPage> {
     required List<DeviceEntity> selectedDevices,
   }) {
     if (selectedDevices.isEmpty) return;
+    final tokens = context.appTokens;
 
     showDialog(
       context: context,
       builder: (dialogCtx) => AlertDialog(
         title: Row(
           children: [
-            const Icon(
+            Icon(
               Icons.assignment_turned_in_rounded,
-              color: Color(0xFF0F62FE),
+              color: tokens.primary,
             ),
             const SizedBox(width: 10),
             Text(
@@ -131,26 +133,26 @@ class _UnassignedRecoveryPageState extends State<UnassignedRecoveryPage> {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.blue.withValues(alpha: 0.1),
+                  color: tokens.primary.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.blue.withValues(alpha: 0.3)),
+                  border: Border.all(color: tokens.primary.withValues(alpha: 0.3)),
                 ),
-                child: const Column(
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
                       children: [
                         Icon(
                           Icons.shield_outlined,
-                          color: Colors.blue,
+                          color: tokens.primary,
                           size: 18,
                         ),
-                        SizedBox(width: 8),
+                        const SizedBox(width: 8),
                         Text(
                           'Data Preservation Guarantee',
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
-                            color: Colors.blue,
+                            color: tokens.primary,
                           ),
                         ),
                       ],
@@ -175,7 +177,7 @@ class _UnassignedRecoveryPageState extends State<UnassignedRecoveryPage> {
               Container(
                 height: 140,
                 decoration: BoxDecoration(
-                  border: Border.all(color: Colors.grey.withValues(alpha: 0.3)),
+                  border: Border.all(color: tokens.border),
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: ListView.builder(
@@ -215,8 +217,8 @@ class _UnassignedRecoveryPageState extends State<UnassignedRecoveryPage> {
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF0F62FE),
-              foregroundColor: Colors.white,
+              backgroundColor: tokens.primary,
+              foregroundColor: tokens.onPrimary,
             ),
             onPressed: () async {
               Navigator.of(dialogCtx).pop();
@@ -248,7 +250,7 @@ class _UnassignedRecoveryPageState extends State<UnassignedRecoveryPage> {
                         content: Text(
                           'Successfully assigned $count devices to $targetFactoryName, but refreshing inventory failed: ${data.refreshError}',
                         ),
-                        backgroundColor: Colors.orange.shade800,
+                        backgroundColor: tokens.statusDegraded,
                         duration: const Duration(seconds: 6),
                       ),
                     );
@@ -258,7 +260,7 @@ class _UnassignedRecoveryPageState extends State<UnassignedRecoveryPage> {
                         content: Text(
                           'Successfully assigned $count devices to $targetFactoryName.',
                         ),
-                        backgroundColor: const Color(0xFF10B981),
+                        backgroundColor: tokens.statusOnline,
                         duration: const Duration(seconds: 4),
                       ),
                     );
@@ -269,7 +271,7 @@ class _UnassignedRecoveryPageState extends State<UnassignedRecoveryPage> {
                       content: Text(
                         'Failed to assign devices: ${errorMsg ?? "Unknown error"}',
                       ),
-                      backgroundColor: Colors.red,
+                      backgroundColor: tokens.statusOffline,
                       duration: const Duration(seconds: 8),
                     ),
                   );
@@ -285,6 +287,7 @@ class _UnassignedRecoveryPageState extends State<UnassignedRecoveryPage> {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = context.appTokens;
     final theme = Theme.of(context);
     final isAdmin = true;
 
@@ -353,12 +356,12 @@ class _UnassignedRecoveryPageState extends State<UnassignedRecoveryPage> {
                     Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        color: Colors.amber.withValues(alpha: 0.15),
+                        color: tokens.statusDegradedSurface,
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: const Icon(
+                      child: Icon(
                         Icons.inventory_2_rounded,
-                        color: Colors.amber,
+                        color: tokens.statusDegraded,
                         size: 24,
                       ),
                     ),
@@ -382,10 +385,10 @@ class _UnassignedRecoveryPageState extends State<UnassignedRecoveryPage> {
                                   vertical: 2,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: Colors.amber.withValues(alpha: 0.2),
+                                  color: tokens.statusDegradedSurface,
                                   borderRadius: BorderRadius.circular(12),
                                   border: Border.all(
-                                    color: Colors.amber.withValues(alpha: 0.4),
+                                    color: tokens.statusDegraded.withValues(alpha: 0.4),
                                   ),
                                 ),
                                 child: Text(
@@ -396,8 +399,8 @@ class _UnassignedRecoveryPageState extends State<UnassignedRecoveryPage> {
                                     fontSize: 12,
                                     fontWeight: FontWeight.bold,
                                     color: state is DevicesError
-                                        ? Colors.red
-                                        : Colors.amber,
+                                        ? tokens.statusOffline
+                                        : tokens.statusDegraded,
                                   ),
                                 ),
                               ),
@@ -407,7 +410,7 @@ class _UnassignedRecoveryPageState extends State<UnassignedRecoveryPage> {
                           Text(
                             'Assign legacy inventory devices to RNF or BNF without losing IDs, historical records, or check history.',
                             style: TextStyle(
-                              color: Colors.grey[400],
+                              color: tokens.textSecondary,
                               fontSize: 13,
                             ),
                           ),
@@ -516,9 +519,9 @@ class _UnassignedRecoveryPageState extends State<UnassignedRecoveryPage> {
                             ElevatedButton.icon(
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: f.code == 'RNF'
-                                    ? const Color(0xFF0F62FE)
-                                    : const Color(0xFF10B981),
-                                foregroundColor: Colors.white,
+                                    ? tokens.primary
+                                    : tokens.statusOnline,
+                                foregroundColor: tokens.onPrimary,
                                 visualDensity: VisualDensity.compact,
                               ),
                               onPressed:
@@ -565,18 +568,18 @@ class _UnassignedRecoveryPageState extends State<UnassignedRecoveryPage> {
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              const Icon(
+                              Icon(
                                 Icons.error_outline_rounded,
                                 size: 48,
-                                color: Colors.red,
+                                color: tokens.statusOffline,
                               ),
                               const SizedBox(height: 12),
                               Text(
                                 'Failed to load unassigned inventory:\n${state.message}',
                                 textAlign: TextAlign.center,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 14,
-                                  color: Colors.red,
+                                  color: tokens.statusOffline,
                                 ),
                               ),
                               const SizedBox(height: 16),
@@ -598,19 +601,19 @@ class _UnassignedRecoveryPageState extends State<UnassignedRecoveryPage> {
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              const Icon(
+                              Icon(
                                 Icons.check_circle_rounded,
                                 size: 48,
-                                color: Color(0xFF10B981),
+                                color: tokens.statusOnline,
                               ),
                               const SizedBox(height: 12),
                               Text(
                                 unassignedList.isEmpty
                                     ? 'No unassigned devices remain! All devices are assigned to active factories.'
                                     : 'No unassigned devices match your search query.',
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 16,
-                                  color: Colors.grey,
+                                  color: tokens.textSecondary,
                                 ),
                               ),
                             ],
@@ -711,22 +714,22 @@ class _UnassignedRecoveryPageState extends State<UnassignedRecoveryPage> {
                                                       vertical: 2,
                                                     ),
                                                 decoration: BoxDecoration(
-                                                  color: Colors.blue.withValues(
+                                                  color: tokens.primary.withValues(
                                                     alpha: 0.15,
                                                   ),
                                                   borderRadius:
                                                       BorderRadius.circular(4),
                                                   border: Border.all(
-                                                    color: Colors.blue
+                                                    color: tokens.primary
                                                         .withValues(alpha: 0.3),
                                                   ),
                                                 ),
                                                 child: Text(
                                                   'Matches ${suggestion.matchedFactory!.code}',
-                                                  style: const TextStyle(
+                                                  style: TextStyle(
                                                     fontSize: 11,
                                                     fontWeight: FontWeight.bold,
-                                                    color: Colors.blue,
+                                                    color: tokens.primary,
                                                   ),
                                                 ),
                                               )
@@ -741,16 +744,13 @@ class _UnassignedRecoveryPageState extends State<UnassignedRecoveryPage> {
                                                         vertical: 2,
                                                       ),
                                                   decoration: BoxDecoration(
-                                                    color: Colors.amber
-                                                        .withValues(
-                                                          alpha: 0.15,
-                                                        ),
+                                                    color: tokens.statusDegradedSurface,
                                                     borderRadius:
                                                         BorderRadius.circular(
                                                           4,
                                                         ),
                                                     border: Border.all(
-                                                      color: Colors.amber
+                                                      color: tokens.statusDegraded
                                                           .withValues(
                                                             alpha: 0.5,
                                                           ),
@@ -760,31 +760,31 @@ class _UnassignedRecoveryPageState extends State<UnassignedRecoveryPage> {
                                                     mainAxisSize:
                                                         MainAxisSize.min,
                                                     children: [
-                                                      const Icon(
+                                                      Icon(
                                                         Icons
                                                             .warning_amber_rounded,
                                                         size: 13,
-                                                        color: Colors.amber,
+                                                        color: tokens.statusDegraded,
                                                       ),
                                                       const SizedBox(width: 4),
                                                       Text(
                                                         'Ambiguous (${suggestion.matchedCandidates.map((f) => f.code).join('/')})',
-                                                        style: const TextStyle(
+                                                        style: TextStyle(
                                                           fontSize: 11,
                                                           fontWeight:
                                                               FontWeight.bold,
-                                                          color: Colors.amber,
+                                                          color: tokens.statusDegraded,
                                                         ),
                                                       ),
                                                     ],
                                                   ),
                                                 ),
                                               )
-                                            : const Text(
+                                            : Text(
                                                 'No Match',
                                                 style: TextStyle(
                                                   fontSize: 11,
-                                                  color: Colors.grey,
+                                                  color: tokens.textSecondary,
                                                   fontStyle: FontStyle.italic,
                                                 ),
                                               ),

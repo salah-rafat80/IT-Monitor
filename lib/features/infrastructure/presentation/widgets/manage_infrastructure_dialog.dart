@@ -234,17 +234,17 @@ class _ManageInfrastructureDialogState
                     vertical: 8,
                   ),
                   decoration: BoxDecoration(
-                    color: Colors.blue.withValues(alpha: 0.08),
+                    color: tokens.primary.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
-                      color: Colors.blue.withValues(alpha: 0.3),
+                      color: tokens.primary.withValues(alpha: 0.3),
                     ),
                   ),
                   child: Row(
                     children: [
-                      const Icon(
+                      Icon(
                         Icons.shield_outlined,
-                        color: Colors.blue,
+                        color: tokens.primary,
                         size: 20,
                       ),
                       const SizedBox(width: 8),
@@ -252,7 +252,7 @@ class _ManageInfrastructureDialogState
                         child: Text(
                           'Strictly Read-Only: No write, provisioning, or configuration operations are performed on UniFi devices.',
                           style: TextStyle(
-                            color: Colors.blue.shade700,
+                            color: tokens.primary,
                             fontSize: 12,
                           ),
                         ),
@@ -436,12 +436,12 @@ class _ManageInfrastructureDialogState
                         const SizedBox(width: 8),
                         ElevatedButton.icon(
                           icon: _isSaving
-                              ? const SizedBox(
+                              ? SizedBox(
                                   width: 16,
                                   height: 16,
                                   child: CircularProgressIndicator(
                                     strokeWidth: 2,
-                                    color: Colors.white,
+                                    color: tokens.onPrimary,
                                   ),
                                 )
                               : const Icon(Icons.save, size: 18),

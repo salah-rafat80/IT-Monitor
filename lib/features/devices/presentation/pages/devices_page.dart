@@ -99,11 +99,11 @@ class _DevicesPageState extends State<DevicesPage> {
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setState) => AlertDialog(
-          title: const Row(
+          title: Row(
             children: [
-              Icon(Icons.add_circle_outline, color: Color(0xFF0F62FE)),
-              SizedBox(width: 8),
-              Text('Add Asset to Authoritative Inventory'),
+              Icon(Icons.add_circle_outline, color: context.appTokens.primary),
+              const SizedBox(width: 8),
+              const Text('Add Asset to Authoritative Inventory'),
             ],
           ),
           content: SingleChildScrollView(
@@ -286,7 +286,7 @@ class _DevicesPageState extends State<DevicesPage> {
                           : 'Kept in inventory as unmonitored asset without ping alerts.',
                       style: TextStyle(
                         fontSize: 12,
-                        color: Colors.grey.shade400,
+                        color: context.appTokens.textSecondary,
                       ),
                     ),
                     value: isMonitored,
@@ -389,7 +389,7 @@ class _DevicesPageState extends State<DevicesPage> {
         builder: (context, setState) => AlertDialog(
           title: Row(
             children: [
-              const Icon(Icons.edit_note, color: Color(0xFF0F62FE)),
+              Icon(Icons.edit_note, color: context.appTokens.primary),
               const SizedBox(width: 8),
               Text('Edit Asset: ${device.name}'),
             ],
@@ -554,7 +554,7 @@ class _DevicesPageState extends State<DevicesPage> {
                           : 'Unmonitored asset; will not trigger down alerts.',
                       style: TextStyle(
                         fontSize: 12,
-                        color: Colors.grey.shade400,
+                        color: context.appTokens.textSecondary,
                       ),
                     ),
                     value: isMonitored,
@@ -624,11 +624,11 @@ class _DevicesPageState extends State<DevicesPage> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Row(
+        title: Row(
           children: [
-            Icon(Icons.warning_amber_rounded, color: Colors.redAccent),
-            SizedBox(width: 8),
-            Text('Confirm Asset Deletion'),
+            Icon(Icons.warning_amber_rounded, color: ctx.appTokens.statusOffline),
+            const SizedBox(width: 8),
+            const Text('Confirm Asset Deletion'),
           ],
         ),
         content: Text(
@@ -642,14 +642,17 @@ class _DevicesPageState extends State<DevicesPage> {
             child: const Text('Cancel'),
           ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: ctx.appTokens.statusOffline,
+              foregroundColor: ctx.appTokens.onStatusOffline,
+            ),
             onPressed: () {
               context.read<DevicesCubit>().deleteDevice(device.id);
               Navigator.pop(ctx);
             },
-            child: const Text(
+            child: Text(
               'Delete Asset',
-              style: TextStyle(color: Colors.white),
+              style: TextStyle(color: ctx.appTokens.onStatusOffline),
             ),
           ),
         ],
@@ -663,7 +666,7 @@ class _DevicesPageState extends State<DevicesPage> {
       builder: (ctx) => AlertDialog(
         title: Row(
           children: [
-            Icon(_getCategoryIcon(device.type), color: const Color(0xFF0F62FE)),
+            Icon(_getCategoryIcon(device.type), color: ctx.appTokens.primary),
             const SizedBox(width: 8),
             Expanded(child: Text(device.name, overflow: TextOverflow.ellipsis)),
           ],
@@ -734,7 +737,7 @@ class _DevicesPageState extends State<DevicesPage> {
                 content: Text(
                   'Assigned person for ${device.ip} updated to "$newOwner".',
                 ),
-                backgroundColor: const Color(0xFF10B981),
+                backgroundColor: context.appTokens.statusOnline,
               ),
             );
           }
@@ -751,7 +754,7 @@ class _DevicesPageState extends State<DevicesPage> {
                 content: Text(
                   'Cleared assigned person for ${device.ip} (marked Unassigned).',
                 ),
-                backgroundColor: Colors.orange,
+                backgroundColor: context.appTokens.statusDegraded,
               ),
             );
           }
@@ -767,70 +770,74 @@ class _DevicesPageState extends State<DevicesPage> {
   ) {
     showDialog(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Row(
-          children: [
-            const Icon(Icons.inventory_2_outlined, color: Color(0xFF0F62FE)),
-            const SizedBox(width: 8),
-            Text(
-              'Inventory Import Preview (${preview.totalRowsProcessed} Rows Processed)',
-            ),
-          ],
-        ),
-        content: SizedBox(
-          width: 700,
-          height: 500,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+      builder: (dialogContext) {
+        final tokens = dialogContext.appTokens;
+        return AlertDialog(
+          title: Row(
             children: [
-              Row(
-                children: [
-                  _SummaryChip(
-                    label: 'Valid Devices: ${preview.validCount}',
-                    color: Colors.green,
-                  ),
-                  const SizedBox(width: 8),
-                  _SummaryChip(
-                    label:
-                        'Excluded Duplicate IPs: ${preview.excludedDuplicateIpCount}',
-                    color: Colors.orange,
-                  ),
-                  const SizedBox(width: 8),
-                  _SummaryChip(
-                    label: 'Invalid Records: ${preview.invalidCount}',
-                    color: Colors.red,
-                  ),
-                ],
+              Icon(Icons.inventory_2_outlined, color: tokens.primary),
+              const SizedBox(width: 8),
+              Text(
+                'Inventory Import Preview (${preview.totalRowsProcessed} Rows Processed)',
               ),
-              const SizedBox(height: 16),
-              if (preview.excludedDuplicateIps.isNotEmpty) ...[
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.orange.shade900.withValues(alpha: 0.3),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.orange.shade700),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Row(
-                        children: [
-                          Icon(
-                            Icons.warning_amber,
-                            color: Colors.orange,
-                            size: 20,
-                          ),
-                          SizedBox(width: 8),
-                          Text(
-                            'Duplicate IP Protection Rule Triggered',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: Colors.orange,
-                            ),
-                          ),
-                        ],
+            ],
+          ),
+          content: SizedBox(
+            width: 700,
+            height: 500,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    _SummaryChip(
+                      label: 'Valid Devices: ${preview.validCount}',
+                      color: tokens.statusOnline,
+                    ),
+                    const SizedBox(width: 8),
+                    _SummaryChip(
+                      label:
+                          'Excluded Duplicate IPs: ${preview.excludedDuplicateIpCount}',
+                      color: tokens.statusDegraded,
+                    ),
+                    const SizedBox(width: 8),
+                    _SummaryChip(
+                      label: 'Invalid Records: ${preview.invalidCount}',
+                      color: tokens.statusOffline,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                if (preview.excludedDuplicateIps.isNotEmpty) ...[
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: tokens.statusDegradedSurface,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: tokens.statusDegraded.withValues(alpha: 0.5),
                       ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.warning_amber,
+                              color: tokens.statusDegraded,
+                              size: 20,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Duplicate IP Protection Rule Triggered',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: tokens.statusDegraded,
+                              ),
+                            ),
+                          ],
+                        ),
                       const SizedBox(height: 4),
                       Text(
                         'The following duplicate IPs appeared more than once or exist in DB and were REJECTED ENTIRELY from monitoring: '
@@ -919,7 +926,7 @@ class _DevicesPageState extends State<DevicesPage> {
                                               Text(
                                                 err.reason,
                                                 style: TextStyle(
-                                                  color: Colors.red.shade300,
+                                                  color: tokens.statusOffline,
                                                 ),
                                               ),
                                             ),
@@ -957,7 +964,8 @@ class _DevicesPageState extends State<DevicesPage> {
             child: Text('Confirm & Commit ${preview.validCount} Devices'),
           ),
         ],
-      ),
+      );
+    },
     );
   }
 
@@ -1495,16 +1503,13 @@ class _DevicesPageState extends State<DevicesPage> {
                                                                 vertical: 4,
                                                               ),
                                                           decoration: BoxDecoration(
-                                                            color: Colors.red
-                                                                .withValues(
-                                                                  alpha: 0.12,
-                                                                ),
+                                                            color: tokens.statusOfflineSurface,
                                                             borderRadius:
                                                                 BorderRadius.circular(
                                                                   12,
                                                                 ),
                                                             border: Border.all(
-                                                              color: Colors.red
+                                                              color: tokens.statusOffline
                                                                   .withValues(
                                                                     alpha: 0.3,
                                                                   ),
@@ -1685,7 +1690,7 @@ class _DetailRow extends StatelessWidget {
               label,
               style: TextStyle(
                 fontSize: 13,
-                color: Colors.grey.shade400,
+                color: context.appTokens.textSecondary,
                 fontWeight: FontWeight.w500,
               ),
             ),

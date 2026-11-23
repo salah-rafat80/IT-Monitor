@@ -62,9 +62,9 @@ class WallDeviceCard extends StatelessWidget {
               ]
             : [
                 BoxShadow(
-                  color: tokens.isDark
-                      ? Colors.black.withValues(alpha: 0.2)
-                      : tokens.shadowColor.withValues(alpha: 0.05),
+                  color: tokens.shadow.withValues(
+                    alpha: tokens.isDark ? 0.35 : 0.08,
+                  ),
                   blurRadius: 4,
                   offset: const Offset(0, 2),
                 ),

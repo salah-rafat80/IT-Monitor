@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../theme/presentation/theme/app_palette.dart';
 import '../../../../core/theme/app_dimensions.dart';
 import '../../../monitoring/domain/entities/device_status_entity.dart';
 import '../../domain/entities/enterprise_topology_models.dart';
@@ -440,7 +441,7 @@ class EnterpriseLinksPainter extends CustomPainter {
         toNode.category == TopologyDeviceCategory.wan;
 
     if (isInferredOrWan) {
-      return tokens?.statusUnknown ?? const Color(0xFF64748B);
+      return tokens?.statusUnknown ?? AppPalette.defaultLight.statusUnknown;
     }
 
     final isDown =
@@ -452,7 +453,7 @@ class EnterpriseLinksPainter extends CustomPainter {
         toNode.status == DeviceStatusEnum.unreachable;
 
     if (isDown) {
-      return tokens?.statusOffline ?? const Color(0xFFEF4444);
+      return tokens?.statusOffline ?? AppPalette.defaultDark.statusOffline;
     }
 
     final isStale =
@@ -461,7 +462,7 @@ class EnterpriseLinksPainter extends CustomPainter {
         toNode.status == DeviceStatusEnum.stale;
 
     if (isStale) {
-      return tokens?.statusDegraded ?? const Color(0xFFEAB308);
+      return tokens?.statusStale ?? AppPalette.defaultDark.statusStale;
     }
 
     final isUnknown =
@@ -470,7 +471,7 @@ class EnterpriseLinksPainter extends CustomPainter {
         toNode.status == DeviceStatusEnum.unknown;
 
     if (isUnknown) {
-      return tokens?.statusUnknown ?? const Color(0xFF64748B);
+      return tokens?.statusUnknown ?? AppPalette.defaultLight.statusUnknown;
     }
 
     final isDegraded =
@@ -481,7 +482,7 @@ class EnterpriseLinksPainter extends CustomPainter {
         toNode.consecutiveFailures > 0;
 
     if (isDegraded) {
-      return tokens?.statusDegraded ?? const Color(0xFFF59E0B);
+      return tokens?.statusDegraded ?? AppPalette.defaultDark.statusDegraded;
     }
 
     final isUp =
@@ -490,10 +491,10 @@ class EnterpriseLinksPainter extends CustomPainter {
         toNode.status == DeviceStatusEnum.up;
 
     if (isUp) {
-      return tokens?.statusOnline ?? const Color(0xFF10B981);
+      return tokens?.statusOnline ?? AppPalette.defaultDark.statusOnline;
     }
 
-    return tokens?.statusUnknown ?? const Color(0xFF64748B);
+    return tokens?.statusUnknown ?? AppPalette.defaultLight.statusUnknown;
   }
 
   @override

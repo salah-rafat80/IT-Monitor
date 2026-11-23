@@ -470,9 +470,7 @@ class _SettingsPageState extends State<SettingsPage> {
                               label: const Text('Save Configuration'),
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: tokens.primary,
-                                foregroundColor: tokens.isDark
-                                    ? const Color(0xFF090D19)
-                                    : Colors.white,
+                                foregroundColor: tokens.onPrimary,
                               ),
                             ),
                           ],
@@ -635,18 +633,11 @@ class _ThemePreviewOptionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = context.appTokens;
-    final primaryColor = isDarkTheme
-        ? const Color(0xFF00E5FF)
-        : const Color(0xFF1769FF);
-    final bgColor = isDarkTheme
-        ? const Color(0xFF090D19)
-        : const Color(0xFFF3F6FC);
-    final cardBgColor = isDarkTheme
-        ? const Color(0xFF111827)
-        : const Color(0xFFFFFFFF);
-    final cardBorder = isDarkTheme
-        ? const Color(0xFF263650)
-        : const Color(0xFFE1E8F2);
+    final preview = tokens.palette.copyWith(isDark: isDarkTheme);
+    final primaryColor = preview.accent;
+    final bgColor = preview.background;
+    final cardBgColor = preview.card;
+    final cardBorder = preview.border;
 
     return InkWell(
       onTap: onTap,
@@ -690,9 +681,7 @@ class _ThemePreviewOptionCard extends StatelessWidget {
                     // Mini Sidebar
                     Container(
                       width: 28,
-                      color: isDarkTheme
-                          ? const Color(0xFF0D1424)
-                          : const Color(0xFFEAF0F8),
+                      color: preview.sidebar,
                       child: Column(
                         children: [
                           const SizedBox(height: 8),
@@ -718,9 +707,7 @@ class _ThemePreviewOptionCard extends StatelessWidget {
                             width: 16,
                             height: 4,
                             decoration: BoxDecoration(
-                              color: isDarkTheme
-                                  ? Colors.white24
-                                  : Colors.black12,
+                              color: preview.onSidebar.withValues(alpha: 0.2),
                               borderRadius: BorderRadius.circular(2),
                             ),
                           ),
@@ -729,9 +716,7 @@ class _ThemePreviewOptionCard extends StatelessWidget {
                             width: 16,
                             height: 4,
                             decoration: BoxDecoration(
-                              color: isDarkTheme
-                                  ? Colors.white24
-                                  : Colors.black12,
+                              color: preview.onSidebar.withValues(alpha: 0.2),
                               borderRadius: BorderRadius.circular(2),
                             ),
                           ),
@@ -753,9 +738,7 @@ class _ThemePreviewOptionCard extends StatelessWidget {
                                   width: 48,
                                   height: 6,
                                   decoration: BoxDecoration(
-                                    color: isDarkTheme
-                                        ? Colors.white70
-                                        : const Color(0xFF172B4D),
+                                    color: preview.onSurface.withValues(alpha: 0.7),
                                     borderRadius: BorderRadius.circular(3),
                                   ),
                                 ),
@@ -764,8 +747,8 @@ class _ThemePreviewOptionCard extends StatelessWidget {
                                     Container(
                                       width: 6,
                                       height: 6,
-                                      decoration: const BoxDecoration(
-                                        color: Color(0xFF10B981),
+                                      decoration: BoxDecoration(
+                                        color: preview.statusOnline,
                                         shape: BoxShape.circle,
                                       ),
                                     ),
@@ -773,8 +756,8 @@ class _ThemePreviewOptionCard extends StatelessWidget {
                                     Container(
                                       width: 6,
                                       height: 6,
-                                      decoration: const BoxDecoration(
-                                        color: Color(0xFFEF4444),
+                                      decoration: BoxDecoration(
+                                        color: preview.statusOffline,
                                         shape: BoxShape.circle,
                                       ),
                                     ),
@@ -802,9 +785,7 @@ class _ThemePreviewOptionCard extends StatelessWidget {
                                         Container(
                                           width: 20,
                                           height: 4,
-                                          color: isDarkTheme
-                                              ? Colors.white30
-                                              : Colors.black26,
+                                          color: preview.onCard.withValues(alpha: 0.25),
                                         ),
                                         const Spacer(),
                                         Text(
@@ -836,17 +817,15 @@ class _ThemePreviewOptionCard extends StatelessWidget {
                                         Container(
                                           width: 20,
                                           height: 4,
-                                          color: isDarkTheme
-                                              ? Colors.white30
-                                              : Colors.black26,
+                                          color: preview.onCard.withValues(alpha: 0.25),
                                         ),
                                         const Spacer(),
-                                        const Text(
+                                        Text(
                                           '98%',
                                           style: TextStyle(
                                             fontSize: 9,
                                             fontWeight: FontWeight.bold,
-                                            color: Color(0xFF10B981),
+                                            color: preview.statusOnline,
                                           ),
                                         ),
                                       ],

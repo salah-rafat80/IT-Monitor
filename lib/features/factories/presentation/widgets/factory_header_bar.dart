@@ -318,7 +318,7 @@ class FactoryHeaderBar extends StatelessWidget {
                                 ? 'Switch to Professional Light Theme'
                                 : 'Switch to Cyber Neon Dark Theme',
                             child: Material(
-                              color: Colors.transparent,
+                              color: tokens.transparent,
                               child: InkWell(
                                 borderRadius: BorderRadius.circular(AppRadius.md),
                                 onTap: () =>

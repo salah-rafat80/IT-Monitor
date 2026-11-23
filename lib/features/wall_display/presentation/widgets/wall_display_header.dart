@@ -12,6 +12,8 @@ class WallDisplayHeader extends StatefulWidget {
   final ValueChanged<String> onSortChanged;
   final String? activeFactoryId;
   final ValueChanged<String?>? onFactoryChanged;
+  final VoidCallback? onToggleFrameless;
+  final VoidCallback? onExit;
 
   const WallDisplayHeader({
     super.key,
@@ -21,6 +23,8 @@ class WallDisplayHeader extends StatefulWidget {
     required this.onSortChanged,
     this.activeFactoryId,
     this.onFactoryChanged,
+    this.onToggleFrameless,
+    this.onExit,
   });
 
   @override
@@ -71,11 +75,11 @@ class _WallDisplayHeaderState extends State<WallDisplayHeader> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: tokens.isDark ? tokens.surfaceContainerHigh : tokens.surface,
                 borderRadius: BorderRadius.circular(6),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.15),
+                    color: tokens.shadow.withValues(alpha: 0.2),
                     blurRadius: 4,
                     offset: const Offset(0, 1),
                   ),
@@ -278,10 +282,43 @@ class _WallDisplayHeaderState extends State<WallDisplayHeader> {
 
             const SizedBox(width: 12),
 
+            // Toggle Frameless / Hide Header Button
+            if (widget.onToggleFrameless != null) ...[
+              OutlinedButton.icon(
+                onPressed: widget.onToggleFrameless,
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  side: BorderSide(color: tokens.cardBorder),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                ),
+                icon: Icon(
+                  Icons.fullscreen_rounded,
+                  size: 16,
+                  color: tokens.primary,
+                ),
+                label: Text(
+                  'Frameless [H]',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 11,
+                    color: tokens.primary,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+            ],
+
             // Exit Full Screen Button
             OutlinedButton.icon(
               onPressed: () {
-                if (context.canPop()) {
+                if (widget.onExit != null) {
+                  widget.onExit!();
+                } else if (context.canPop()) {
                   context.pop();
                 } else {
                   context.go('/dashboard');
@@ -335,10 +372,10 @@ class _WallDisplayHeaderState extends State<WallDisplayHeader> {
         decoration: BoxDecoration(
           color: isSelected
               ? tokens.primary.withValues(alpha: 0.2)
-              : Colors.transparent,
+              : tokens.transparent,
           borderRadius: BorderRadius.circular(6),
           border: Border.all(
-            color: isSelected ? tokens.primary : Colors.transparent,
+            color: isSelected ? tokens.primary : tokens.transparent,
             width: 1,
           ),
         ),

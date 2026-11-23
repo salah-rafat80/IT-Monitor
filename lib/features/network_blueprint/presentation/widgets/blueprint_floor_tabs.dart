@@ -67,9 +67,7 @@ class _FloorTabItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = context.appTokens;
-    final activeBg = isDark
-        ? AppColors.darkPrimary.withValues(alpha: 0.15)
-        : AppColors.lightPrimary.withValues(alpha: 0.1);
+    final activeBg = tokens.primary.withValues(alpha: isDark ? 0.15 : 0.1);
     final activeBorder = tokens.primary;
     final activeText = tokens.primary;
     final inactiveText = tokens.textSecondary;
@@ -81,10 +79,10 @@ class _FloorTabItem extends StatelessWidget {
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
         decoration: BoxDecoration(
-          color: isSelected ? activeBg : Colors.transparent,
+          color: isSelected ? activeBg : tokens.transparent,
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
-            color: isSelected ? activeBorder : Colors.transparent,
+            color: isSelected ? activeBorder : tokens.transparent,
             width: 1.5,
           ),
         ),
@@ -109,7 +107,7 @@ class _FloorTabItem extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
               decoration: BoxDecoration(
-                color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.05),
+                color: tokens.onSurface.withValues(alpha: isDark ? 0.08 : 0.05),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Text(

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../../core/presentation/widgets/app_empty_state.dart';
+import '../../../../core/theme/app_colors.dart';
 
 import '../../domain/entities/classification_confidence.dart';
 import '../../domain/entities/device_category.dart';
@@ -30,6 +31,7 @@ class DiscoveredDevicesTable extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final tokens = context.appTokens;
 
     if (devices.isEmpty) {
       return Container(
@@ -150,10 +152,10 @@ class DiscoveredDevicesTable extends StatelessWidget {
                   DataCell(
                     Text(
                       d.mac ?? '-',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontFamily: 'monospace',
                         fontSize: 12,
-                        color: Colors.grey,
+                        color: tokens.textSecondary,
                       ),
                     ),
                   ),
@@ -177,7 +179,7 @@ class DiscoveredDevicesTable extends StatelessWidget {
                         Icon(
                           _categoryIcon(cat),
                           size: 16,
-                          color: _categoryColor(cat),
+                          color: _categoryColor(cat, tokens),
                         ),
                         const SizedBox(width: 6),
                         Text(
@@ -185,7 +187,7 @@ class DiscoveredDevicesTable extends StatelessWidget {
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
-                            color: _categoryColor(cat),
+                            color: _categoryColor(cat, tokens),
                           ),
                         ),
                         if (isAdmin && !isKnown)
@@ -219,6 +221,7 @@ class DiscoveredDevicesTable extends StatelessWidget {
                       decoration: BoxDecoration(
                         color: _confidenceColor(
                           d.confidence,
+                          tokens,
                         ).withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(4),
                       ),
@@ -227,7 +230,7 @@ class DiscoveredDevicesTable extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
-                          color: _confidenceColor(d.confidence),
+                          color: _confidenceColor(d.confidence, tokens),
                         ),
                       ),
                     ),
@@ -242,6 +245,7 @@ class DiscoveredDevicesTable extends StatelessWidget {
                       decoration: BoxDecoration(
                         color: _reviewColor(
                           d.reviewState,
+                          tokens,
                         ).withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(6),
                       ),
@@ -250,7 +254,7 @@ class DiscoveredDevicesTable extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.bold,
-                          color: _reviewColor(d.reviewState),
+                          color: _reviewColor(d.reviewState, tokens),
                         ),
                       ),
                     ),
@@ -267,19 +271,19 @@ class DiscoveredDevicesTable extends StatelessWidget {
                         ),
                         if (isAdmin && !isKnown && !isApproved) ...[
                           IconButton(
-                            icon: const Icon(
+                            icon: Icon(
                               Icons.check_circle_outline,
                               size: 18,
-                              color: Color(0xFF10B981),
+                              color: tokens.statusOnline,
                             ),
                             tooltip: 'Approve Asset',
                             onPressed: () => onApprove(d),
                           ),
                           IconButton(
-                            icon: const Icon(
+                            icon: Icon(
                               Icons.cancel_outlined,
                               size: 18,
-                              color: Colors.red,
+                              color: tokens.statusOffline,
                             ),
                             tooltip: 'Reject',
                             onPressed: () => onReject(d),
@@ -325,56 +329,56 @@ class DiscoveredDevicesTable extends StatelessWidget {
     }
   }
 
-  Color _categoryColor(DeviceCategory cat) {
+  Color _categoryColor(DeviceCategory cat, AppColors tokens) {
     switch (cat) {
       case DeviceCategory.pc:
       case DeviceCategory.laptop:
-        return const Color(0xFF0F62FE);
+        return tokens.primary;
       case DeviceCategory.ipCamera:
-        return Colors.purple;
+        return tokens.secondary;
       case DeviceCategory.printer:
-        return Colors.teal;
+        return tokens.accent;
       case DeviceCategory.server:
-        return Colors.indigo;
+        return tokens.primary;
       case DeviceCategory.switchDevice:
       case DeviceCategory.router:
       case DeviceCategory.wirelessAccessPoint:
       case DeviceCategory.otherNetworkDevice:
-        return Colors.amber.shade800;
+        return tokens.statusDegraded;
       case DeviceCategory.mobile:
-        return Colors.blueGrey;
+        return tokens.onSurfaceVariant;
       case DeviceCategory.other:
       case DeviceCategory.unknown:
-        return Colors.grey;
+        return tokens.disabled;
     }
   }
 
-  Color _confidenceColor(ClassificationConfidence c) {
+  Color _confidenceColor(ClassificationConfidence c, AppColors tokens) {
     switch (c) {
       case ClassificationConfidence.high:
-        return const Color(0xFF10B981);
+        return tokens.statusOnline;
       case ClassificationConfidence.medium:
-        return Colors.orange;
+        return tokens.statusDegraded;
       case ClassificationConfidence.low:
       case ClassificationConfidence.unknown:
-        return Colors.grey;
+        return tokens.disabled;
     }
   }
 
-  Color _reviewColor(ReviewState s) {
+  Color _reviewColor(ReviewState s, AppColors tokens) {
     switch (s) {
       case ReviewState.pendingReview:
-        return Colors.orange;
+        return tokens.statusDegraded;
       case ReviewState.approved:
-        return const Color(0xFF10B981);
+        return tokens.statusOnline;
       case ReviewState.alreadyKnown:
-        return const Color(0xFF0F62FE);
+        return tokens.primary;
       case ReviewState.rejected:
-        return Colors.grey;
+        return tokens.disabled;
       case ReviewState.conflict:
-        return Colors.red;
+        return tokens.statusOffline;
       case ReviewState.needsMoreEvidence:
-        return Colors.purple;
+        return tokens.secondary;
     }
   }
 }

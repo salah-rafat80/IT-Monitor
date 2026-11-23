@@ -146,12 +146,12 @@ class _InfrastructureDevicesTableState
                             ? null
                             : () => cubit.pingAllInfrastructure(),
                         icon: state.isCheckingAll
-                            ? const SizedBox(
+                            ? SizedBox(
                                 width: 14,
                                 height: 14,
                                 child: CircularProgressIndicator(
                                   strokeWidth: 2,
-                                  color: Colors.white,
+                                  color: tokens.onPrimary,
                                 ),
                               )
                             : const Icon(Icons.refresh_rounded, size: 16),
@@ -162,7 +162,7 @@ class _InfrastructureDevicesTableState
                         ),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: tokens.primary,
-                          foregroundColor: Colors.white,
+                          foregroundColor: tokens.onPrimary,
                         ),
                       ),
                       if (isAdmin)

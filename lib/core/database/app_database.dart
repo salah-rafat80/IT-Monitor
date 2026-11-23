@@ -923,6 +923,28 @@ LazyDatabase _openConnection() {
       // Try ProgramData first (production installed service).
       // If the file already exists there and is writable, use it.
       // Otherwise fall back to AppData\Local ONLY in explicit development / test mode.
+      // 1. Check for a portable/bundled database directly alongside the application executable.
+      // This enables standalone deployment on fresh/clean machines with all preloaded devices and data intact.
+      final exeDir = p.dirname(Platform.resolvedExecutable);
+      final portableFile = File(p.join(exeDir, 'it_network_monitor.sqlite'));
+
+      bool canWriteExe = false;
+      if (portableFile.existsSync()) {
+        try {
+          final probe = File(
+            p.join(
+              exeDir,
+              '.probe_${DateTime.now().millisecondsSinceEpoch}.tmp',
+            ),
+          );
+          probe.writeAsStringSync('probe');
+          probe.deleteSync();
+          canWriteExe = true;
+        } catch (_) {
+          canWriteExe = false;
+        }
+      }
+
       final programData = Platform.environment['ProgramData'];
       final prodDir = programData != null && programData.trim().isNotEmpty
           ? Directory(p.join(programData.trim(), 'ITNetworkMonitor'))
@@ -941,10 +963,38 @@ LazyDatabase _openConnection() {
         canAccessProd = false;
       }
 
-      if (canAccessProd) {
+      if (portableFile.existsSync() && canWriteExe) {
+        // Portable mode: Use the database bundled alongside the executable.
+        targetDir = Directory(exeDir);
+      } else if (canAccessProd) {
         // Authoritative production database already exists in ProgramData and is accessible.
         // Always bind to ProgramData when accessible to prevent client and service from using different databases.
         targetDir = prodDir;
+      } else if (portableFile.existsSync() && !canWriteExe) {
+        // Exe directory is read-only (e.g. Program Files). Seed user AppData from bundled DB so data is preserved!
+        final localAppData = Platform.environment['LOCALAPPDATA'];
+        final userDir = localAppData != null && localAppData.trim().isNotEmpty
+            ? Directory(p.join(localAppData.trim(), 'ITNetworkMonitor'))
+            : Directory(
+                p.join(
+                  Platform.environment['USERPROFILE'] ?? r'C:\Users\Default',
+                  'AppData',
+                  'Local',
+                  'ITNetworkMonitor',
+                ),
+              );
+        if (!userDir.existsSync()) {
+          try {
+            userDir.createSync(recursive: true);
+          } catch (_) {}
+        }
+        final targetDb = File(p.join(userDir.path, 'it_network_monitor.sqlite'));
+        if (!targetDb.existsSync()) {
+          try {
+            portableFile.copySync(targetDb.path);
+          } catch (_) {}
+        }
+        targetDir = userDir;
       } else {
         bool canWriteProd = false;
         if (prodDir.existsSync()) {

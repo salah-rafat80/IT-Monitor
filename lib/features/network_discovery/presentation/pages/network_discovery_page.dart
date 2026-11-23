@@ -95,7 +95,8 @@ class NetworkDiscoveryPage extends StatelessWidget {
                   padding: const EdgeInsets.only(right: 16),
                   child: ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.red,
+                      backgroundColor: tokens.statusOffline,
+                      foregroundColor: tokens.onStatusOffline,
                     ),
                     onPressed: () =>
                         context.read<NetworkDiscoveryCubit>().cancelScan(),
@@ -141,7 +142,7 @@ class NetworkDiscoveryPage extends StatelessWidget {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
                   content: Text(state.errorMessage!),
-                  backgroundColor: Colors.red,
+                  backgroundColor: tokens.statusOffline,
                   duration: const Duration(seconds: 4),
                 ),
               );
@@ -284,11 +285,11 @@ class NetworkDiscoveryPage extends StatelessWidget {
       showDialog(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Row(
+          title: Row(
             children: [
-              Icon(Icons.warning_amber_rounded, color: Colors.orange),
-              SizedBox(width: 8),
-              Text('Factory Selection Required'),
+              Icon(Icons.warning_amber_rounded, color: context.appTokens.statusDegraded),
+              const SizedBox(width: 8),
+              const Text('Factory Selection Required'),
             ],
           ),
           content: const Text(
@@ -387,6 +388,7 @@ class NetworkDiscoveryPage extends StatelessWidget {
               notes,
             }) async {
               final messenger = ScaffoldMessenger.of(context);
+              final tokens = context.appTokens;
               final success = await cubit.approveDevice(
                 discoveredDevice: device,
                 ownerName: ownerName,
@@ -407,8 +409,8 @@ class NetworkDiscoveryPage extends StatelessWidget {
                         : 'Failed to save device.',
                   ),
                   backgroundColor: success
-                      ? const Color(0xFF10B981)
-                      : Colors.red,
+                      ? tokens.statusOnline
+                      : tokens.statusOffline,
                 ),
               );
             },

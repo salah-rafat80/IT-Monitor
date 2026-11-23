@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/theme/app_colors.dart';
 import '../../domain/services/excel_inventory_service.dart';
 
 class ExcelImportPreviewDialog extends StatelessWidget {
@@ -17,6 +18,7 @@ class ExcelImportPreviewDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final tokens = context.appTokens;
     final validRows = summary.rows.where((r) => r.isValid).toList();
     final invalidRows = summary.rows.where((r) => r.isInvalid).toList();
 
@@ -35,12 +37,12 @@ class ExcelImportPreviewDialog extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF0F62FE).withValues(alpha: 0.15),
+                      color: tokens.primary.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: const Icon(
+                    child: Icon(
                       Icons.table_view_rounded,
-                      color: Color(0xFF0F62FE),
+                      color: tokens.primary,
                       size: 24,
                     ),
                   ),
@@ -59,7 +61,7 @@ class ExcelImportPreviewDialog extends StatelessWidget {
                         Text(
                           'Target Factory: ${factoryCode.toUpperCase()} | Existing devices will be preserved unless updated explicitly.',
                           style: theme.textTheme.bodyMedium?.copyWith(
-                            color: Colors.grey[400],
+                            color: tokens.textSecondary,
                           ),
                         ),
                       ],
@@ -79,28 +81,28 @@ class ExcelImportPreviewDialog extends StatelessWidget {
                   _StatBadge(
                     label: 'New Devices to Insert',
                     count: summary.insertCount,
-                    color: const Color(0xFF10B981),
+                    color: tokens.statusOnline,
                     icon: Icons.add_circle_outline_rounded,
                   ),
                   const SizedBox(width: 12),
                   _StatBadge(
                     label: 'Existing to Update',
                     count: summary.updateCount,
-                    color: const Color(0xFF0F62FE),
+                    color: tokens.primary,
                     icon: Icons.update_rounded,
                   ),
                   const SizedBox(width: 12),
                   _StatBadge(
                     label: 'Invalid / Rejected',
                     count: summary.invalidCount,
-                    color: Colors.redAccent,
+                    color: tokens.statusOffline,
                     icon: Icons.error_outline_rounded,
                   ),
                   const SizedBox(width: 12),
                   _StatBadge(
                     label: 'Total Rows Processed',
                     count: summary.rows.length,
-                    color: Colors.grey[400]!,
+                    color: tokens.textSecondary,
                     icon: Icons.receipt_long_rounded,
                   ),
                 ],
@@ -115,7 +117,7 @@ class ExcelImportPreviewDialog extends StatelessWidget {
                     children: [
                       TabBar(
                         labelColor: theme.colorScheme.primary,
-                        unselectedLabelColor: Colors.grey,
+                        unselectedLabelColor: tokens.textSecondary,
                         indicatorColor: theme.colorScheme.primary,
                         tabs: [
                           Tab(text: 'Valid Devices (${validRows.length})'),
@@ -131,10 +133,10 @@ class ExcelImportPreviewDialog extends StatelessWidget {
                           children: [
                             // Valid Rows Table
                             validRows.isEmpty
-                                ? const Center(
+                                ? Center(
                                     child: Text(
                                       'No valid devices found in the imported spreadsheet.',
-                                      style: TextStyle(color: Colors.grey),
+                                      style: TextStyle(color: tokens.textSecondary),
                                     ),
                                   )
                                 : Container(
@@ -266,19 +268,19 @@ class ExcelImportPreviewDialog extends StatelessWidget {
 
                             // Invalid Rows Table
                             invalidRows.isEmpty
-                                ? const Center(
+                                ? Center(
                                     child: Row(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
                                         Icon(
                                           Icons.check_circle_outline,
-                                          color: Color(0xFF10B981),
+                                          color: tokens.statusOnline,
                                         ),
-                                        SizedBox(width: 8),
+                                        const SizedBox(width: 8),
                                         Text(
                                           'All rows in the spreadsheet are valid!',
                                           style: TextStyle(
-                                            color: Color(0xFF10B981),
+                                            color: tokens.statusOnline,
                                           ),
                                         ),
                                       ],
@@ -287,7 +289,7 @@ class ExcelImportPreviewDialog extends StatelessWidget {
                                 : Container(
                                     decoration: BoxDecoration(
                                       border: Border.all(
-                                        color: Colors.red.withValues(
+                                        color: tokens.statusOffline.withValues(
                                           alpha: 0.2,
                                         ),
                                       ),
@@ -331,8 +333,8 @@ class ExcelImportPreviewDialog extends StatelessWidget {
                                                   Text(
                                                     r.rejectionReason ??
                                                         'Validation error',
-                                                    style: const TextStyle(
-                                                      color: Colors.redAccent,
+                                                    style: TextStyle(
+                                                      color: tokens.statusOffline,
                                                     ),
                                                   ),
                                                 ),
@@ -363,8 +365,8 @@ class ExcelImportPreviewDialog extends StatelessWidget {
                   const SizedBox(width: 12),
                   ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF0F62FE),
-                      foregroundColor: Colors.white,
+                      backgroundColor: tokens.primary,
+                      foregroundColor: tokens.onPrimary,
                       padding: const EdgeInsets.symmetric(
                         horizontal: 20,
                         vertical: 12,
@@ -432,7 +434,10 @@ class _StatBadge extends StatelessWidget {
                 ),
                 Text(
                   label,
-                  style: TextStyle(fontSize: 11, color: Colors.grey[400]),
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: context.appTokens.textSecondary,
+                  ),
                 ),
               ],
             ),

@@ -92,12 +92,12 @@ class BlueprintControlsBar extends StatelessWidget {
               decoration: BoxDecoration(
                 color: isLiveMonitoringActive
                     ? tokens.statusOnline.withValues(alpha: 0.12)
-                    : (isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.06)),
+                    : tokens.surfaceContainerHighest.withValues(alpha: 0.5),
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(
                   color: isLiveMonitoringActive
                       ? tokens.statusOnline.withValues(alpha: 0.4)
-                      : Colors.transparent,
+                      : tokens.transparent,
                 ),
               ),
               child: Row(
@@ -110,7 +110,7 @@ class BlueprintControlsBar extends StatelessWidget {
                       shape: BoxShape.circle,
                       color: isLiveMonitoringActive
                           ? tokens.statusOnline
-                          : (isDark ? Colors.grey : Colors.grey.shade400),
+                          : tokens.disabled,
                     ),
                   ),
                   const SizedBox(width: 6),

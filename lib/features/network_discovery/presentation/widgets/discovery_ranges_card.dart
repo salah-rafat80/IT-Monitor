@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/theme/app_colors.dart';
 import '../../domain/entities/network_range.dart';
 import '../../domain/entities/reachability_status.dart';
 
@@ -24,6 +25,7 @@ class DiscoveryRangesCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final tokens = context.appTokens;
     final enabledCount = ranges.where((r) => r.isEnabled).length;
 
     return Container(
@@ -41,10 +43,10 @@ class DiscoveryRangesCard extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.lan_rounded,
                     size: 20,
-                    color: Color(0xFF0F62FE),
+                    color: tokens.primary,
                   ),
                   const SizedBox(width: 8),
                   Text(
@@ -95,10 +97,10 @@ class DiscoveryRangesCard extends StatelessWidget {
               ),
               child: Column(
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.info_outline,
                     size: 36,
-                    color: Color(0xFF0F62FE),
+                    color: tokens.primary,
                   ),
                   const SizedBox(height: 12),
                   const Text(
@@ -135,7 +137,7 @@ class DiscoveryRangesCard extends StatelessWidget {
               runSpacing: 12,
               children: ranges.map((r) {
                 final isSelected = activeSubnetFilter == r.cidr;
-                final reachabilityColor = _reachabilityColor(r.reachability);
+                final reachabilityColor = _reachabilityColor(r.reachability, tokens);
 
                 return InkWell(
                   onTap: r.isEnabled
@@ -149,17 +151,17 @@ class DiscoveryRangesCard extends StatelessWidget {
                     ),
                     decoration: BoxDecoration(
                       color: !r.isEnabled
-                          ? theme.disabledColor.withValues(alpha: 0.05)
+                          ? tokens.disabled.withValues(alpha: 0.05)
                           : (isSelected
-                                ? theme.primaryColor.withValues(alpha: 0.12)
-                                : theme.colorScheme.surface),
+                                ? tokens.primary.withValues(alpha: 0.12)
+                                : tokens.surface),
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(
                         color: !r.isEnabled
-                            ? Colors.grey.withValues(alpha: 0.2)
+                            ? tokens.disabled.withValues(alpha: 0.2)
                             : (isSelected
-                                  ? theme.primaryColor
-                                  : theme.dividerColor.withValues(alpha: 0.2)),
+                                  ? tokens.primary
+                                  : tokens.divider.withValues(alpha: 0.2)),
                         width: isSelected ? 1.5 : 1.0,
                       ),
                     ),
@@ -176,7 +178,7 @@ class DiscoveryRangesCard extends StatelessWidget {
                                   style: TextStyle(
                                     fontWeight: FontWeight.bold,
                                     fontSize: 14,
-                                    color: r.isEnabled ? null : Colors.grey,
+                                    color: r.isEnabled ? null : tokens.disabled,
                                   ),
                                 ),
                                 if (r.name != null) ...[
@@ -185,8 +187,7 @@ class DiscoveryRangesCard extends StatelessWidget {
                                     '(${r.name})',
                                     style: TextStyle(
                                       fontSize: 12,
-                                      color: theme.textTheme.bodySmall?.color
-                                          ?.withValues(alpha: 0.7),
+                                      color: tokens.textSecondary,
                                     ),
                                   ),
                                 ],
@@ -198,7 +199,7 @@ class DiscoveryRangesCard extends StatelessWidget {
                                   ),
                                   decoration: BoxDecoration(
                                     color: !r.isEnabled
-                                        ? Colors.grey.withValues(alpha: 0.15)
+                                        ? tokens.disabled.withValues(alpha: 0.15)
                                         : reachabilityColor.withValues(
                                             alpha: 0.15,
                                           ),
@@ -212,7 +213,7 @@ class DiscoveryRangesCard extends StatelessWidget {
                                       fontSize: 11,
                                       fontWeight: FontWeight.w600,
                                       color: !r.isEnabled
-                                          ? Colors.grey
+                                          ? tokens.disabled
                                           : reachabilityColor,
                                     ),
                                   ),
@@ -224,8 +225,7 @@ class DiscoveryRangesCard extends StatelessWidget {
                               '${r.usableHostsCount} Usable Target Hosts (${r.baseIp.substring(0, r.baseIp.lastIndexOf('.'))}.1 – .${r.usableHostsCount})',
                               style: TextStyle(
                                 fontSize: 11,
-                                color: theme.textTheme.bodySmall?.color
-                                    ?.withValues(alpha: 0.6),
+                                color: tokens.textSecondary,
                               ),
                             ),
                           ],
@@ -233,10 +233,10 @@ class DiscoveryRangesCard extends StatelessWidget {
                         const SizedBox(width: 8),
                         if (isAdmin && onScanRange != null && r.isEnabled) ...[
                           IconButton(
-                            icon: const Icon(
+                            icon: Icon(
                               Icons.play_circle_fill_rounded,
                               size: 22,
-                              color: Color(0xFF10B981),
+                              color: tokens.statusOnline,
                             ),
                             tooltip: 'Scan ${r.cidr} Now',
                             visualDensity: VisualDensity.compact,
@@ -259,10 +259,10 @@ class DiscoveryRangesCard extends StatelessWidget {
                                 : Icons.filter_alt_outlined,
                             size: 18,
                             color: !r.isEnabled
-                                ? Colors.transparent
+                                ? tokens.transparent
                                 : (isSelected
-                                      ? theme.primaryColor
-                                      : theme.disabledColor),
+                                      ? tokens.primary
+                                      : tokens.disabled),
                           ),
                         ),
                       ],
@@ -276,19 +276,19 @@ class DiscoveryRangesCard extends StatelessWidget {
     );
   }
 
-  Color _reachabilityColor(ReachabilityStatus status) {
+  Color _reachabilityColor(ReachabilityStatus status, AppColors tokens) {
     switch (status) {
       case ReachabilityStatus.reachable:
       case ReachabilityStatus.scanCompleted:
-        return const Color(0xFF10B981); // Green
+        return tokens.statusOnline;
       case ReachabilityStatus.partiallyReachable:
       case ReachabilityStatus.scanCompletedWithErrors:
-        return Colors.orange;
+        return tokens.statusDegraded;
       case ReachabilityStatus.inaccessible:
-        return Colors.red;
+        return tokens.statusOffline;
       case ReachabilityStatus.rangeConfigured:
       case ReachabilityStatus.reachabilityNotTested:
-        return const Color(0xFF0F62FE); // Blue
+        return tokens.primary;
     }
   }
 }

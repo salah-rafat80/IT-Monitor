@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../../../core/theme/app_colors.dart';
 import '../bloc/factory_cubit.dart';
 
 class AddFactoryDialog extends StatefulWidget {
@@ -91,7 +92,7 @@ class _AddFactoryDialogState extends State<AddFactoryDialog> {
           content: Text(
             'Factory ${_codeController.text.trim().toUpperCase()} added successfully.',
           ),
-          backgroundColor: const Color(0xFF10B981),
+          backgroundColor: context.appTokens.statusOnline,
         ),
       );
     } else {
@@ -106,13 +107,14 @@ class _AddFactoryDialogState extends State<AddFactoryDialog> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final tokens = context.appTokens;
 
     return AlertDialog(
-      title: const Row(
+      title: Row(
         children: [
-          Icon(Icons.factory_rounded, color: Color(0xFF0F62FE)),
-          SizedBox(width: 10),
-          Text('Add New Factory / Site'),
+          Icon(Icons.factory_rounded, color: tokens.primary),
+          const SizedBox(width: 10),
+          const Text('Add New Factory / Site'),
         ],
       ),
       content: SizedBox(
@@ -126,7 +128,7 @@ class _AddFactoryDialogState extends State<AddFactoryDialog> {
               Text(
                 'Configure a new independently managed factory with isolated network scopes and device inventory.',
                 style: theme.textTheme.bodyMedium?.copyWith(
-                  color: Colors.grey[400],
+                  color: tokens.textSecondary,
                 ),
               ),
               const SizedBox(height: 16),
@@ -134,25 +136,25 @@ class _AddFactoryDialogState extends State<AddFactoryDialog> {
                 Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: Colors.red.withValues(alpha: 0.1),
+                    color: tokens.statusOfflineSurface,
                     borderRadius: BorderRadius.circular(6),
                     border: Border.all(
-                      color: Colors.red.withValues(alpha: 0.3),
+                      color: tokens.statusOffline.withValues(alpha: 0.3),
                     ),
                   ),
                   child: Row(
                     children: [
-                      const Icon(
+                      Icon(
                         Icons.error_outline,
-                        color: Colors.red,
+                        color: tokens.statusOffline,
                         size: 18,
                       ),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
                           _errorMessage!,
-                          style: const TextStyle(
-                            color: Colors.red,
+                          style: TextStyle(
+                            color: tokens.statusOffline,
                             fontSize: 12,
                           ),
                         ),
@@ -205,7 +207,7 @@ class _AddFactoryDialogState extends State<AddFactoryDialog> {
                 'Factory Network Scope Configuration',
                 style: theme.textTheme.titleSmall?.copyWith(
                   fontWeight: FontWeight.bold,
-                  color: const Color(0xFF0F62FE),
+                  color: tokens.primary,
                 ),
               ),
               const SizedBox(height: 8),
@@ -260,15 +262,16 @@ class _AddFactoryDialogState extends State<AddFactoryDialog> {
         ElevatedButton(
           onPressed: _isSaving ? null : _submit,
           style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF0F62FE),
+            backgroundColor: tokens.primary,
+            foregroundColor: tokens.onPrimary,
           ),
           child: _isSaving
-              ? const SizedBox(
+              ? SizedBox(
                   width: 18,
                   height: 18,
                   child: CircularProgressIndicator(
                     strokeWidth: 2,
-                    color: Colors.white,
+                    color: tokens.onPrimary,
                   ),
                 )
               : const Text('Create Factory'),

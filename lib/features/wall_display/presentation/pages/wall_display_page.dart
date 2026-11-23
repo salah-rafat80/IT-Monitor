@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/services/window_service.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../monitoring/presentation/bloc/monitoring_dashboard_cubit.dart';
 import '../../../monitoring/presentation/bloc/monitoring_dashboard_state.dart';
@@ -40,11 +41,15 @@ class _WallDisplayView extends StatefulWidget {
 class _WallDisplayViewState extends State<_WallDisplayView> {
   final FocusNode _focusNode = FocusNode();
   String? _currentFactoryId;
+  bool _showHeader = false; // Start in true frameless/kiosk mode
 
   @override
   void initState() {
     super.initState();
     _currentFactoryId = widget.initialFactoryId;
+    // Enter native borderless fullscreen (covers taskbar, removes Windows title bar)
+    WindowService.enterFullScreen();
+
     // Default to severity sorting for Wall Display Mode and clear all filters to guarantee all approved devices are visible
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final cubit = context.read<MonitoringDashboardCubit>();
@@ -63,18 +68,28 @@ class _WallDisplayViewState extends State<_WallDisplayView> {
 
   @override
   void dispose() {
+    WindowService.exitFullScreen();
     _focusNode.dispose();
     super.dispose();
   }
 
   void _handleKeyEvent(KeyEvent event) {
-    if (event is KeyDownEvent &&
-        event.logicalKey == LogicalKeyboardKey.escape) {
-      _exitWallDisplay();
+    if (event is KeyDownEvent) {
+      if (event.logicalKey == LogicalKeyboardKey.escape) {
+        _exitWallDisplay();
+      } else if (event.logicalKey == LogicalKeyboardKey.f11) {
+        WindowService.toggleFullScreen();
+      } else if (event.logicalKey == LogicalKeyboardKey.keyH) {
+        setState(() {
+          _showHeader = !_showHeader;
+        });
+      }
     }
   }
 
-  void _exitWallDisplay() {
+  Future<void> _exitWallDisplay() async {
+    await WindowService.exitFullScreen();
+    if (!mounted) return;
     if (context.canPop()) {
       context.pop();
     } else {
@@ -91,6 +106,8 @@ class _WallDisplayViewState extends State<_WallDisplayView> {
       child: Scaffold(
         backgroundColor: tokens.background,
         body: SafeArea(
+          top: _showHeader,
+          bottom: true,
           child: BlocBuilder<MonitoringDashboardCubit, MonitoringDashboardState>(
             builder: (context, state) {
               if (state is MonitoringDashboardLoading) {
@@ -146,122 +163,242 @@ class _WallDisplayViewState extends State<_WallDisplayView> {
                     state.isEngineRunning && !state.isEnginePaused;
                 final lastUpdated = DateTime.now();
 
-                return Column(
+                return Stack(
                   children: [
-                    // Header
-                    WallDisplayHeader(
-                      isConnected: isConnected,
-                      lastUpdatedAt: lastUpdated,
-                      currentSortBy: state.sortBy,
-                      activeFactoryId: _currentFactoryId,
-                      onFactoryChanged: (factoryId) {
-                        setState(() {
-                          _currentFactoryId = factoryId;
-                        });
-                        try {
-                          context
-                              .read<FactoryCubit>()
-                              .selectFactoryById(factoryId);
-                        } catch (_) {}
-                        context
-                            .read<MonitoringDashboardCubit>()
-                            .setFactoryFilter(factoryId);
-                        context
-                            .read<InfrastructureCubit>()
-                            .setFactory(factoryId);
-                      },
-                      onSortChanged: (sortBy) {
-                        context.read<MonitoringDashboardCubit>().setSorting(
-                          sortBy,
-                        );
-                      },
-                    ),
+                    Column(
+                      children: [
+                        // Header (hidden in Frameless Kiosk mode)
+                        if (_showHeader)
+                          WallDisplayHeader(
+                            isConnected: isConnected,
+                            lastUpdatedAt: lastUpdated,
+                            currentSortBy: state.sortBy,
+                            activeFactoryId: _currentFactoryId,
+                            onToggleFrameless: () {
+                              setState(() {
+                                _showHeader = false;
+                              });
+                            },
+                            onExit: _exitWallDisplay,
+                            onFactoryChanged: (factoryId) {
+                              setState(() {
+                                _currentFactoryId = factoryId;
+                              });
+                              try {
+                                context
+                                    .read<FactoryCubit>()
+                                    .selectFactoryById(factoryId);
+                              } catch (_) {}
+                              context
+                                  .read<MonitoringDashboardCubit>()
+                                  .setFactoryFilter(factoryId);
+                              context
+                                  .read<InfrastructureCubit>()
+                                  .setFactory(factoryId);
+                            },
+                            onSortChanged: (sortBy) {
+                              context
+                                  .read<MonitoringDashboardCubit>()
+                                  .setSorting(sortBy);
+                            },
+                          ),
 
-                    // Disconnected Warning Banner if connection drops
-                    if (!isConnected)
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(
-                          vertical: 4,
-                          horizontal: 16,
-                        ),
-                        color: tokens.statusOfflineSurface,
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.wifi_off_rounded,
-                              color: tokens.onStatusOffline,
-                              size: 16,
+                        // Disconnected Warning Banner if connection drops
+                        if (!isConnected)
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(
+                              vertical: 4,
+                              horizontal: 16,
                             ),
-                            const SizedBox(width: 8),
-                            Text(
-                              'SERVICE DISCONNECTED — DISPLAYING LAST KNOWN MONITORING STATE',
-                              style: TextStyle(
-                                color: tokens.onStatusOffline,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 11,
-                                letterSpacing: 0.5,
+                            color: tokens.statusOfflineSurface,
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.wifi_off_rounded,
+                                  color: tokens.onStatusOffline,
+                                  size: 16,
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'SERVICE DISCONNECTED — DISPLAYING LAST KNOWN MONITORING STATE',
+                                  style: TextStyle(
+                                    color: tokens.onStatusOffline,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 11,
+                                    letterSpacing: 0.5,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+
+                        // Summary Counters Bar
+                        WallDisplaySummaryBar(
+                          totalCount: state.totalCount,
+                          upCount: state.upCount,
+                          degradedCount: state.degradedCount,
+                          downCount: state.downCount,
+                          unknownCount: state.unknownCount,
+                          maintenanceCount: state.maintenanceCount,
+                        ),
+
+                        // Critical UniFi Infrastructure Bar
+                        _buildWallInfrastructureBar(),
+
+                        // Full-Screen Device Grid
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+                            child: WallDisplayGrid(
+                              devices: state.filteredDevices,
+                            ),
+                          ),
+                        ),
+
+                        // Footer Status Bar
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: tokens.surface,
+                            border: Border(
+                              top: BorderSide(
+                                color: tokens.cardBorder,
+                                width: 1,
                               ),
                             ),
-                          ],
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                'Monitored Devices Grid • Frameless Full Coverage',
+                                style: TextStyle(
+                                  fontSize: 10.5,
+                                  color: tokens.textSecondary,
+                                ),
+                              ),
+                              Text(
+                                'Press [H] for Menu  •  [F11] Fullscreen  •  [ESC] Exit',
+                                style: TextStyle(
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.w600,
+                                  color: tokens.primary,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-
-                    // Summary Counters Bar
-                    WallDisplaySummaryBar(
-                      totalCount: state.totalCount,
-                      upCount: state.upCount,
-                      degradedCount: state.degradedCount,
-                      downCount: state.downCount,
-                      unknownCount: state.unknownCount,
-                      maintenanceCount: state.maintenanceCount,
+                      ],
                     ),
 
-                    // Critical UniFi Infrastructure Bar
-                    _buildWallInfrastructureBar(),
-
-                    // Full-Screen Device Grid
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                        child: WallDisplayGrid(devices: state.filteredDevices),
-                      ),
-                    ),
-
-                    // Footer Status Bar
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: tokens.surface,
-                        border: Border(
-                          top: BorderSide(color: tokens.cardBorder, width: 1),
-                        ),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            'Monitored Devices Grid • No Scroll / Full Coverage',
-                            style: TextStyle(
-                              fontSize: 10.5,
-                              color: tokens.textSecondary,
+                    // Floating Controls Pill when _showHeader is false (Frameless Mode)
+                    if (!_showHeader)
+                      Positioned(
+                        top: 8,
+                        right: 16,
+                        child: AnimatedOpacity(
+                          opacity: 0.9,
+                          duration: const Duration(milliseconds: 200),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: tokens.surface.withValues(alpha: 0.92),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                color: tokens.cardBorder.withValues(alpha: 0.6),
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: tokens.shadow.withValues(alpha: 0.35),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                InkWell(
+                                  onTap: () {
+                                    setState(() {
+                                      _showHeader = true;
+                                    });
+                                  },
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 6,
+                                      vertical: 2,
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Icon(
+                                          Icons.visibility_rounded,
+                                          size: 13,
+                                          color: tokens.textSecondary,
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          'Show Menu [H]',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w600,
+                                            color: tokens.textSecondary,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                                Container(
+                                  width: 1,
+                                  height: 12,
+                                  color: tokens.cardBorder,
+                                  margin: const EdgeInsets.symmetric(
+                                    horizontal: 6,
+                                  ),
+                                ),
+                                InkWell(
+                                  onTap: _exitWallDisplay,
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 6,
+                                      vertical: 2,
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Icon(
+                                          Icons.close_rounded,
+                                          size: 13,
+                                          color: tokens.statusOffline,
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          'Exit [ESC]',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w600,
+                                            color: tokens.statusOffline,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                          Text(
-                            'Press ESC to exit Wall Display Mode',
-                            style: TextStyle(
-                              fontSize: 10.5,
-                              fontWeight: FontWeight.w600,
-                              color: tokens.primary,
-                            ),
-                          ),
-                        ],
+                        ),
                       ),
-                    ),
                   ],
                 );
               }

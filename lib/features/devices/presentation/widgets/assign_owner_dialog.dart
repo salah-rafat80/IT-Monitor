@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/theme/app_colors.dart';
 import '../../domain/entities/device_entity.dart';
 
 class AssignOwnerDialog extends StatefulWidget {
@@ -54,11 +55,11 @@ class _AssignOwnerDialogState extends State<AssignOwnerDialog> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Row(
+        title: Row(
           children: [
-            Icon(Icons.person_off_rounded, color: Colors.orange),
-            SizedBox(width: 8),
-            Text('Confirm Clear Assignment'),
+            Icon(Icons.person_off_rounded, color: ctx.appTokens.statusDegraded),
+            const SizedBox(width: 8),
+            const Text('Confirm Clear Assignment'),
           ],
         ),
         content: Text(
@@ -70,7 +71,10 @@ class _AssignOwnerDialogState extends State<AssignOwnerDialog> {
             child: const Text('Cancel'),
           ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: ctx.appTokens.statusDegraded,
+              foregroundColor: ctx.appTokens.onStatusDegraded,
+            ),
             onPressed: () => Navigator.of(ctx).pop(true),
             child: const Text('Clear Assignment'),
           ),
@@ -93,6 +97,7 @@ class _AssignOwnerDialogState extends State<AssignOwnerDialog> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final tokens = context.appTokens;
     final isEditing = widget.device.isOwnerAssigned;
 
     return Dialog(
@@ -111,14 +116,14 @@ class _AssignOwnerDialogState extends State<AssignOwnerDialog> {
                   Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF0F62FE).withValues(alpha: 0.1),
+                      color: tokens.primary.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Icon(
                       isEditing
                           ? Icons.manage_accounts_rounded
                           : Icons.person_add_alt_1_rounded,
-                      color: const Color(0xFF0F62FE),
+                      color: tokens.primary,
                       size: 24,
                     ),
                   ),
@@ -244,7 +249,7 @@ class _AssignOwnerDialogState extends State<AssignOwnerDialog> {
                   if (isEditing && widget.onClear != null)
                     TextButton.icon(
                       style: TextButton.styleFrom(
-                        foregroundColor: Colors.orange,
+                        foregroundColor: tokens.statusDegraded,
                       ),
                       icon: const Icon(Icons.person_off_rounded, size: 18),
                       label: const Text('Clear Assignment'),
@@ -263,12 +268,12 @@ class _AssignOwnerDialogState extends State<AssignOwnerDialog> {
                       const SizedBox(width: 8),
                       ElevatedButton.icon(
                         icon: _isSubmitting
-                            ? const SizedBox(
+                            ? SizedBox(
                                 width: 16,
                                 height: 16,
                                 child: CircularProgressIndicator(
                                   strokeWidth: 2,
-                                  color: Colors.white,
+                                  color: tokens.onPrimary,
                                 ),
                               )
                             : const Icon(Icons.check_rounded, size: 18),
@@ -307,12 +312,13 @@ class _ReadOnlyContextRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final tokens = context.appTokens;
     return Row(
       children: [
         Icon(
           icon,
           size: 16,
-          color: isPrimaryBadge ? const Color(0xFF0F62FE) : theme.disabledColor,
+          color: isPrimaryBadge ? tokens.primary : tokens.disabled,
         ),
         const SizedBox(width: 8),
         Text(
@@ -329,7 +335,7 @@ class _ReadOnlyContextRow extends StatelessWidget {
               fontSize: 13,
               fontWeight: FontWeight.bold,
               fontFamily: isMonospace ? 'monospace' : null,
-              color: isPrimaryBadge ? const Color(0xFF0F62FE) : null,
+              color: isPrimaryBadge ? tokens.primary : null,
             ),
             overflow: TextOverflow.ellipsis,
           ),

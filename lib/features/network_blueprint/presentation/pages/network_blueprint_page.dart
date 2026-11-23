@@ -202,7 +202,7 @@ class _NetworkBlueprintViewState extends State<_NetworkBlueprintView> {
               label: const Text('Retry Loading'),
               style: ElevatedButton.styleFrom(
                 backgroundColor: tokens.primary,
-                foregroundColor: isDark ? Colors.black : Colors.white,
+                foregroundColor: tokens.onPrimary,
               ),
             ),
           ],

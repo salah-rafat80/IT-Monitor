@@ -324,15 +324,15 @@ class _InfrastructureDeviceDetailsModalState
                                     padding: const EdgeInsets.all(10),
                                     decoration: BoxDecoration(
                                       color: _lastTestResult!.isSuccess
-                                          ? Colors.green.withValues(alpha: 0.1)
-                                          : Colors.red.withValues(alpha: 0.1),
+                                          ? tokens.statusOnlineSurface
+                                          : tokens.statusOfflineSurface,
                                       borderRadius: BorderRadius.circular(8),
                                       border: Border.all(
                                         color: _lastTestResult!.isSuccess
-                                            ? Colors.green.withValues(
+                                            ? tokens.statusOnline.withValues(
                                                 alpha: 0.3,
                                               )
-                                            : Colors.red.withValues(alpha: 0.3),
+                                            : tokens.statusOffline.withValues(alpha: 0.3),
                                       ),
                                     ),
                                     child: Row(
@@ -342,8 +342,8 @@ class _InfrastructureDeviceDetailsModalState
                                               ? Icons.check_circle
                                               : Icons.cancel,
                                           color: _lastTestResult!.isSuccess
-                                              ? Colors.green
-                                              : Colors.red,
+                                              ? tokens.statusOnline
+                                              : tokens.statusOffline,
                                           size: 18,
                                         ),
                                         const SizedBox(width: 8),
@@ -356,8 +356,8 @@ class _InfrastructureDeviceDetailsModalState
                                               fontSize: 12,
                                               fontWeight: FontWeight.w500,
                                               color: _lastTestResult!.isSuccess
-                                                  ? Colors.green
-                                                  : Colors.red,
+                                                  ? tokens.statusOnline
+                                                  : tokens.statusOffline,
                                             ),
                                           ),
                                         ),

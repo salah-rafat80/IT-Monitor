@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/theme/app_colors.dart';
+
 /// Floating left-side vertical canvas controls toolbar.
 ///
 /// Features:
@@ -35,16 +37,17 @@ class EnterpriseTopologyControls extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = context.appTokens;
     final zoomPercent = (currentZoom * 100).round();
 
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFF1E293B),
+        color: tokens.surfaceContainerHigh,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFF334155), width: 1.0),
+        border: Border.all(color: tokens.border, width: 1.0),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.35),
+            color: tokens.shadow.withValues(alpha: 0.35),
             blurRadius: 10,
             offset: const Offset(0, 3),
           ),
@@ -79,11 +82,11 @@ class EnterpriseTopologyControls extends StatelessWidget {
                 alignment: Alignment.center,
                 child: Text(
                   '$zoomPercent%',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontFamily: 'Consolas',
                     fontSize: 10.5,
                     fontWeight: FontWeight.w700,
-                    color: Color(0xFFF8FAFC),
+                    color: tokens.onSurface,
                   ),
                 ),
               ),
@@ -134,12 +137,13 @@ class _ControlButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = context.appTokens;
     return SizedBox(
       width: 38,
       height: 38,
       child: IconButton(
-        icon: Icon(icon, size: 19, color: const Color(0xFF94A3B8)),
-        hoverColor: const Color(0xFF334155),
+        icon: Icon(icon, size: 19, color: tokens.onSurfaceVariant),
+        hoverColor: tokens.surfaceContainerHighest,
         tooltip: tooltip,
         onPressed: onPressed,
         splashRadius: 18,
@@ -153,6 +157,6 @@ class _ControlDivider extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(width: 28, height: 1, color: const Color(0xFF334155));
+    return Container(width: 28, height: 1, color: context.appTokens.divider);
   }
 }

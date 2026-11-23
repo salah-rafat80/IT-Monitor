@@ -139,6 +139,8 @@ class AppPalette extends Equatable {
     required this.onStatusUnknown,
   });
 
+  Color get statusStale => const Color(0xFFEAB308);
+
   /// Factory constructor that derives all semantic tokens dynamically from seeds.
   /// Fully adapts for Dark and Light modes so surfaces and text are never inverted or mixed.
   factory AppPalette.fromSeeds({

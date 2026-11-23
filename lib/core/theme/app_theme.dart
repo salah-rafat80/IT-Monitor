@@ -34,15 +34,15 @@ class AppTheme {
       primary: activePalette.second,
       onPrimary: activePalette.onSecond,
       primaryContainer: activePalette.second.withValues(alpha: isDark ? 0.25 : 0.15),
-      onPrimaryContainer: isDark ? const Color(0xFFD0E1FD) : const Color(0xFF001B3F),
+      onPrimaryContainer: activePalette.onSecond,
       secondary: activePalette.accent,
       onSecondary: activePalette.onAccent,
       secondaryContainer: activePalette.accent.withValues(alpha: isDark ? 0.25 : 0.15),
-      onSecondaryContainer: isDark ? const Color(0xFFFFD9E2) : const Color(0xFF4E1D00),
-      tertiary: activePalette.accent,
-      onTertiary: activePalette.onAccent,
-      tertiaryContainer: activePalette.accent.withValues(alpha: 0.2),
-      onTertiaryContainer: activePalette.onAccent,
+      onSecondaryContainer: activePalette.onAccent,
+      tertiary: activePalette.statusDegraded,
+      onTertiary: activePalette.onStatusDegraded,
+      tertiaryContainer: activePalette.statusDegradedSurface,
+      onTertiaryContainer: activePalette.onStatusDegraded,
       error: activePalette.statusOffline,
       onError: activePalette.onStatusOffline,
       errorContainer: activePalette.statusOfflineSurface,
@@ -59,9 +59,9 @@ class AppTheme {
       outlineVariant: activePalette.divider,
       shadow: activePalette.shadow,
       scrim: activePalette.overlay,
-      inverseSurface: isDark ? const Color(0xFFE2E8F0) : const Color(0xFF0F172A),
-      onInverseSurface: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
-      inversePrimary: isDark ? const Color(0xFF2F5BFF) : const Color(0xFF00E5FF),
+      inverseSurface: activePalette.onSurface,
+      onInverseSurface: activePalette.surface,
+      inversePrimary: activePalette.second,
     );
 
     final textTheme = AppTypography.buildTextTheme(
@@ -184,7 +184,7 @@ class AppTheme {
           if (states.contains(WidgetState.hovered)) {
             return activePalette.surfaceContainerHigh.withValues(alpha: 0.5);
           }
-          return Colors.transparent;
+          return themeTokens.transparent;
         }),
         dividerThickness: 1,
       ),
@@ -332,7 +332,7 @@ class AppTheme {
           if (states.contains(WidgetState.selected)) {
             return activePalette.accent;
           }
-          return Colors.transparent;
+          return themeTokens.transparent;
         }),
         checkColor: WidgetStatePropertyAll(activePalette.onAccent),
         side: BorderSide(color: activePalette.border, width: 1.5),
@@ -392,16 +392,71 @@ class AppTheme {
       // --- M3 Tooltip Theme ---
       tooltipTheme: TooltipThemeData(
         decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF1E293B) : const Color(0xFF0F172A),
+          color: activePalette.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(AppRadius.sm),
           border: Border.all(color: activePalette.border),
         ),
-        textStyle: const TextStyle(
+        textStyle: TextStyle(
           fontSize: 12,
-          color: Color(0xFFF8FAFC),
+          color: activePalette.onSurface,
           fontWeight: FontWeight.w500,
         ),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      ),
+
+      // --- M3 PopupMenu Theme ---
+      popupMenuTheme: PopupMenuThemeData(
+        color: activePalette.surfaceContainerHigh,
+        elevation: 6,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          side: BorderSide(color: activePalette.border),
+        ),
+        textStyle: textTheme.bodyMedium?.copyWith(
+          color: activePalette.onSurface,
+        ),
+      ),
+
+      // --- M3 DropdownMenu Theme ---
+      dropdownMenuTheme: DropdownMenuThemeData(
+        textStyle: textTheme.bodyMedium?.copyWith(
+          color: activePalette.onSurface,
+        ),
+        menuStyle: MenuStyle(
+          backgroundColor: WidgetStatePropertyAll(activePalette.surfaceContainerHigh),
+          surfaceTintColor: WidgetStatePropertyAll(themeTokens.transparent),
+          elevation: const WidgetStatePropertyAll(6),
+          shape: WidgetStatePropertyAll(
+            RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppRadius.md),
+              side: BorderSide(color: activePalette.border),
+            ),
+          ),
+        ),
+      ),
+
+      // --- M3 ProgressIndicator Theme ---
+      progressIndicatorTheme: ProgressIndicatorThemeData(
+        color: activePalette.accent,
+        linearTrackColor: activePalette.surfaceContainerHighest,
+        circularTrackColor: activePalette.surfaceContainerHighest,
+      ),
+
+      // --- M3 Drawer Theme ---
+      drawerTheme: DrawerThemeData(
+        backgroundColor: activePalette.sidebar,
+        elevation: 0,
+        shape: const RoundedRectangleBorder(),
+      ),
+
+      // --- M3 Icon Theme ---
+      iconTheme: IconThemeData(
+        color: activePalette.onSurface,
+        size: 20,
+      ),
+      primaryIconTheme: IconThemeData(
+        color: activePalette.onSecond,
+        size: 20,
       ),
     );
   }

@@ -70,8 +70,7 @@ class _HandDrawnTopologyCanvasState extends State<HandDrawnTopologyCanvas>
     String locationName,
     String switchName,
   ) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final tokens = context.appTokens;
     final device = md.device;
     final status = md.status;
     final dateFormat = DateFormat('yyyy-MM-dd HH:mm:ss');
@@ -82,26 +81,24 @@ class _HandDrawnTopologyCanvasState extends State<HandDrawnTopologyCanvas>
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
           side: BorderSide(
-            color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+            color: tokens.border,
             width: 1.5,
           ),
         ),
-        backgroundColor: isDark
-            ? AppColors.darkSurface
-            : AppColors.lightSurface,
+        backgroundColor: tokens.surface,
         title: Row(
           children: [
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: AppColors.primary.withValues(alpha: 0.15),
+                color: tokens.primary.withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Icon(
                 device.type.name == 'laptop'
                     ? Icons.laptop_rounded
                     : Icons.desktop_windows_rounded,
-                color: AppColors.primary,
+                color: tokens.primary,
                 size: 24,
               ),
             ),
@@ -112,18 +109,17 @@ class _HandDrawnTopologyCanvasState extends State<HandDrawnTopologyCanvas>
                 children: [
                   Text(
                     device.displayOwner,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
+                      color: tokens.textPrimary,
                     ),
                   ),
                   Text(
                     '${device.name} • ${device.department}',
                     style: TextStyle(
                       fontSize: 13,
-                      color: isDark
-                          ? AppColors.textSecondaryDark
-                          : AppColors.textSecondaryLight,
+                      color: tokens.textSecondary,
                     ),
                   ),
                 ],
@@ -140,7 +136,7 @@ class _HandDrawnTopologyCanvasState extends State<HandDrawnTopologyCanvas>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Divider(),
+              Divider(color: tokens.divider),
               const SizedBox(height: 8),
               _DetailRow(
                 icon: Icons.badge_outlined,
@@ -193,7 +189,7 @@ class _HandDrawnTopologyCanvasState extends State<HandDrawnTopologyCanvas>
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Close'),
+            child: Text('Close', style: TextStyle(color: tokens.primary)),
           ),
         ],
       ),
@@ -202,10 +198,12 @@ class _HandDrawnTopologyCanvasState extends State<HandDrawnTopologyCanvas>
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final tokens = context.appTokens;
 
     return CustomPaint(
-      painter: WhiteboardGridPainter(isDark: isDark),
+      painter: WhiteboardGridPainter(
+        dotColor: tokens.onSurface.withValues(alpha: tokens.isDark ? 0.07 : 0.04),
+      ),
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
         child: Column(
@@ -226,7 +224,7 @@ class _HandDrawnTopologyCanvasState extends State<HandDrawnTopologyCanvas>
   }
 
   Widget _buildCanvasHeader(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final tokens = context.appTokens;
 
     int upCount = 0;
     int downCount = 0;
@@ -262,17 +260,15 @@ class _HandDrawnTopologyCanvasState extends State<HandDrawnTopologyCanvas>
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
       decoration: BoxDecoration(
-        color: isDark
-            ? AppColors.darkCard.withValues(alpha: 0.9)
-            : Colors.white.withValues(alpha: 0.95),
+        color: tokens.card.withValues(alpha: tokens.isDark ? 0.9 : 0.95),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+          color: tokens.border,
           width: 1.5,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.05),
+            color: tokens.shadow,
             blurRadius: 10,
             offset: const Offset(0, 3),
           ),
@@ -282,9 +278,9 @@ class _HandDrawnTopologyCanvasState extends State<HandDrawnTopologyCanvas>
         children: [
           Row(
             children: [
-              const Icon(
+              Icon(
                 Icons.palette_outlined,
-                color: AppColors.primary,
+                color: tokens.primary,
                 size: 20,
               ),
               const SizedBox(width: 8),
@@ -293,9 +289,7 @@ class _HandDrawnTopologyCanvasState extends State<HandDrawnTopologyCanvas>
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.bold,
-                  color: isDark
-                      ? AppColors.textPrimaryDark
-                      : AppColors.textPrimaryLight,
+                  color: tokens.textPrimary,
                 ),
               ),
             ],
@@ -308,22 +302,22 @@ class _HandDrawnTopologyCanvasState extends State<HandDrawnTopologyCanvas>
                 children: [
                   _StatusLegendBadge(
                     label: 'Up ($upCount)',
-                    color: const Color(0xFF10B981),
+                    color: tokens.statusOnline,
                   ),
                   const SizedBox(width: 8),
                   _StatusLegendBadge(
                     label: 'Disconnected ($downCount)',
-                    color: const Color(0xFFEF4444),
+                    color: tokens.statusOffline,
                   ),
                   const SizedBox(width: 8),
                   _StatusLegendBadge(
                     label: 'Degraded ($degradedCount)',
-                    color: const Color(0xFFF59E0B),
+                    color: tokens.statusDegraded,
                   ),
                   const SizedBox(width: 8),
                   _StatusLegendBadge(
                     label: 'Maintenance ($maintenanceCount)',
-                    color: const Color(0xFF3B82F6),
+                    color: tokens.statusMaintenance,
                   ),
                 ],
               ),
@@ -335,7 +329,7 @@ class _HandDrawnTopologyCanvasState extends State<HandDrawnTopologyCanvas>
   }
 
   Widget _buildLocationCluster(BuildContext context, LocationNode loc) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final tokens = context.appTokens;
     final isCollapsed = _collapsedLocations.contains(loc.locationName);
 
     final downCount = loc.allDevices
@@ -346,22 +340,18 @@ class _HandDrawnTopologyCanvasState extends State<HandDrawnTopologyCanvas>
     return Container(
       margin: const EdgeInsets.only(bottom: 24),
       decoration: BoxDecoration(
-        color: isDark
-            ? AppColors.darkSurface.withValues(alpha: 0.85)
-            : Colors.white.withValues(alpha: 0.9),
+        color: tokens.surface.withValues(alpha: tokens.isDark ? 0.85 : 0.9),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: hasIssues
-              ? const Color(0xFFEF4444).withValues(alpha: 0.7)
-              : isDark
-              ? AppColors.darkBorder
-              : AppColors.lightBorder,
+              ? tokens.statusOffline.withValues(alpha: 0.7)
+              : tokens.border,
           width: hasIssues ? 2.0 : 1.5,
         ),
         boxShadow: [
           BoxShadow(
-            color: (hasIssues ? const Color(0xFFEF4444) : Colors.black)
-                .withValues(alpha: isDark ? 0.2 : 0.05),
+            color: (hasIssues ? tokens.statusOffline : tokens.shadow)
+                .withValues(alpha: tokens.isDark ? 0.2 : 0.05),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
@@ -382,15 +372,15 @@ class _HandDrawnTopologyCanvasState extends State<HandDrawnTopologyCanvas>
                     width: 42,
                     height: 42,
                     decoration: BoxDecoration(
-                      color: AppColors.primary.withValues(alpha: 0.15),
+                      color: tokens.primary.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
-                        color: AppColors.primary.withValues(alpha: 0.4),
+                        color: tokens.primary.withValues(alpha: 0.4),
                       ),
                     ),
-                    child: const Icon(
+                    child: Icon(
                       Icons.location_city_rounded,
-                      color: AppColors.primary,
+                      color: tokens.primary,
                       size: 24,
                     ),
                   ),
@@ -406,9 +396,7 @@ class _HandDrawnTopologyCanvasState extends State<HandDrawnTopologyCanvas>
                               style: TextStyle(
                                 fontSize: 17,
                                 fontWeight: FontWeight.bold,
-                                color: isDark
-                                    ? AppColors.textPrimaryDark
-                                    : AppColors.textPrimaryLight,
+                                color: tokens.textPrimary,
                               ),
                             ),
                             const SizedBox(width: 10),
@@ -418,20 +406,20 @@ class _HandDrawnTopologyCanvasState extends State<HandDrawnTopologyCanvas>
                                 vertical: 2,
                               ),
                               decoration: BoxDecoration(
-                                color: AppColors.primary.withValues(alpha: 0.1),
+                                color: tokens.primary.withValues(alpha: 0.1),
                                 borderRadius: BorderRadius.circular(6),
                                 border: Border.all(
-                                  color: AppColors.primary.withValues(
+                                  color: tokens.primary.withValues(
                                     alpha: 0.3,
                                   ),
                                 ),
                               ),
                               child: Text(
                                 '${loc.switchGroups.length} Switch Hub${loc.switchGroups.length == 1 ? "" : "s"}',
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 11,
                                   fontWeight: FontWeight.w600,
-                                  color: AppColors.primary,
+                                  color: tokens.primary,
                                 ),
                               ),
                             ),
@@ -443,10 +431,8 @@ class _HandDrawnTopologyCanvasState extends State<HandDrawnTopologyCanvas>
                           style: TextStyle(
                             fontSize: 12,
                             color: hasIssues
-                                ? const Color(0xFFEF4444)
-                                : (isDark
-                                      ? AppColors.textSecondaryDark
-                                      : AppColors.textSecondaryLight),
+                                ? tokens.statusOffline
+                                : tokens.textSecondary,
                             fontWeight: hasIssues
                                 ? FontWeight.bold
                                 : FontWeight.normal,
@@ -459,7 +445,7 @@ class _HandDrawnTopologyCanvasState extends State<HandDrawnTopologyCanvas>
                     isCollapsed
                         ? Icons.add_circle_outline_rounded
                         : Icons.remove_circle_outline_rounded,
-                    color: AppColors.primary,
+                    color: tokens.primary,
                     size: 24,
                   ),
                 ],
@@ -495,7 +481,7 @@ class _HandDrawnTopologyCanvasState extends State<HandDrawnTopologyCanvas>
     SwitchGroup sg,
     String switchKey,
   ) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final tokens = context.appTokens;
     final isSwitchCollapsed = _collapsedSwitches.contains(switchKey);
 
     return Container(
@@ -510,12 +496,12 @@ class _HandDrawnTopologyCanvasState extends State<HandDrawnTopologyCanvas>
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               decoration: BoxDecoration(
-                color: isDark ? AppColors.darkCard : Colors.grey.shade100,
+                color: tokens.card,
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(
                   color: sg.hasKnownSwitch
-                      ? AppColors.primary.withValues(alpha: 0.5)
-                      : Colors.grey.shade400,
+                      ? tokens.primary.withValues(alpha: 0.5)
+                      : tokens.border,
                   width: 1.5,
                 ),
               ),
@@ -527,7 +513,7 @@ class _HandDrawnTopologyCanvasState extends State<HandDrawnTopologyCanvas>
                         ? Icons.hub_rounded
                         : Icons.help_center_outlined,
                     size: 20,
-                    color: sg.hasKnownSwitch ? AppColors.primary : Colors.grey,
+                    color: sg.hasKnownSwitch ? tokens.primary : tokens.textSecondary,
                   ),
                   const SizedBox(width: 8),
                   Text(
@@ -536,10 +522,8 @@ class _HandDrawnTopologyCanvasState extends State<HandDrawnTopologyCanvas>
                       fontSize: 14,
                       fontWeight: FontWeight.bold,
                       color: sg.hasKnownSwitch
-                          ? AppColors.primary
-                          : (isDark
-                                ? AppColors.textPrimaryDark
-                                : AppColors.textPrimaryLight),
+                          ? tokens.primary
+                          : tokens.textPrimary,
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -549,15 +533,15 @@ class _HandDrawnTopologyCanvasState extends State<HandDrawnTopologyCanvas>
                       vertical: 2,
                     ),
                     decoration: BoxDecoration(
-                      color: AppColors.primary.withValues(alpha: 0.1),
+                      color: tokens.primary.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Text(
                       '${sg.devices.length} Devices',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.bold,
-                        color: AppColors.primary,
+                        color: tokens.primary,
                       ),
                     ),
                   ),
@@ -566,7 +550,7 @@ class _HandDrawnTopologyCanvasState extends State<HandDrawnTopologyCanvas>
                     isSwitchCollapsed
                         ? Icons.arrow_drop_down
                         : Icons.arrow_drop_up,
-                    color: Colors.grey,
+                    color: tokens.textSecondary,
                   ),
                 ],
               ),
@@ -617,8 +601,7 @@ class _VectorMonitorNodeCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final tokens = context.appTokens;
     final device = monitoredDevice.device;
     final status = monitoredDevice.status;
 
@@ -627,12 +610,20 @@ class _VectorMonitorNodeCard extends StatelessWidget {
     final isDegraded = status.status == DeviceStatusEnum.degraded;
 
     final statusColor = isDown
-        ? const Color(0xFFEF4444) // Red
+        ? tokens.statusOffline
         : (isUp
-              ? const Color(0xFF10B981) // Emerald Green
+              ? tokens.statusOnline
               : (isDegraded
-                    ? const Color(0xFFF59E0B)
-                    : const Color(0xFF6B7280)));
+                    ? tokens.statusDegraded
+                    : tokens.statusUnknown));
+
+    final onScreenColor = isDown
+        ? tokens.onStatusOffline
+        : (isUp
+              ? tokens.onStatusOnline
+              : (isDegraded
+                    ? tokens.onStatusDegraded
+                    : tokens.onStatusUnknown));
 
     final latencyStr = status.lastLatencyMs != null
         ? '${status.lastLatencyMs} ms'
@@ -653,13 +644,13 @@ class _VectorMonitorNodeCard extends StatelessWidget {
                 width: 170,
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: isDark ? AppColors.darkCard : Colors.white,
+                  color: tokens.card,
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
                     color: isDown
                         ? Color.lerp(
-                            const Color(0xFFEF4444),
-                            const Color(0xFFB91C1C),
+                            tokens.statusOffline,
+                            tokens.statusOffline.withValues(alpha: 0.6),
                             pulseVal,
                           )!
                         : statusColor.withValues(alpha: 0.8),
@@ -696,13 +687,13 @@ class _VectorMonitorNodeCard extends StatelessWidget {
                                 ? Icons.laptop_windows_rounded
                                 : Icons.desktop_windows_rounded,
                             size: 24,
-                            color: Colors.white,
+                            color: onScreenColor,
                           ),
                           const SizedBox(height: 2),
                           Text(
                             device.displayOwner,
-                            style: const TextStyle(
-                              color: Colors.white,
+                            style: TextStyle(
+                              color: onScreenColor,
                               fontWeight: FontWeight.bold,
                               fontSize: 12,
                             ),
@@ -723,9 +714,7 @@ class _VectorMonitorNodeCard extends StatelessWidget {
                             fontSize: 11,
                             fontFamily: 'monospace',
                             fontWeight: FontWeight.w600,
-                            color: isDark
-                                ? AppColors.textPrimaryDark
-                                : AppColors.textPrimaryLight,
+                            color: tokens.textPrimary,
                           ),
                         ),
                         Text(
@@ -819,19 +808,20 @@ class _DetailRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = context.appTokens;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
         children: [
-          Icon(icon, size: 18, color: AppColors.primary),
+          Icon(icon, size: 18, color: tokens.primary),
           const SizedBox(width: 10),
           SizedBox(
             width: 120,
             child: Text(
               label,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 13,
-                color: Colors.grey,
+                color: tokens.textSecondary,
                 fontWeight: FontWeight.w500,
               ),
             ),
@@ -843,6 +833,7 @@ class _DetailRow extends StatelessWidget {
                 fontSize: 13,
                 fontWeight: FontWeight.bold,
                 fontFamily: isMonospace ? 'monospace' : null,
+                color: tokens.textPrimary,
               ),
             ),
           ),
@@ -854,16 +845,14 @@ class _DetailRow extends StatelessWidget {
 
 /// CustomPainter for Whiteboard Grid Background Pattern
 class WhiteboardGridPainter extends CustomPainter {
-  final bool isDark;
+  final Color dotColor;
 
-  WhiteboardGridPainter({required this.isDark});
+  WhiteboardGridPainter({required this.dotColor});
 
   @override
   void paint(Canvas canvas, Size size) {
     final dotPaint = Paint()
-      ..color = (isDark ? Colors.white : Colors.black).withValues(
-        alpha: isDark ? 0.07 : 0.04,
-      )
+      ..color = dotColor
       ..strokeWidth = 1.2
       ..strokeCap = StrokeCap.round;
 
@@ -877,5 +866,5 @@ class WhiteboardGridPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant WhiteboardGridPainter oldDelegate) =>
-      oldDelegate.isDark != isDark;
+      oldDelegate.dotColor != dotColor;
 }

@@ -1,6 +1,7 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
 
+import '../../../../core/theme/app_colors.dart';
 import '../../../monitoring/domain/entities/monitored_device.dart';
 import 'wall_device_card.dart';
 
@@ -12,10 +13,13 @@ class WallDisplayGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (devices.isEmpty) {
-      return const Center(
+      return Center(
         child: Text(
           'No monitored devices in inventory',
-          style: TextStyle(color: Colors.white70, fontSize: 16),
+          style: TextStyle(
+            color: context.appTokens.textSecondary,
+            fontSize: 16,
+          ),
         ),
       );
     }

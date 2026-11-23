@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/theme/app_colors.dart';
 import '../../domain/entities/device_category.dart';
 import '../../domain/entities/discovered_device_entity.dart';
 
@@ -90,11 +91,12 @@ class _DiscoveryApproveDialogState extends State<DiscoveryApproveDialog> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final tokens = context.appTokens;
 
     return AlertDialog(
       title: Row(
         children: [
-          const Icon(Icons.verified_user_rounded, color: Color(0xFF10B981)),
+          Icon(Icons.verified_user_rounded, color: tokens.statusOnline),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
@@ -119,18 +121,18 @@ class _DiscoveryApproveDialogState extends State<DiscoveryApproveDialog> {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF0F62FE).withValues(alpha: 0.08),
+                    color: tokens.primary.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
-                      color: const Color(0xFF0F62FE).withValues(alpha: 0.2),
+                      color: tokens.primary.withValues(alpha: 0.2),
                     ),
                   ),
                   child: Row(
                     children: [
-                      const Icon(
+                      Icon(
                         Icons.info_outline,
                         size: 20,
-                        color: Color(0xFF0F62FE),
+                        color: tokens.primary,
                       ),
                       const SizedBox(width: 10),
                       Expanded(
@@ -388,7 +390,13 @@ class _ReviewRow extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              color: context.appTokens.textSecondary,
+            ),
+          ),
           Text(
             value,
             style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),

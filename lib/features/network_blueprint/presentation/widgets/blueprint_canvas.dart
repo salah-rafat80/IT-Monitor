@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import '../../../../core/theme/app_colors.dart';
 import '../../../monitoring/domain/entities/device_status_entity.dart';
 import '../../domain/entities/blueprint_element_entity.dart';
 import '../../domain/entities/blueprint_page_entity.dart';
@@ -28,13 +29,14 @@ class BlueprintCanvas extends StatefulWidget {
 class _BlueprintCanvasState extends State<BlueprintCanvas> {
   @override
   Widget build(BuildContext context) {
+    final tokens = context.appTokens;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final svgSize = widget.page.svgSize;
 
     return LayoutBuilder(
       builder: (context, constraints) {
         return Container(
-          color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9),
+          color: tokens.background,
           child: ClipRect(
             child: GestureDetector(
               onTapUp: (details) {
@@ -50,10 +52,10 @@ class _BlueprintCanvasState extends State<BlueprintCanvas> {
                   width: svgSize.width,
                   height: svgSize.height,
                   decoration: BoxDecoration(
-                    color: const Color(0xFF0B111E),
+                    color: tokens.surface,
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.12),
+                        color: tokens.shadow.withValues(alpha: isDark ? 0.35 : 0.12),
                         blurRadius: 20,
                         spreadRadius: 2,
                       ),
@@ -86,6 +88,7 @@ class _BlueprintCanvasState extends State<BlueprintCanvas> {
                           selectedElement: widget.selectedElement,
                           isDark: isDark,
                           showLiveStatus: widget.showLiveStatus,
+                          tokens: tokens,
                         ),
                       ),
                     ],
@@ -124,12 +127,14 @@ class _BlueprintInteractiveOverlayPainter extends CustomPainter {
   final BlueprintElementEntity? selectedElement;
   final bool isDark;
   final bool showLiveStatus;
+  final AppColors tokens;
 
   _BlueprintInteractiveOverlayPainter({
     required this.page,
     required this.selectedElement,
     required this.isDark,
     required this.showLiveStatus,
+    required this.tokens,
   });
 
   @override
@@ -138,10 +143,10 @@ class _BlueprintInteractiveOverlayPainter extends CustomPainter {
     if (selectedElement != null) {
       final rect = selectedElement!.renderBounds.inflate(4.0);
       final highlightFill = Paint()
-        ..color = const Color(0x333B82F6)
+        ..color = tokens.primary.withValues(alpha: 0.2)
         ..style = PaintingStyle.fill;
       final highlightStroke = Paint()
-        ..color = const Color(0xFF3B82F6)
+        ..color = tokens.primary
         ..style = PaintingStyle.stroke
         ..strokeWidth = 2.5;
 
@@ -164,11 +169,11 @@ class _BlueprintInteractiveOverlayPainter extends CustomPainter {
 
         // Draw shadow / ring
         final ringPaint = Paint()
-          ..color = Colors.white
+          ..color = tokens.surface
           ..style = PaintingStyle.fill;
         canvas.drawCircle(badgePos, 5.5, ringPaint);
         final ringStroke = Paint()
-          ..color = const Color(0x33000000)
+          ..color = tokens.shadow.withValues(alpha: 0.2)
           ..style = PaintingStyle.stroke
           ..strokeWidth = 0.5;
         canvas.drawCircle(badgePos, 5.5, ringStroke);
@@ -195,14 +200,14 @@ class _BlueprintInteractiveOverlayPainter extends CustomPainter {
   Color _resolveStatusColor(DeviceStatusEnum? status) {
     switch (status) {
       case DeviceStatusEnum.up:
-        return const Color(0xFF10B981);
+        return tokens.statusOnline;
       case DeviceStatusEnum.down:
-        return const Color(0xFFEF4444);
+        return tokens.statusOffline;
       case DeviceStatusEnum.degraded:
-        return const Color(0xFFF59E0B);
+        return tokens.statusDegraded;
       case DeviceStatusEnum.unknown:
       default:
-        return const Color(0xFF64748B);
+        return tokens.statusUnknown;
     }
   }
 
@@ -213,6 +218,7 @@ class _BlueprintInteractiveOverlayPainter extends CustomPainter {
     return oldDelegate.selectedElement != selectedElement ||
         oldDelegate.showLiveStatus != showLiveStatus ||
         oldDelegate.isDark != isDark ||
+        oldDelegate.tokens != tokens ||
         oldDelegate.page != page;
   }
 }

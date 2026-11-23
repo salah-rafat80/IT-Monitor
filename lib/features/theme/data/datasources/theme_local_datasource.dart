@@ -36,6 +36,12 @@ class ThemeLocalDataSourceImpl implements ThemeLocalDataSource {
     if (_instanceCustomConfigPath != null) {
       return File(_instanceCustomConfigPath!);
     }
+    // Check if bundled next to executable in portable mode
+    final exeDir = p.dirname(Platform.resolvedExecutable);
+    final portablePref = File(p.join(exeDir, _prefFileName));
+    if (portablePref.existsSync()) {
+      return portablePref;
+    }
     final programData = Platform.environment['ProgramData'];
     if (programData != null && programData.isNotEmpty) {
       return File(p.join(programData, 'ITNetworkMonitor', _prefFileName));

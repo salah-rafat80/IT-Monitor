@@ -69,7 +69,6 @@ class _LocationGroupCardState extends State<LocationGroupCard>
   @override
   Widget build(BuildContext context) {
     final tokens = context.appTokens;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final totalDevices = widget.location.totalCount;
     final downCount = widget.location.allDevices
         .where((d) => d.status.status == DeviceStatusEnum.down)
@@ -84,14 +83,12 @@ class _LocationGroupCardState extends State<LocationGroupCard>
         border: Border.all(
           color: hasIssues
               ? tokens.statusDown.withValues(alpha: 0.4)
-              : isDark
-              ? AppColors.darkBorder
-              : AppColors.lightBorder,
+              : tokens.border,
           width: hasIssues ? 1.5 : 1.0,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.06),
+            color: tokens.shadow,
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -369,8 +366,8 @@ class TopologyDeviceRow extends StatelessWidget {
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
                     color: device.isOwnerAssigned
-                        ? (tokens.textPrimary)
-                        : Colors.orangeAccent,
+                        ? tokens.textPrimary
+                        : tokens.statusDegraded,
                     fontStyle: device.isOwnerAssigned
                         ? FontStyle.normal
                         : FontStyle.italic,

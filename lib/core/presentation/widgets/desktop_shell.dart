@@ -398,11 +398,11 @@ class _NavTileState extends State<_NavTile> {
         ? tokens.primary.withValues(alpha: tokens.isDark ? 0.20 : 0.12)
         : (_isHovered
             ? tokens.surfaceVariant.withValues(alpha: 0.6)
-            : Colors.transparent);
+            : tokens.transparent);
 
     final borderColor = widget.isSelected
         ? tokens.accent
-        : (_isHovered ? tokens.border : Colors.transparent);
+        : (_isHovered ? tokens.border : tokens.transparent);
 
     final iconColor = widget.isSelected
         ? tokens.accent
@@ -421,7 +421,7 @@ class _NavTileState extends State<_NavTile> {
             onEnter: (_) => setState(() => _isHovered = true),
             onExit: (_) => setState(() => _isHovered = false),
             child: Material(
-              color: Colors.transparent,
+              color: tokens.transparent,
               child: InkWell(
                 borderRadius: BorderRadius.circular(AppRadius.md),
                 onTap: widget.onTap,
@@ -454,7 +454,7 @@ class _NavTileState extends State<_NavTile> {
         onEnter: (_) => setState(() => _isHovered = true),
         onExit: (_) => setState(() => _isHovered = false),
         child: Material(
-          color: Colors.transparent,
+          color: tokens.transparent,
           child: InkWell(
             borderRadius: BorderRadius.circular(AppRadius.md),
             onTap: widget.onTap,

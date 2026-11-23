@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/theme/app_colors.dart';
 import '../../domain/entities/discovery_config_entity.dart';
 import '../../domain/entities/network_range.dart';
 
@@ -58,16 +59,17 @@ class _DiscoveryStartDialogState extends State<DiscoveryStartDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = context.appTokens;
     final totalTargets = widget.ranges
         .where((r) => _selectedRanges.contains(r.cidr))
         .fold<int>(0, (sum, r) => sum + r.usableHostsCount);
 
     return AlertDialog(
-      title: const Row(
+      title: Row(
         children: [
-          Icon(Icons.radar_rounded, color: Color(0xFF0F62FE)),
-          SizedBox(width: 10),
-          Text('Configure & Launch Network Discovery'),
+          Icon(Icons.radar_rounded, color: tokens.primary),
+          const SizedBox(width: 10),
+          const Text('Configure & Launch Network Discovery'),
         ],
       ),
       content: SizedBox(
@@ -81,21 +83,21 @@ class _DiscoveryStartDialogState extends State<DiscoveryStartDialog> {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: Colors.orange.withValues(alpha: 0.1),
+                    color: tokens.statusDegradedSurface,
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
-                      color: Colors.orange.withValues(alpha: 0.3),
+                      color: tokens.statusDegraded.withValues(alpha: 0.3),
                     ),
                   ),
-                  child: const Row(
+                  child: Row(
                     children: [
                       Icon(
                         Icons.warning_amber_rounded,
-                        color: Colors.orange,
+                        color: tokens.statusDegraded,
                         size: 20,
                       ),
-                      SizedBox(width: 10),
-                      Expanded(
+                      const SizedBox(width: 10),
+                      const Expanded(
                         child: Text(
                           'No authorized network ranges configured. An administrator must add an authorized network scope before discovery can run.',
                           style: TextStyle(fontSize: 12),
@@ -108,17 +110,17 @@ class _DiscoveryStartDialogState extends State<DiscoveryStartDialog> {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF0F62FE).withValues(alpha: 0.08),
+                    color: tokens.primary.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
-                      color: const Color(0xFF0F62FE).withValues(alpha: 0.2),
+                      color: tokens.primary.withValues(alpha: 0.2),
                     ),
                   ),
                   child: Row(
                     children: [
-                      const Icon(
+                      Icon(
                         Icons.info_outline,
-                        color: Color(0xFF0F62FE),
+                        color: tokens.primary,
                         size: 20,
                       ),
                       const SizedBox(width: 10),
@@ -181,13 +183,13 @@ class _DiscoveryStartDialogState extends State<DiscoveryStartDialog> {
               ),
               const SizedBox(height: 8),
               if (widget.ranges.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 8),
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
                   child: Text(
                     'No network ranges configured.',
                     style: TextStyle(
                       fontStyle: FontStyle.italic,
-                      color: Colors.grey,
+                      color: tokens.textSecondary,
                     ),
                   ),
                 )
@@ -204,26 +206,26 @@ class _DiscoveryStartDialogState extends State<DiscoveryStartDialog> {
                           r.cidr,
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
-                            color: r.isEnabled ? null : Colors.grey,
+                            color: r.isEnabled ? null : tokens.disabled,
                           ),
                         ),
                         if (r.name != null) ...[
                           const SizedBox(width: 6),
                           Text(
                             '(${r.name})',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 12,
-                              color: Colors.grey,
+                              color: tokens.textSecondary,
                             ),
                           ),
                         ],
                         if (!r.isEnabled) ...[
                           const SizedBox(width: 6),
-                          const Text(
+                          Text(
                             '(Disabled)',
                             style: TextStyle(
                               fontSize: 11,
-                              color: Colors.orange,
+                              color: tokens.statusDegraded,
                             ),
                           ),
                         ],

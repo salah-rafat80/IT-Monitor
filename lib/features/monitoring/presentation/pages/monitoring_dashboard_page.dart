@@ -511,7 +511,7 @@ class _MonitoringDashboardViewState extends State<MonitoringDashboardView> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.transparent,
+      backgroundColor: context.appTokens.transparent,
       builder: (ctx) => DeviceDetailsModal(
         item: item,
         isAdmin: isAdmin,

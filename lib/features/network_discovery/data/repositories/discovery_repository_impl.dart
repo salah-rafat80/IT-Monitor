@@ -711,6 +711,28 @@ class DiscoveryRepositoryImpl implements DiscoveryRepository {
                 ..limit(1))
               .getSingleOrNull();
 
+      // Check most recent prior row for this (factoryId, ip) that has an admin review decision
+      final priorReview =
+          await (_db.select(_db.discoveredDevices)
+                ..where(
+                  (t) =>
+                      t.factoryId.equals(device.factoryId) &
+                      t.ip.equals(device.ip) &
+                      t.reviewState.isNotValue('pending_review'),
+                )
+                ..orderBy([
+                  (t) =>
+                      OrderingTerm(expression: t.lastSeen, mode: OrderingMode.desc),
+                ])
+                ..limit(1))
+              .getSingleOrNull();
+
+      final existingReview =
+          existing != null && existing.reviewState != 'pending_review'
+              ? existing
+              : null;
+      final effectiveReview = existingReview ?? priorReview;
+
       final companion = DiscoveredDevicesCompanion(
         factoryId: Value(device.factoryId),
         scanId: Value(device.scanId),
@@ -731,12 +753,29 @@ class DiscoveryRepositoryImpl implements DiscoveryRepository {
           device.lastSuccessfulProbe ?? existing?.lastSuccessfulProbe ?? prior?.lastSuccessfulProbe,
         ),
         lastProbeFailureReason: Value(device.lastProbeFailureReason),
-        reviewState: Value(device.reviewState.toValue()),
-        adminConfirmedCategory: Value(device.adminConfirmedCategory?.toValue()),
-        adminReviewerId: Value(device.adminReviewerId),
-        adminReviewTimestamp: Value(device.adminReviewTimestamp),
+        reviewState: Value(
+          (device.reviewState != ReviewState.pendingReview
+              ? device.reviewState.toValue()
+              : effectiveReview?.reviewState) ??
+              device.reviewState.toValue(),
+        ),
+        adminConfirmedCategory: Value(
+          device.adminConfirmedCategory?.toValue() ??
+              effectiveReview?.adminConfirmedCategory,
+        ),
+        adminReviewerId: Value(
+          device.adminReviewerId ??
+              effectiveReview?.adminReviewerId,
+        ),
+        adminReviewTimestamp: Value(
+          device.adminReviewTimestamp ??
+              effectiveReview?.adminReviewTimestamp,
+        ),
         associatedDeviceId: Value(
-          device.associatedDeviceId ?? existing?.associatedDeviceId ?? prior?.associatedDeviceId,
+          device.associatedDeviceId ??
+              effectiveReview?.associatedDeviceId ??
+              existing?.associatedDeviceId ??
+              prior?.associatedDeviceId,
         ),
       );
 

@@ -416,4 +416,140 @@ void main() {
       },
     );
   });
+
+  group('Fix Round 6: Approved/rejected discovery devices review state persistence across scans', () {
+    test(
+      'Device approved in scan 1 keeps approved state, reviewer id, category, and associatedDeviceId in scan 2',
+      () async {
+        const factoryId = 'rnf';
+
+        // 1. Seed scan 1 with device A
+        final dev1Res = await discoveryRepo.saveDiscoveredDevice(
+          DiscoveredDeviceEntity(
+            scanId: 1,
+            factoryId: factoryId,
+            ip: '192.168.1.100',
+            hostname: 'WORKSTATION-01',
+            associatedDeviceId: 88,
+            firstSeen: DateTime.now().subtract(const Duration(days: 1)),
+            lastSeen: DateTime.now().subtract(const Duration(days: 1)),
+          ),
+        );
+        expect(dev1Res.isSuccess, isTrue);
+        final dev1Id = dev1Res.dataOrNull!;
+
+        // 2. Mark device A as approved
+        final reviewRes = await discoveryRepo.updateDeviceReview(
+          deviceId: dev1Id,
+          state: ReviewState.approved,
+          reviewerId: 42,
+          confirmedCategory: DeviceCategory.pc,
+        );
+        expect(reviewRes.isSuccess, isTrue);
+
+        // 3. Device A responds again in scan 2
+        final dev2Res = await discoveryRepo.saveDiscoveredDevice(
+          DiscoveredDeviceEntity(
+            scanId: 2,
+            factoryId: factoryId,
+            ip: '192.168.1.100',
+            hostname: 'WORKSTATION-01',
+            firstSeen: DateTime.now(),
+            lastSeen: DateTime.now(),
+          ),
+        );
+        expect(dev2Res.isSuccess, isTrue);
+
+        // 4. Assert scan 2 row for A retains reviewState == approved, reviewer id, confirmedCategory, and associatedDeviceId
+        final devicesScan2 = await discoveryRepo.getDiscoveredDevices(scanId: 2, factoryId: factoryId);
+        expect(devicesScan2.isSuccess, isTrue);
+        final deviceA = devicesScan2.dataOrNull!.firstWhere((d) => d.ip == '192.168.1.100');
+        expect(deviceA.reviewState, equals(ReviewState.approved));
+        expect(deviceA.adminReviewerId, equals(42));
+        expect(deviceA.adminConfirmedCategory, equals(DeviceCategory.pc));
+        expect(deviceA.associatedDeviceId, equals(88));
+      },
+    );
+
+    test(
+      'Device rejected in scan 1 keeps rejected state, reviewer id, category, and associatedDeviceId in scan 2',
+      () async {
+        const factoryId = 'rnf';
+
+        // 1. Seed scan 1 with device B
+        final dev1Res = await discoveryRepo.saveDiscoveredDevice(
+          DiscoveredDeviceEntity(
+            scanId: 1,
+            factoryId: factoryId,
+            ip: '192.168.1.101',
+            hostname: 'ROGUE-DEVICE-01',
+            associatedDeviceId: 89,
+            firstSeen: DateTime.now().subtract(const Duration(days: 1)),
+            lastSeen: DateTime.now().subtract(const Duration(days: 1)),
+          ),
+        );
+        expect(dev1Res.isSuccess, isTrue);
+        final dev1Id = dev1Res.dataOrNull!;
+
+        // 2. Mark device B as rejected
+        final reviewRes = await discoveryRepo.updateDeviceReview(
+          deviceId: dev1Id,
+          state: ReviewState.rejected,
+          reviewerId: 43,
+          confirmedCategory: DeviceCategory.server,
+        );
+        expect(reviewRes.isSuccess, isTrue);
+
+        // 3. Device B responds again in scan 2
+        final dev2Res = await discoveryRepo.saveDiscoveredDevice(
+          DiscoveredDeviceEntity(
+            scanId: 2,
+            factoryId: factoryId,
+            ip: '192.168.1.101',
+            hostname: 'ROGUE-DEVICE-01',
+            firstSeen: DateTime.now(),
+            lastSeen: DateTime.now(),
+          ),
+        );
+        expect(dev2Res.isSuccess, isTrue);
+
+        // 4. Assert scan 2 row for B retains rejected state and metadata
+        final devicesScan2 = await discoveryRepo.getDiscoveredDevices(scanId: 2, factoryId: factoryId);
+        expect(devicesScan2.isSuccess, isTrue);
+        final deviceB = devicesScan2.dataOrNull!.firstWhere((d) => d.ip == '192.168.1.101');
+        expect(deviceB.reviewState, equals(ReviewState.rejected));
+        expect(deviceB.adminReviewerId, equals(43));
+        expect(deviceB.adminConfirmedCategory, equals(DeviceCategory.server));
+        expect(deviceB.associatedDeviceId, equals(89));
+      },
+    );
+
+    test(
+      'Control: brand-new device in scan 2 still arrives as pending with null review metadata',
+      () async {
+        const factoryId = 'rnf';
+
+        // Save a brand-new device in scan 2
+        final devRes = await discoveryRepo.saveDiscoveredDevice(
+          DiscoveredDeviceEntity(
+            scanId: 2,
+            factoryId: factoryId,
+            ip: '192.168.1.199',
+            hostname: 'BRAND-NEW-01',
+            firstSeen: DateTime.now(),
+            lastSeen: DateTime.now(),
+          ),
+        );
+        expect(devRes.isSuccess, isTrue);
+
+        final devicesScan2 = await discoveryRepo.getDiscoveredDevices(scanId: 2, factoryId: factoryId);
+        expect(devicesScan2.isSuccess, isTrue);
+        final deviceNew = devicesScan2.dataOrNull!.firstWhere((d) => d.ip == '192.168.1.199');
+        expect(deviceNew.reviewState, equals(ReviewState.pendingReview));
+        expect(deviceNew.adminReviewerId, isNull);
+        expect(deviceNew.adminConfirmedCategory, isNull);
+        expect(deviceNew.adminReviewTimestamp, isNull);
+      },
+    );
+  });
 }
